@@ -343,7 +343,10 @@ body {
 /* ─── Config Cards ─────────────────────────────────────────────────────── */
 .config-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  /* At most four columns, each at least 280px: the wide cards span every track, so with auto-fill the tracks
+     they kept alive stayed empty to the right of the first four cards. Four tracks of a quarter-width each
+     make those cards span the full width of the banner above them. */
+  grid-template-columns: repeat(auto-fit, minmax(max(280px, calc((100% - 42px) / 4)), 1fr));
   gap: 14px;
 }
 .config-card {
@@ -357,6 +360,16 @@ body {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+/* A card over its height budget (see ConfigCard) is clipped with a fade; expanded, it scrolls inside its own box. */
+.config-card-body { min-width: 0; }
+.config-card:focus { outline: none; }
+.config-card-capped:not(.config-card-open) .config-card-body {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+.config-card-open .config-card-body { max-height: 75vh; overflow-y: auto; }
+.config-card-toggle { width: 100%; margin: 8px 0 0; }
 .config-card-header {
   display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: var(--text);
 }
@@ -1734,25 +1747,14 @@ body {
   font-size: 12px;
   color: var(--text-muted);
 }
-/* Phase 7 §3: explicit breakpoints instead of a loose auto-fill, so a
-   kiosk/desktop viewport reliably shows a 3-column (up to 9-card, 3-row)
-   grid without scrolling, tablet steps down to 2, and mobile is always a
-   single card in view (scroll for more) -- the concrete layout the user
-   asked for. Doesn't yet dynamically shrink card density as more than 9
-   places are added (still just scrolls past 9, per "all available when
-   scrolled") -- see docs/EXECUTION_PLAN_2026-08-07_template-theme-camera.md
-   §3 for that still-open remainder. */
+/* Nate, 2026-11-02: the cards fill the full width of the banner bars above them and no screen caps how many it
+   shows. auto-fit collapses empty tracks, so two or three places stretch across the row instead of leaving a
+   fixed three-column grid two-thirds full; each card keeps at least 420px, and a phone gets one column. */
 .family-hub-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
   gap: 16px;
   padding: 4px 0 8px;
-}
-@media (max-width: 1100px) {
-  .family-hub-grid { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 640px) {
-  .family-hub-grid { grid-template-columns: 1fr; }
 }
 .family-hub-card-wrap {
   display: flex;
@@ -2314,9 +2316,12 @@ select option { background: var(--bg-secondary); color: var(--text); }
 }
 .guest-access-list { display: flex; flex-direction: column; gap: 8px; }
 .guest-access-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 10px;
   padding: 8px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg-secondary);
 }
+/* The first child (a name or an id) may use the whole row and breaks anywhere; the action buttons wrap below it when the card is narrow.
+   Without this the row's non-shrinking buttons left the name one character wide, so a long id rendered as a vertical column. */
+.guest-access-row > :first-child { flex: 1 1 10em; min-width: 0; overflow-wrap: anywhere; }
 .guest-access-row.guest-access-revoked { opacity: 0.55; }
 .guest-access-usage { display: block; }
 .guest-access-activity { margin-top: 4px; font-size: 0.85rem; }
@@ -2325,7 +2330,7 @@ select option { background: var(--bg-secondary); color: var(--text); }
 .guest-access-activity-table th, .guest-access-activity-table td { text-align: left; padding: 2px 12px 2px 0; }
 .guest-access-history { margin-top: 8px; }
 .guest-access-history > summary { cursor: pointer; font-size: 13px; opacity: 0.8; }
-.managed-users-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.managed-users-row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 
 /* ─── Optimization Opportunities (Sprint 5 WSJF #1) ─────────────────────── */
 .opportunity-type-badge {
@@ -2558,6 +2563,12 @@ select option { background: var(--bg-secondary); color: var(--text); }
   align-self: flex-start; padding: 8px 22px; border-radius: 8px; border: 1px solid var(--danger);
   background: var(--bg); color: var(--danger); font-size: 14px; cursor: pointer;
 }
+.trim-commands {
+  margin: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg);
+  color: var(--text); font-size: 11px; line-height: 1.5; overflow-x: auto; white-space: pre;
+}
+.trim-copy { align-self: flex-start; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 4px 10px; cursor: pointer; }
+.storage-section { padding: 0 12px 12px; }
 .trim-go:disabled { opacity: 0.55; cursor: not-allowed; }
 .trim-want { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .trim-want input[type="number"] { width: 80px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 4px 6px; }
@@ -3128,10 +3139,10 @@ select option { background: var(--bg-secondary); color: var(--text); }
   display: flex; align-items: center; justify-content: center; gap: 8px;
   margin: 6px 0; padding: 10px 16px; min-height: 44px;
   font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
-  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary));
+  color: var(--text); background: var(--bg-secondary);
   border: 2px solid var(--accent); border-radius: var(--radius);
 }
-.expandable-list-toggle:hover { background: color-mix(in srgb, var(--accent) 22%, var(--bg-secondary)); }
+.expandable-list-toggle:hover { background: color-mix(in srgb, var(--accent) 16%, var(--bg-secondary)); }
 .expandable-list-toggle:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .expandable-list-chevron { font-size: 11px; }
 .dm-duplicate-note { margin: 6px 0; }

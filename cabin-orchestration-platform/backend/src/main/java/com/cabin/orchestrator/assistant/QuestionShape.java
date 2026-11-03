@@ -16,9 +16,17 @@ import java.util.regex.Pattern;
  *
  * <p>This is a LEXICAL guard with a stated reach, not a guarantee about all questions. A request counts when, after
  * normalising it, any sentence starts (after skipping conversational openers and list markers, however many are stacked) with one of these lead words or phrases:
- * how, why, what, where, which, who, whose, whom, does, did, is, are, was, were, am, and "can/could/may/might/should/shall/
+ * how, why, what, where, which, who, whose, whom, whether, does, did, is, are, was, were, am, and "can/could/may/might/should/shall/
  * must/do/does" followed by I, we, someone, anyone, a guest or "the X". Anything else is not caught (see the PR for the forms
  * still missed). It fails closed in the direction that matters: it only ever withholds a proposal and asks.
+ *
+ * <p>A polite wrapper about asking ("can I ask", "could we ask", "am I able to ask", "is it ok to ask", with an optional "you" and
+ * "a question" / "something" / "anything") is skipped, because the can/could/may of such a wrapper is not part of the inquiry
+ * (Nate, 2026-11-01), and what follows is judged as it stands. After a wrapper, besides the lead words above, "when", "if",
+ * "about", "for", "regarding" and "to explain / tell / show / describe / clarify" count as an inquiry ("can I ask when the heater
+ * turns on", "can I ask you to explain how it works"). A wrapper followed by a request ("can I ask you to turn on the heater")
+ * is a request, not a question. A wrapper standing alone ("can I ask a question?", "am I able to ask") is itself a question,
+ * answered rhetorically.
  *
  * <p>Normalisation (so a quote, a greeting or a look-alike letter does not slip past): Unicode NFKC (fullwidth letters become
  * ASCII), invisible format characters (zero-width space and joiner, soft hyphen) are removed, common Cyrillic and Greek
@@ -31,17 +39,29 @@ final class QuestionShape {
 
     private static final Set<String> LEAD_WORDS = Set.of(
         "how", "why", "what", "whats", "where", "wheres", "which", "who", "whose", "whom",
-        "does", "did", "is", "isnt", "are", "arent", "was", "wasnt", "were", "werent", "am", "doesnt", "didnt", "hows", "whos", "whys");
+        "does", "did", "is", "isnt", "are", "arent", "was", "wasnt", "were", "werent", "am", "doesnt", "didnt", "hows", "whos", "whys", "whether");
 
     /** First-person or impersonal ability and permission questions: "can I", "should we", "do I". */
     private static final Pattern LEAD_PHRASE = Pattern.compile(
         "^(can|could|may|might|should|shall|must|do|does)\\s+(i|we|someone|anyone|a\\s+guest|the\\s+\\w+)\\b");
 
+    /**
+     * A polite wrapper about asking ("can I ask", "could we ask", "am I able to ask", "is it ok to ask"), with an optional "you" and
+     * "a question" / "something". Nate's rule (2026-11-01): the can/could/may of such a wrapper is not part of the inquiry. The
+     * wrapper is skipped and what follows is judged as it stands ("can I ask how the heater works" is a question; "can I ask you to
+     * turn on the heater" is a request and is not); a wrapper standing alone ("can I ask a question?", "am I able to ask") is itself a
+     * question, answered rhetorically: you can ask, and I will do my best.
+     */
+    private static final Pattern ASK_WRAPPER = Pattern.compile(
+        "^(?:(?:can|could|may|might)\\s+(?:i|we)\\s+ask|(?:am\\s+i|are\\s+we)\\s+able\\s+to\\s+ask|is\\s+it\\s+(?:ok|okay)\\s+(?:to|if\\s+(?:i|we))\\s+ask)"
+        + "(?:\\s+(?:you|us))?(?:\\s+(?:a|one)(?:\\s+quick)?\\s+question|\\s+something|\\s+anything)?(?![a-z0-9])");
+
     /** Conversational openers skipped before the check, longest first so "thank you" wins over "thank". */
     private static final List<String> OPENERS = List.of(
         // multi-word forms first, so "i have a question about" wins over "i"
+        // the "can/could/may i ask ..." wrappers are handled by ASK_WRAPPER (see its note), not listed here
         "quick question", "one more question", "another question", "next question", "my question is", "i have a question about",
-        "i have a question", "i had a question", "can i ask", "could i ask", "may i ask", "i would like to ask", "id like to ask",
+        "i have a question", "i had a question", "i would like to ask", "id like to ask",
         "i was wondering", "just wondering", "i wonder", "just curious", "curious", "wondering", "one more thing", "quick one",
         "tiny helpdesk", "thank you", "thanks a lot", "many thanks", "help desk", "helpdesk", "ask the helpdesk", "hey there",
         "hi there", "hello there", "good day", "good morning", "good afternoon", "good evening", "dear sir or madam", "dear sir",
@@ -52,14 +72,21 @@ final class QuestionShape {
         "also", "and", "but", "then", "now", "so", "well", "um", "uh", "er", "oh", "ah", "ask", "assistant", "bot", "claude",
         "ahoy");
 
+    /** What counts as an inquiry right after a wrapper, beyond the lead words: "can I ask if ...", "about ...", "you to explain how ...". */
+    private static final Pattern AFTER_WRAPPER = Pattern.compile(
+        "^(?:when|if|about|for|regarding|to\\s+(?:explain|tell|show|describe|clarify))(?![a-z0-9])");
+
     private static final Pattern INVISIBLE = Pattern.compile("[\\p{Cf}\\u00AD\\uFE0F\\u20E3]");
     private static final Pattern WHITESPACE = Pattern.compile("[\\s\\p{Z}]+");
     private static final Pattern LEADING_JUNK = Pattern.compile("^[^\\p{L}\\p{N}]+");
     private static final Pattern SENTENCE_BREAK = Pattern.compile("[.!?;:\\n\\r]+");
-    /** A list marker such as "1)", "a)" or "2]" left after the leading brackets are stripped. ("1." is split off as a sentence.) */
+    /** A list marker such as "1)", "a)", "iv)" or "2]" left after the leading brackets are stripped. ("1." is split off as a sentence.)
+     *  Only a digit, one letter or a roman numeral: a short question word ("is", "do", "how") followed by a dash or bracket is not a marker. */
     private static final Pattern LIST_MARKER = Pattern.compile(
-        "^(?:(?:step|no|number|item|q|question)\\.?\\s*)?#?(?:\\d{1,3}|[a-z]{1,4})\\s*[)\\]}>\\-–—]+\\s*"
+        "^(?:(?:step|no|number|item|q|question)\\.?\\s*)?#?(?:\\d{1,3}|[a-z]|[ivx]{2,4})\\s*[)\\]}>\\-–—]+\\s*"
         + "|^#\\d{1,3}\\s+|^\\d{1,3}\\s+(?=[a-z])");
+    /** One to three letters or digits and a closing bracket at the start: "id) how ...". */
+    private static final Pattern LOOSE_TAG = Pattern.compile("^[a-z0-9]{1,3}[)\\]}>]+\\s*");
     private static final Pattern OPENER_PUNCTUATION = Pattern.compile("^[\\s,;:!.\\-–—]+");
 
     /** Look-alike letters from Cyrillic and Greek that NFKC leaves alone, folded to the Latin letter they imitate. */
@@ -99,15 +126,33 @@ final class QuestionShape {
 
     private static boolean startsLikeAQuestion(String sentence) {
         String s = LEADING_JUNK.matcher(WHITESPACE.matcher(sentence).replaceAll(" ").strip()).replaceFirst("");
-        // Every pass strictly shortens the text, so this ends; it strips as many openers and markers as are stacked.
+        boolean wrapperSeen = false;
+        // Every pass strictly shortens the text, so this ends; it strips as many wrappers, openers and markers as are stacked.
         while (true) {
-            String stripped = LIST_MARKER.matcher(stripOpener(s)).replaceFirst("");
-            if (stripped.equals(s)) break;
-            s = LEADING_JUNK.matcher(stripped).replaceFirst("");
+            java.util.regex.Matcher wrapper = ASK_WRAPPER.matcher(s);
+            String next;
+            if (wrapper.find()) {
+                wrapperSeen = true;
+                next = OPENER_PUNCTUATION.matcher(s.substring(wrapper.end())).replaceFirst("").strip();
+            } else {
+                next = LIST_MARKER.matcher(stripOpener(s)).replaceFirst("");
+            }
+            if (next.equals(s)) break;
+            s = LEADING_JUNK.matcher(next).replaceFirst("");
         }
-        if (s.isEmpty()) return false;
-        String first = s.split("[\\s,;:?!.]+", 2)[0];
-        return LEAD_WORDS.contains(first) || LEAD_PHRASE.matcher(s).find();
+        // Nothing left after a wrapper ("can I ask a question?", "am I able to ask"): a question about asking, answered rhetorically.
+        if (s.isEmpty()) return wrapperSeen;
+        if (leadsWithAQuestion(s, wrapperSeen)) return true;
+        // "id) how does it work": a short tag and a bracket in front of the question. The tag is dropped for this second look only, so a
+        // question word that merely sits next to a bracket ("do) I need a token") is still judged as written by the first.
+        String untagged = LOOSE_TAG.matcher(s).replaceFirst("");
+        return !untagged.equals(s) && leadsWithAQuestion(untagged, wrapperSeen);
+    }
+
+    private static boolean leadsWithAQuestion(String s, boolean wrapperSeen) {
+        // The first word ends at a space, punctuation, a dash or a closing bracket: "how- do I turn it off" starts with "how".
+        String first = s.split("[\\s,;:?!.\\-–—)\\]}>]+", 2)[0];
+        return LEAD_WORDS.contains(first) || LEAD_PHRASE.matcher(s).find() || (wrapperSeen && AFTER_WRAPPER.matcher(s).find());
     }
 
     private static String stripOpener(String s) {

@@ -52,6 +52,14 @@ public class StorageTrimService {
     /** A plan older than this is shown but flagged: the nightly backups add a folder a day. */
     static final Duration STALE_AFTER = Duration.ofHours(12);
 
+    /** Same commands as docs/STORAGE_ARCHITECTURE.md "Trim control"; the UI shows them with a copy button. */
+    static final String INSTALL_COMMANDS = String.join("\n",
+        "git -C ~/repos/FaceoftheCabin pull --ff-only origin main && cd ~/repos/FaceoftheCabin",
+        "sudo install -m 0755 scripts/host/cabin-storage-prune /usr/local/bin/cabin-storage-prune",
+        "sudo install -m 0755 scripts/host/cabin-storage-trim-agent /usr/local/bin/cabin-storage-trim-agent",
+        "sudo install -m 0644 scripts/host/cabin-storage-trim-agent.service /etc/systemd/system/cabin-storage-trim-agent.service",
+        "sudo systemctl daemon-reload && sudo systemctl enable --now cabin-storage-trim-agent");
+
     private final StorageMonitorService monitor;
     private final EventPublisher eventPublisher;
     private volatile String lastAutoAnnounced;
@@ -88,11 +96,17 @@ public class StorageTrimService {
         Map<String, Object> planJson = readJson(plan);
         if (planJson == null) {
             out.put("installed", false);
-            out.put("message", "The host trim service has not produced a plan yet. It is installed once on the M920q "
-                + "(docs/STORAGE_ARCHITECTURE.md, \"Trim control\"); until then use cabin-storage-prune on the host.");
+            out.put("autoTrim", "not-installed");
+            out.put("message", "Automatic backup trim is not running: the host trim service has not produced a plan, so it is "
+                + "not installed (or has stopped). Nothing will remove old backups on its own and the Trim control cannot "
+                + "act until it is installed once on the M920q by the owner (docs/STORAGE_ARCHITECTURE.md, \"Trim control\"). "
+                + "Until then, run cabin-storage-prune on the host.");
+            out.put("installCommands", INSTALL_COMMANDS);
             return out;
         }
         out.put("installed", true);
+        AutoTrimStatus status = AutoTrimStatus.read(Path.of(spoolDir), Instant.now());
+        out.put("autoTrim", !status.enabled() ? "disabled" : status.planStale() ? "stale" : status.stuck() ? "stuck" : "on");
         Instant plannedAt = parseInstant(planJson.get("plannedAt"));
         out.put("plannedAt", plannedAt == null ? null : plannedAt.toString());
         out.put("planAgeSeconds", plannedAt == null ? null : Duration.between(plannedAt, Instant.now()).toSeconds());

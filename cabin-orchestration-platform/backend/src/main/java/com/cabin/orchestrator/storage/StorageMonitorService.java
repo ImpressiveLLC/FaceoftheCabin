@@ -11,6 +11,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -18,8 +19,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 /**
  * W-11: watches the M920q's disks and says so before they fill.
@@ -36,6 +39,14 @@ import java.util.concurrent.ConcurrentHashMap;
  * (90). A mount drops back a level only after falling {@code clearMarginPercent}
  * below the line it crossed, so a disk hovering at 80 does not flap. While a
  * mount stays above a line the same alert repeats every {@code renotifyHours}.
+ *
+ * Severity of the HDD's critical alert depends on the host's automatic backup trim (W-11b, read through
+ * {@link AutoTrimStatus}). While automatic trim is installed, switched on and alive, crossing the critical
+ * line is not an emergency: the agent removes the oldest backup copies by itself and the level corrects.
+ * That first alert is published as WARN (visible, no phone push) and says so. It is raised to CRITICAL, once,
+ * if the agent is gone or switched off, or its last automatic run could not get the disk under its line, and
+ * the repeat notice after {@code renotifyHours} is CRITICAL too, because the disk should have cleared by then.
+ * Other mounts (the NVMe) have no automatic remedy and stay CRITICAL.
  *
  * This only reports. It never deletes anything: Nate's rules (2026-10-10) are
  * that BI telemetry is never removed without a warning first, and permanent
@@ -91,10 +102,13 @@ public class StorageMonitorService {
     private final int criticalPercent;
     private final int clearMarginPercent;
     private final Duration renotify;
+    private final Supplier<AutoTrimStatus> autoTrim;
 
     private final Map<String, Level> levels = new ConcurrentHashMap<>();
     private final Map<String, Instant> lastNotified = new ConcurrentHashMap<>();
     private final Map<String, Boolean> seeded = new ConcurrentHashMap<>();
+    /** Mounts whose critical alert went out as WARN because automatic trim was expected to clear it. */
+    private final Set<String> softened = ConcurrentHashMap.newKeySet();
 
     @Autowired
     public StorageMonitorService(
@@ -105,14 +119,24 @@ public class StorageMonitorService {
             @Value("${cabin.storage.monitor.warnPercent:60}") int warnPercent,
             @Value("${cabin.storage.monitor.criticalPercent:75}") int criticalPercent,
             @Value("${cabin.storage.monitor.clearMarginPercent:3}") int clearMarginPercent,
-            @Value("${cabin.storage.monitor.renotifyHours:24}") int renotifyHours) {
+            @Value("${cabin.storage.monitor.renotifyHours:24}") int renotifyHours,
+            @Value("${cabin.storage.trimSpoolDir:/app/archives/cabin_event/.trim}") String trimSpoolDir) {
         this(eventPublisher, eventService, FILE_PROBE, enabled, parseMounts(mountsSpec),
-            warnPercent, criticalPercent, clearMarginPercent, renotifyHours);
+            warnPercent, criticalPercent, clearMarginPercent, renotifyHours,
+            () -> AutoTrimStatus.read(Path.of(trimSpoolDir), Instant.now()));
     }
 
     StorageMonitorService(EventPublisher eventPublisher, CabinEventService eventService, DiskProbe probe,
                           boolean enabled, Map<String, String> mounts,
                           int warnPercent, int criticalPercent, int clearMarginPercent, int renotifyHours) {
+        this(eventPublisher, eventService, probe, enabled, mounts, warnPercent, criticalPercent,
+            clearMarginPercent, renotifyHours, () -> AutoTrimStatus.ABSENT);
+    }
+
+    StorageMonitorService(EventPublisher eventPublisher, CabinEventService eventService, DiskProbe probe,
+                          boolean enabled, Map<String, String> mounts,
+                          int warnPercent, int criticalPercent, int clearMarginPercent, int renotifyHours,
+                          Supplier<AutoTrimStatus> autoTrim) {
         if (warnPercent >= criticalPercent) {
             throw new IllegalArgumentException("warnPercent must be below criticalPercent");
         }
@@ -125,6 +149,7 @@ public class StorageMonitorService {
         this.criticalPercent = criticalPercent;
         this.clearMarginPercent = clearMarginPercent;
         this.renotify = Duration.ofHours(renotifyHours);
+        this.autoTrim = autoTrim;
     }
 
     static Map<String, String> parseMounts(String spec) {
@@ -167,12 +192,18 @@ public class StorageMonitorService {
             if (next != current) {
                 levels.put(label, next);
                 lastNotified.put(label, now);
+                softened.remove(label);
                 publish(usage.get(), next, now, false);
             } else if (next != Level.NORMAL) {
                 Instant last = lastNotified.get(label);
                 if (last == null || Duration.between(last, now).compareTo(renotify) >= 0) {
                     lastNotified.put(label, now);
                     publish(usage.get(), next, now, true);
+                } else if (next == Level.CRITICAL && softened.contains(label) && !autoTrimExpectedToClear(label)) {
+                    // The first notice promised automatic trim would handle it. It cannot (agent gone, switched
+                    // off, or at its floor), so say so now, once, and push.
+                    lastNotified.put(label, now);
+                    publish(usage.get(), next, now, false);
                 }
             }
         }
@@ -202,9 +233,21 @@ public class StorageMonitorService {
             if (lvl == null) return;
             levels.put(label, Level.valueOf(String.valueOf(lvl)));
             lastNotified.put(label, e.timestamp());
+            if (Boolean.TRUE.equals(e.payload().get("softened"))) softened.add(label);
         } catch (Exception ex) {
             log.debug("Could not restore storage state for {}: {}", label, ex.getMessage());
         }
+    }
+
+    /** Only the cold-tier HDD has an automatic remedy: the host agent that trims old backups. */
+    private static boolean hasAutoRemedy(String label) {
+        return label.startsWith("storage") || label.contains("hdd");
+    }
+
+    private boolean autoTrimExpectedToClear(String label) {
+        if (!hasAutoRemedy(label)) return false;
+        AutoTrimStatus s = autoTrim.get();
+        return s.healthy() && !s.stuck();
     }
 
     private void publish(MountUsage u, Level level, Instant now, boolean reminder) {
@@ -233,24 +276,56 @@ public class StorageMonitorService {
         } else {
             p.put("think", String.format("%s the %d%% %s line%s", reminder ? "Still above" : "Crossed", line,
                 level == Level.CRITICAL ? "critical" : "warning", reminder ? " (repeat notice)" : ""));
-            p.put("act", actionFor(u.label()));
-            p.put("notify", true);
+            boolean soften = level == Level.CRITICAL && !reminder && autoTrimExpectedToClear(u.label());
+            if (soften) softened.add(u.label()); else softened.remove(u.label());
+            p.put("softened", soften);
+            p.put("act", actionFor(u.label(), level, soften));
+            p.put("notify", !soften);
             p.put("title", "Cabin storage: " + u.label() + " " + pct + "% full");
             p.put("message", see + ". " + p.get("act"));
         }
-        String severity = cleared ? "INFO" : (level == Level.CRITICAL ? "CRITICAL" : "WARN");
+        boolean wasSoftened = Boolean.TRUE.equals(p.get("softened"));
+        String severity = cleared ? "INFO" : (level == Level.CRITICAL && !wasSoftened ? "CRITICAL" : "WARN");
         eventPublisher.publish(new CabinEvent(UUID.randomUUID().toString(), sourceId(u.label()),
             cleared ? EVENT_CLEARED : EVENT_THRESHOLD, severity, now, p));
         log.info("Storage {}: {} -> {}{}", u.label(), pct + "%", level, reminder ? " (repeat)" : "");
     }
 
-    /** Plain-language next step; never "delete X" automatically, see class doc. */
-    private static String actionFor(String label) {
-        if (label.startsWith("storage") || label.contains("hdd")) {
-            return "Trim old nightly backups first: choose how many to keep, see how much it frees, then press Go (below). "
-                + "Then review recording retention. BI telemetry is never removed without a warning (docs/STORAGE_ARCHITECTURE.md).";
+    /**
+     * Plain-language next step; never "delete X" automatically, see class doc. For the HDD at the critical
+     * line the text depends on whether automatic trim is working, so the reader is not told to panic about
+     * something the host will fix, nor told to relax when nothing will.
+     */
+    private String actionFor(String label, Level level, boolean softened) {
+        if (!hasAutoRemedy(label)) {
+            return "Check Docker usage (docker system df) and old images or build cache; Postgres lives here, so do not delete volumes.";
         }
-        return "Check Docker usage (docker system df) and old images or build cache; Postgres lives here, so do not delete volumes.";
+        String manual = "Trim old nightly backups first: choose how many to keep, see how much it frees, then press Go (below). "
+            + "Then review recording retention. BI telemetry is never removed without a warning (docs/STORAGE_ARCHITECTURE.md).";
+        if (level != Level.CRITICAL) return manual;
+        AutoTrimStatus s = autoTrim.get();
+        if (!s.installed()) {
+            return "Automatic trim is not installed on the host, so nothing will clear this on its own and it needs you. " + manual
+                + " To turn automatic trim on, install the host trim service (docs/STORAGE_ARCHITECTURE.md, \"Trim control\").";
+        }
+        if (!s.enabled()) {
+            return "Automatic trim is installed but switched off (TRIM_AUTO=0 on the host), so nothing will clear this on its own and it needs you. " + manual;
+        }
+        if (s.planStale()) {
+            return "The host trim service has stopped updating, so automatic trim may not be running and this needs you. " + manual;
+        }
+        String how = String.format("it removes the oldest backup copies until the disk is down to %d%%, keeping at least %d per folder",
+            s.downTo(), s.floorKeep());
+        if (s.stuck()) {
+            return String.format("Automatic trim ran but could not get the disk under its line (%s; every folder is already at its minimum, or the run failed). "
+                + "This needs you. ", how) + manual;
+        }
+        if (softened) {
+            return String.format("Not a true emergency: automatic trim is on. While the disk is at %d%% or more, %s, and the level corrects itself. "
+                + "You will be pushed again only if the disk is still this full after a day or automatic trim cannot free enough. "
+                + "You can also trim now: ", s.aboveFull(), how) + manual;
+        }
+        return String.format("Automatic trim is on (%s) but the disk is still this full a day later, so it needs you. ", how) + manual;
     }
 
     static String sourceId(String label) {

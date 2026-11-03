@@ -88,6 +88,8 @@ A handover is the list of tasks one role passes to another, for example Cowork t
 
 ## Where other documents fit
 
+**Adding documentation (Nate, 2026-11-01).** Before adding a section or file, find the existing home and extend it. If the existing structure cannot take the new concept, change the structure and migrate the old text in the same PR, so no old page is left wrong or short of context. List the files touched or checked in the PR body; reviewers hold a PR that adds a new layer, leaves a stale neighbour or loses context.
+
 | Document | Role | Relationship to this folder |
 |---|---|---|
 | [`ROADMAP.md`](../../ROADMAP.md) | Strategy and architecture brief | Its Priority Task List moves into `backlog.md` (DOC-4); strategy stays there |

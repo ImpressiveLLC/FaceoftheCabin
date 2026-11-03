@@ -2060,9 +2060,11 @@ export function FamilyConfigPanel({ auth }) {
   const haUrl = locationCfg?.haUrl || LOCATIONS.cabin.haUrl;
   const remoteAccessMethods = (config?.remoteAccess || "Tailscale")
     .split(",").map(s => s.trim()).filter(Boolean);
+  const configHeights = useConfigHeights();
   return (
     <div data-panel="config" className="panel-content">
       <div className="panel-header-bar"><h2>Configuration</h2></div>
+      <ConfigHeights.Provider value={configHeights}>
       <div className="config-grid">
         {!auth?.demo && <ConfigCard title="Google Account" icon={Home}>
           {auth?.userEmail ? (
@@ -2100,16 +2102,16 @@ export function FamilyConfigPanel({ auth }) {
         <ConfigCard title="Remote Access" icon={Wifi}>
           <RemoteAccessCard methods={remoteAccessMethods} />
         </ConfigCard>
-        {!auth?.demo && <ConfigCard title="Guest Access" icon={Link2}>
+        {!auth?.demo && <ConfigCard title="Guest Access" icon={Link2} neverShorten>
           <GuestAccessCard auth={auth} />
         </ConfigCard>}
         {!auth?.demo && <ConfigCard title="AcmeOptix by ImpressiveLLC" icon={Link2} wide>
           <RoofSpecOwnerCard auth={auth} />
         </ConfigCard>}
-        {!auth?.demo && <ConfigCard title="Managed Users" icon={UserPlus}>
+        {!auth?.demo && <ConfigCard title="Managed Users" icon={UserPlus} neverShorten>
           <ManagedUsersCard auth={auth} />
         </ConfigCard>}
-        {!auth?.demo && <ConfigCard title="Location Roles" icon={UserPlus}>
+        {!auth?.demo && <ConfigCard title="Location Roles" icon={UserPlus} neverShorten>
           <LocationRolesCard auth={auth} />
         </ConfigCard>}
         <ConfigCard title="Platform" icon={Cpu} wide>
@@ -2118,6 +2120,7 @@ export function FamilyConfigPanel({ auth }) {
           <PlatformInfoCard auth={auth} />
         </ConfigCard>
       </div>
+      </ConfigHeights.Provider>
     </div>
   );
 }
@@ -2656,8 +2659,8 @@ export function GuestAccessCard({ auth }) { // exported for src/DemoAccess.test.
         <span className="config-hint">
           {t.scope?.includes("demo") ? "Full app, read-only" : t.scope.join(", ")} · {status.text}
         </span>
-        <span className="config-hint guest-access-usage">{describeLinkUsage(t)}</span>
-        <AccessActivity id={t.id} doFetch={doFetch} apiBase={apiBase} />
+        {t.scope?.includes("demo") && <span className="config-hint guest-access-usage">{describeLinkUsage(t)}</span>}
+        {t.scope?.includes("demo") && <AccessActivity id={t.id} doFetch={doFetch} apiBase={apiBase} />}
       </div>
       {status.active
         ? <button className="btn-danger" onClick={() => revoke(t.id)}>Revoke</button>
@@ -2672,7 +2675,7 @@ export function GuestAccessCard({ auth }) { // exported for src/DemoAccess.test.
       <DemoLinkSection doFetch={doFetch} apiBase={apiBase} onCreated={refresh} />
 
       <h4 className="guest-access-subhead">Other share links</h4>
-      <p className="config-desc">Read-only links for people without a Google account — an insurance adjuster, a contractor.</p>
+      <p className="config-desc">A convenience view of what is open without signing in (D14), for sharing a look with someone who has no Google account: an insurance adjuster, a tradesperson. Read-only.</p>
       <div className="guest-access-form">
         <input value={label} placeholder="Label, e.g. Insurance Claim Sep 2026"
           onChange={e => setLabel(e.target.value)} />
@@ -2892,6 +2895,27 @@ function ManagedUsersCard({ auth }) {
     refresh();
   };
 
+  // A sign-in link to copy and hand over, like a guest link: no email, so it works without the email service.
+  const [signInLink, setSignInLink] = useState(null);
+  const [copied, setCopied] = useState(null); // "ok" | "blocked" after pressing Copy on the link above
+  // A plain http address has no clipboard (navigator.clipboard is undefined there), so a failure says how to copy by hand.
+  const copyToClipboard = async (text) => {
+    try { await navigator.clipboard.writeText(text); setCopied("ok"); } catch { setCopied("blocked"); }
+  };
+  const copyLink = async (id) => {
+    setActionResult(null);
+    setSignInLink(null);
+    setCopied(null);
+    try {
+      const response = await doFetch(`${apiBase}/api/managed-users/${id}/sign-in-link`, { method: "POST" });
+      const body = await response.json().catch(() => ({}));
+      if (body.url) setSignInLink({ id, url: body.url, minutes: body.expiresInMinutes || 30 });
+      else setActionResult({ id, ok: false, message: body.error || "Could not create a link." });
+    } catch {
+      setActionResult({ id, ok: false, message: "Could not create a link." });
+    }
+  };
+
   const invite = async (id) => {
     setActionResult(null);
     const response = await doFetch(`${apiBase}/api/managed-users/${id}/invite`, { method: "POST" });
@@ -2903,7 +2927,7 @@ function ManagedUsersCard({ auth }) {
 
   return (
     <>
-      <p className="config-desc">Standing access for a household member or collaborator without a Google account — passwordless, via an emailed sign-in link.</p>
+      <p className="config-desc">Standing access for a household member or collaborator without a Google account — passwordless, via a sign-in link you can copy and hand over, or have emailed.</p>
       <div className="guest-access-form">
         <input value={email} placeholder="Email address"
           onChange={e => setEmail(e.target.value)} />
@@ -2931,8 +2955,18 @@ function ManagedUsersCard({ auth }) {
               {actionResult?.id === u.id && (
                 <p className={`action-result ${actionResult.ok ? "" : "action-error"}`}>{actionResult.message}</p>
               )}
+              {signInLink?.id === u.id && (
+                <div className="guest-access-new-link">
+                  <strong>Sign-in link for {u.name}: copy it now. Anyone who holds it can sign in as {u.name} until it is used once or expires in {signInLink.minutes} minutes. It will not be shown again:</strong>
+                  <code style={{ userSelect: "all" }}>{signInLink.url}</code>
+                  <button className="btn-ghost" onClick={() => copyToClipboard(signInLink.url)}>Copy</button>
+                  {copied === "ok" && <span role="status" className="action-result">Copied.</span>}
+                  {copied === "blocked" && <span role="status" className="action-result action-error">Copy was blocked by the browser (a plain http address does this). Select the link above and copy it by hand.</span>}
+                </div>
+              )}
             </div>
             <div className="managed-users-row-actions">
+              {u.active && <button className="btn-secondary" onClick={() => copyLink(u.id)}>Copy sign-in link</button>}
               {u.active && <button className="btn-ghost" onClick={() => invite(u.id)}>Invite</button>}
               {u.active
                 ? <button className="btn-danger" onClick={() => setActive(u.id, false)}>Deactivate</button>
@@ -2945,11 +2979,110 @@ function ManagedUsersCard({ auth }) {
   );
 }
 
-function ConfigCard({ title, icon: Icon, wide = false, children }) {
+// Nate, 2026-11-01: no single-column card in Config may be taller than 133% of the average of the cards next to it.
+// A card over that budget is shortened to it, with a plainly marked Expand / Minimize; expanded, it scrolls inside its own box.
+// The panel collects every card's natural height (header, padding and body: ConfigHeights); a card's budget is 1.33 times the
+// mean of the OTHER single-column cards, never below 200 px. The Expand button takes room too, so the body is shortened by
+// CONFIG_CARD_TOGGLE_ALLOWANCE: the card plus its button stays inside the budget, and a card is only shortened when it is
+// over the budget (so what is hidden is always at least the button's height). A full-row card is its own row and sits outside the
+// budget. A card that holds a control to revoke, deactivate or remove (Guest Access: Revoke; Managed Users: Deactivate;
+// Location Roles: Remove) is never shortened: that control must not need an extra press, and its row may sit beside a taller card.
+// A never-shortened card still reports its height, so it counts in the average of the cards beside it.
+export const CONFIG_CARD_HEIGHT_RATIO = 1.33;
+export const CONFIG_CARD_MIN_BUDGET = 200;
+export const CONFIG_CARD_TOGGLE_ALLOWANCE = 64;
+export const ConfigHeights = createContext(null); // exported for src/ConfigCardCap.test.jsx
+
+export function useConfigHeights() {
+  const [measured, setMeasured] = useState({});
+  const report = useCallback((title, height) => setMeasured(prev => {
+    if (height == null) {
+      if (!(title in prev)) return prev;
+      const { [title]: _gone, ...rest } = prev;
+      return rest;
+    }
+    return prev[title] === height ? prev : { ...prev, [title]: height };
+  }), []);
+  return useMemo(() => ({ report, measured }), [report, measured]);
+}
+
+// Whether the last thing the person did was press a key. A text field that is clicked with a mouse counts as keyboard-focused to the
+// browser (:focus-visible), so that cannot tell a click from a Tab; the input that came just before the focus can.
+let lastInputWasKeyboard = false;
+if (typeof document !== "undefined") {
+  document.addEventListener("keydown", () => { lastInputWasKeyboard = true; }, true);
+  document.addEventListener("pointerdown", () => { lastInputWasKeyboard = false; }, true);
+  document.addEventListener("mousedown", () => { lastInputWasKeyboard = false; }, true);
+}
+
+const slug = (text) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+export function ConfigCard({ title, icon: Icon, wide = false, neverShorten = false, children }) {
+  const heights = useContext(ConfigHeights);
+  const report = heights?.report;
+  const measuring = !wide; // a never-shortened card is measured too: it counts in the average of the cards beside it
+  const cardRef = useRef(null);
+  const bodyRef = useRef(null);
+  const innerRef = useRef(null);
+  const [natural, setNatural] = useState(0); // the card's height with nothing shortened and no button
+  const [chrome, setChrome] = useState(0);   // header, padding and border: the card minus its body
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const card = cardRef.current;
+    const inner = innerRef.current;
+    if (!card || !inner || !measuring || typeof ResizeObserver === "undefined") return undefined;
+    const measure = () => {
+      // The card is a grid item stretched to its row, so its own height says nothing: add up header, padding and border instead.
+      const px = (value) => parseFloat(value) || 0;
+      const header = card.firstElementChild;
+      const style = getComputedStyle(card);
+      const rest = header.offsetHeight + px(getComputedStyle(header).marginBottom)
+        + px(style.paddingTop) + px(style.paddingBottom) + px(style.borderTopWidth) + px(style.borderBottomWidth);
+      const total = rest + inner.offsetHeight;
+      setChrome(rest);
+      setNatural(total);
+      report?.(title, total);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(inner);
+    observer.observe(card);
+    return () => { observer.disconnect(); report?.(title, null); };
+  }, [measuring, title, report]);
+  const others = Object.entries(heights?.measured || {}).filter(([name]) => name !== title).map(([, h]) => h);
+  const budget = others.length === 0 ? 0
+    : Math.max(CONFIG_CARD_MIN_BUDGET, Math.round(CONFIG_CARD_HEIGHT_RATIO * others.reduce((a, b) => a + b, 0) / others.length));
+  const capped = measuring && !neverShorten && budget > 0 && natural > budget;
+  // An open card keeps its button even if its content later shrinks under the budget, so focus is never left on a control that went.
+  const showToggle = capped || open;
+  const shortened = capped && !open;
+  const bodyId = `config-card-body-${slug(title)}`;
+  const classes = ["config-card", wide && "config-card-wide", shortened && "config-card-capped", open && "config-card-open"]
+    .filter(Boolean).join(" ");
+  // Focus moving into a shortened card by keyboard opens it, so a keyboard user is never left on a control that cannot be seen.
+  // A pointer click on something already visible does not.
+  const onFocusCapture = shortened ? () => { if (lastInputWasKeyboard) setOpen(true); } : undefined;
+  // Minimize on a card that now fits takes its button away: focus goes to the card, not to the page.
+  const toggle = () => {
+    if (open && !capped) cardRef.current?.focus();
+    setOpen(o => !o);
+  };
   return (
-    <div className={`config-card${wide ? " config-card-wide" : ""}`}>
+    <div className={classes} ref={cardRef} tabIndex={-1}>
       <div className="config-card-header"><Icon size={18} /><strong>{title}</strong></div>
-      {children}
+      <div id={bodyId} ref={bodyRef} className="config-card-body"
+        style={shortened ? { maxHeight: Math.max(0, budget - chrome - CONFIG_CARD_TOGGLE_ALLOWANCE) } : undefined}
+        onFocusCapture={onFocusCapture}>
+        <div ref={innerRef}>{children}</div>
+      </div>
+      {showToggle && (
+        <button type="button" className="expandable-list-toggle config-card-toggle" aria-expanded={open}
+          aria-controls={bodyId} aria-label={`${open ? "Minimize" : "Expand"} ${title}`}
+          onClick={toggle}>
+          {open ? "Minimize" : "Expand"}
+          <span aria-hidden="true" className="expandable-list-chevron">{open ? "▲" : "▼"}</span>
+        </button>
+      )}
     </div>
   );
 }
@@ -3879,7 +4012,7 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
                 )}
               </span>
             </header>
-            {groupOpen && <ExpandableList items={groupItems} noun="devices" forceOpen={reorderMode}
+            {groupOpen && <ExpandableList items={groupItems} noun="devices" limit={COLLAPSED_LIMIT} forceOpen={reorderMode}
               isPinned={d => isAlarm(d) || d.deviceId === selected}
               renderItem={(d) => {
           const ignored = deviceLifecycleState(d) === "IGNORED";
@@ -3971,7 +4104,7 @@ function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, isG
                 </button>
               </span>
             </header>
-            {groupOpen && <ExpandableList items={groupItems} noun="devices"
+            {groupOpen && <ExpandableList items={groupItems} noun="devices" limit={COLLAPSED_LIMIT}
               isPinned={d => isAlarm(d) || d.deviceId === selected}
               renderItem={d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId}
                 ref={selected === d.deviceId ? selectedRowRef : undefined}
@@ -4990,11 +5123,27 @@ function DmDeviceWorkflows({ device, workflows, onManage }) {
   );
 }
 
+/**
+ * Mirrors the backend's DeviceCommandGuard (safety order 2026-10-31): the dashboard never commands a valve, a lock only gets
+ * lock.lock (never an unlock), and anything else named "lock" gets nothing. Returns "none" (no command buttons at all),
+ * "lock-only" (the secure Lock button, no Unlock) or null (not restricted). The backend refuses regardless; this hides the buttons.
+ */
+export function dashboardCommandLimit(device) {
+  const text = `${device?.deviceId || ""} ${device?.name || ""} ${device?.attributes?.entityId || ""}`.toLowerCase();
+  if (text.includes("valve") || device?.type === "WATER_VALVE") return "none";
+  if (device?.type === "LOCK" || (device?.attributes?.capabilities || []).includes("ACCESS_CONTROL")) return "lock-only";
+  if (/valve|lock/.test(text)) return "none";
+  return null;
+}
+
 function DmCapabilityActions({ device, onConfigure, auth }) {
   const [result, setResult] = useState(null);
   const doFetch = auth?.authedFetch || fetch;
   const capabilities = device.attributes?.capabilities || [];
   if (!capabilities.includes("COMMAND") || device.type === "LOCK") return null;
+  if (dashboardCommandLimit(device) === "none") {
+    return <p className="config-hint">The dashboard does not send commands to a valve or a lock.</p>;
+  }
   const entityId = device.attributes?.entityId || "";
   const domain = entityId.split(".")[0];
   const commands = ["switch", "light"].includes(domain)
@@ -5030,6 +5179,9 @@ function DmCapabilityActions({ device, onConfigure, auth }) {
 
 function DmLockActions({ device, auth }) {
   const { refreshDevices } = useApp();
+  if (dashboardCommandLimit(device) === "none") {
+    return <p className="config-hint">The dashboard does not send commands to a valve or a lock.</p>;
+  }
   const apiBase = device.location === "home" ? LOCATIONS.home.apiBase : LOCATIONS.cabin.apiBase;
   const doFetch = auth?.authedFetch || fetch;
   const cmd = async (command) => {
@@ -5042,7 +5194,7 @@ function DmLockActions({ device, auth }) {
   return (
     <div className="device-actions" style={{marginTop: 12}}>
       <button className="btn-secondary" onClick={() => cmd("lock.lock")}><Lock size={12}/> Lock</button>
-      <button className="btn-secondary" onClick={() => cmd("lock.unlock")}>Unlock</button>
+      {/* No Unlock: the backend refuses any lock command but lock.lock (DeviceCommandGuard). */}
     </div>
   );
 }
@@ -6735,7 +6887,6 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
 
       <div className={`kpi-grid ${reorderMode ? "reorder-mode" : ""}`}>
         <ExpandableList items={kpiEntries} keyOf={e => e.tile.deviceId} noun="tiles" forceOpen={reorderMode}
-          limit={{ base: COLLAPSED_LIMIT, wide: 25 }}
           isPinned={e => pinnedCount != null && e.globalIdx < pinnedCount}
           renderItem={({ globalIdx, tile }) => {
           const isPinned = pinnedCount != null && globalIdx < pinnedCount;
@@ -6756,6 +6907,10 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
       <SensorHistoryPanel devices={devices.filter(d => !d.location || d.location === locCfg.id)}
         apiBase={locCfg.apiBase} location={locCfg.id} tempUnit={tempUnit} authedFetch={auth?.authedFetch}
         signedIn={!!auth?.signedIn} />
+
+      {locCfg.id === "cabin" && auth?.signedIn && !auth?.demo && (
+        <StorageSection apiBase={locCfg.apiBase} authedFetch={auth?.authedFetch} />
+      )}
 
       {auth?.demo
         ? <DemoCameraCards devices={devices.filter(d => !d.location || d.location === locCfg.id)} title={`Camera Health — ${locCfg.label}`} />
@@ -6785,6 +6940,27 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// Nate, 2026-10-31: the Trim control was reachable only from inside an expanded disk alert. This puts it on the
+// Monitoring page so an administrator can find it any time, alerting or not. The widget itself hides for
+// anyone who is not an administrator.
+function StorageSection({ apiBase, authedFetch }) {
+  const { isCollapsed, toggle } = useCollapsedSections("collapsed.storageSection");
+  const collapsed = isCollapsed("trim");
+  return (
+    <div className="event-log storage-section">
+      <div className="event-log-header">
+        <span>Storage — backups and disk space</span>
+        <button type="button" className="section-caret" onClick={() => toggle("trim")}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expand storage" : "Collapse storage"}>
+          {collapsed ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+        </button>
+      </div>
+      {!collapsed && <StorageTrimWidget apiBase={apiBase} authedFetch={authedFetch} quietWhenForbidden />}
     </div>
   );
 }
@@ -7735,7 +7911,20 @@ export function keepForFreeing(targets, wantGb) {
   return { keepN: 1, achievable: true, maxFreeGb: atMinimum };
 }
 
-export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000 }) {
+// Same commands as docs/STORAGE_ARCHITECTURE.md "Trim control"; the backend sends them too (installCommands),
+// this copy is only the fallback if an older backend does not.
+const TRIM_INSTALL_COMMANDS = [
+  "git -C ~/repos/FaceoftheCabin pull --ff-only origin main && cd ~/repos/FaceoftheCabin",
+  "sudo install -m 0755 scripts/host/cabin-storage-prune /usr/local/bin/cabin-storage-prune",
+  "sudo install -m 0755 scripts/host/cabin-storage-trim-agent /usr/local/bin/cabin-storage-trim-agent",
+  "sudo install -m 0644 scripts/host/cabin-storage-trim-agent.service /etc/systemd/system/cabin-storage-trim-agent.service",
+  "sudo systemctl daemon-reload && sudo systemctl enable --now cabin-storage-trim-agent",
+].join("\n");
+
+// quietWhenForbidden: the Monitoring page shows this to every signed-in user; anyone who is not an
+// administrator should see nothing rather than an error about a control they were never meant to have.
+export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000, quietWhenForbidden = false }) {
+  const [copied, setCopied] = useState(false);
   const [view, setView] = useState(null);
   const [problem, setProblem] = useState(null);
   const [keepN, setKeepN] = useState(null);
@@ -7782,9 +7971,25 @@ export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000 
     return () => clearInterval(id);
   }, [waitingFor, load, pollMs]);
 
-  if (problem && !view) return <p className="trim-note" role="status">{problem}</p>;
+  if (problem && !view) return quietWhenForbidden && /administrator|Sign in/.test(problem) ? null : <p className="trim-note" role="status">{problem}</p>;
   if (!view) return <p className="trim-note" role="status">Loading the trim plan…</p>;
-  if (!view.installed) return <p className="trim-note" role="status">{view.message}</p>;
+  if (!view.installed) {
+    const cmds = view.installCommands || TRIM_INSTALL_COMMANDS;
+    const copy = async () => {
+      try { await navigator.clipboard.writeText(cmds); setCopied(true); } catch { setCopied(false); setProblem("Copy was blocked by the browser; select the commands and copy them by hand."); }
+    };
+    return (
+      <div className="trim-widget">
+        <strong>Automatic backup trim is not running</strong>
+        {view.disk && <p className="trim-note">Disk now: {view.disk.usedPercent}% full, {Math.round(view.disk.freeGb)} GB free of {Math.round(view.disk.totalGb)} GB.</p>}
+        <p className="trim-note" role="status">{view.message}</p>
+        <p className="trim-note">To turn it on, the owner runs these on the M920q once (sudo needs the host password, so an agent cannot do it). The Trim control and automatic trimming then work without further steps:</p>
+        <pre className="trim-commands" aria-label="Install commands for the host trim service">{cmds}</pre>
+        <button type="button" className="trim-copy" onClick={copy}>{copied ? "Copied" : "Copy commands"}</button>
+        {problem && <p className="trim-error" role="alert">{problem}</p>}
+      </div>
+    );
+  }
   if (!view.targets?.length) return <p className="trim-note" role="status">No dated backup folders to trim.</p>;
 
   const max = Math.max(...view.targets.map(t => t.count));
@@ -7816,8 +8021,10 @@ export function StorageTrimWidget({ apiBase, authedFetch = fetch, pollMs = 5000 
       <strong>Trim old backups</strong>
       {disk && <p className="trim-note">Disk now: {disk.usedPercent}% full, {Math.round(disk.freeGb)} GB free of {Math.round(disk.totalGb)} GB.</p>}
       {view.auto && (view.auto.enabled
-        ? <p className="trim-note">Automatic: at {view.auto.aboveFull}% full the oldest backup copies are removed until the disk is back to {view.auto.downTo}%, never leaving fewer than {view.auto.floorKeep} per folder. You are told each time.</p>
-        : <p className="trim-note">Automatic trimming is turned off on the host.</p>)}
+        ? <p className="trim-note">Automatic trim is on: at {view.auto.aboveFull}% full the oldest backup copies are removed until the disk is back to {view.auto.downTo}%, never leaving fewer than {view.auto.floorKeep} per folder. You are told each time.</p>
+        : <p className="trim-note">Automatic trim is turned off on the host (TRIM_AUTO=0), so nothing trims on its own. Use the control below.</p>)}
+      {view.autoTrim === "stale" && <p className="trim-error">The host trim service has stopped updating its plan, so automatic trim may not be running.</p>}
+      {view.autoTrim === "stuck" && <p className="trim-error">The last automatic trim could not get the disk under its line. Trim more by hand below.</p>}
       {view.stale && <p className="trim-note">This plan is more than 12 hours old, so recent folders may be missing from it.</p>}
       {!view.sizesMeasured && <p className="trim-note">The host is still measuring folder sizes (the first pass takes several minutes). You can trim now; the amount freed shows when it finishes.</p>}
 
@@ -10161,7 +10368,7 @@ export function GuestDashboard({ token }) { // exported for src/App.test.jsx
     return (
       <div className="guest-view">
         <h1>Cabin Conditions</h1>
-        <p>This link isn't valid, has expired, or has been revoked. Contact the cabin owner for a new one.</p>
+        <p>This link can't be opened. Contact the cabin owner.</p>
       </div>
     );
   }
@@ -10175,10 +10382,10 @@ export function GuestDashboard({ token }) { // exported for src/App.test.jsx
   return (
     <div className="guest-view">
       <h1>{dashboardConfig?.platformName || "Cabin Conditions"}</h1>
-      <p className="config-hint">Read-only view — only the sections this link is scoped to grant are shown below.</p>
+      <p className="config-hint">Read-only view of cabin conditions.</p>
 
       {nothingGranted && (
-        <p className="config-hint">This link doesn't currently grant access to any data. Contact the cabin owner.</p>
+        <p className="config-hint">There is nothing to show right now. Contact the cabin owner.</p>
       )}
 
       {alerts && alerts.length > 0 && (

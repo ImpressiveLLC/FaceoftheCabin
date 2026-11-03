@@ -172,4 +172,51 @@ class ManagedUsersControllerTest {
                 existing.token(), existing.managedUserId(), existing.expiresAt(), revokedAt, existing.createdAt()));
         }
     }
+
+    @Test
+    void signInLinkReturnsACopyableUrlWithoutEmailingAndIsNeverCached() {
+        ManagedUser created = controller.create(
+            Map.of("email", "a@example.com", "name", "Alice", "role", "HOUSEHOLD_MEMBER"), signedInAs("nate@example.com"));
+
+        org.springframework.http.ResponseEntity<Map<String, Object>> result = controller.signInLink(created.id(), signedInAs("nate@example.com"));
+
+        assertThat(result.getBody()).containsKey("url");
+        assertThat((String) result.getBody().get("url")).contains("/auth/magic/");
+        assertThat(result.getHeaders().getFirst("Cache-Control")).isEqualTo("no-store");
+        assertThat(sentUrls).isEmpty();
+    }
+
+    @Test
+    void signInLinkOnADeactivatedUserReturnsAnErrorNotAnException() {
+        ManagedUser created = controller.create(
+            Map.of("email", "a@example.com", "name", "Alice", "role", "VIEWER"), signedInAs("nate@example.com"));
+        controller.deactivate(created.id(), signedInAs("nate@example.com"));
+
+        assertThat(controller.signInLink(created.id(), signedInAs("nate@example.com")).getBody()).containsKey("error");
+    }
+
+    @Test
+    void anInviteTheEmailServiceRefusesAnswersWithAnErrorAndAWayRoundNotAServerError() {
+        ManagedUserService refusing = new ManagedUserService(userStore, magicLinkStore, sessionStore,
+            (to, name, url) -> { throw new org.springframework.web.client.HttpClientErrorException(org.springframework.http.HttpStatus.FORBIDDEN, "only to the account owner"); });
+        ReflectionTestUtils.setField(refusing, "frontendOrigin", "https://app.example.com");
+        ManagedUsersController refusingController = new ManagedUsersController(refusing);
+        ManagedUser created = refusingController.create(
+            Map.of("email", "a@example.com", "name", "Alice", "role", "VIEWER"), signedInAs("nate@example.com"));
+
+        Map<String, Object> result = refusingController.invite(created.id(), signedInAs("nate@example.com"));
+
+        assertThat(result.get("error").toString()).contains("Copy sign-in link").doesNotContain("a@example.com").doesNotContain("account owner");
+        // the copied link is the way round it and does not touch the email service
+        assertThat(refusingController.signInLink(created.id(), signedInAs("nate@example.com")).getBody()).containsKey("url");
+    }
+
+    @Test
+    void theDeactivatedErrorOnEitherRouteDoesNotCallItAnInvite() {
+        ManagedUser created = controller.create(
+            Map.of("email", "a@example.com", "name", "Alice", "role", "VIEWER"), signedInAs("nate@example.com"));
+        controller.deactivate(created.id(), signedInAs("nate@example.com"));
+
+        assertThat(controller.signInLink(created.id(), signedInAs("nate@example.com")).getBody().get("error").toString()).doesNotContain("invite").contains("deactivated");
+    }
 }

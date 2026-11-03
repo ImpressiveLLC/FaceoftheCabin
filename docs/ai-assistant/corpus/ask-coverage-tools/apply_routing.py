@@ -70,6 +70,7 @@ S3 = doc(AL, "ignore-remind-me-in-and-restore", "household")
 S4 = doc(AL, "open-device-from-an-alert", "household")
 S5 = doc(AL, "phone-notifications-what-reaches-your-phone-today", "household")
 S6 = doc(AL, "a-water-leak-alert-and-turning-the-water-back-on", "household")
+S6H = doc(AL, "what-to-do-right-now-when-a-water-leak-is-reported", "household")
 S7 = doc(AL, "reset-mark-seen-and-why-there-is-no-undo", "household")
 S8 = doc(AL, "backend-rules-card-versus-home-assistant-and-node-red", "household")
 S9 = doc(AL, "optimization-opportunities-power-and-duplicate-readings", "administrator")
@@ -79,7 +80,7 @@ RULES_SAFETY = doc(OP, "rules-and-safety", "administrator")
 # (id, description, keywords, documents, boost). Alerts, then admin: all declared before rules_workflows.
 BEFORE_RULES = [
     ("alert_silencing", "Ignore, snooze and restore an alert",
-     ["ignore", "ignored", "snooze", "snoozed", "remind me", "silence", "silenced", "restore an alert", "bring back", "go away", "mute"],
+     ["ignore", "ignored", "snooze", "snoozed", "remind me", "silence", "silenced", "restore an alert", "bring back", "go away", "mute", "ignore button"],
      [S3, S1], None),
     ("status_checks", "Status Checks card, alert levels and the marks on the tabs",
      ["status check", "what needs my attention", "needs attention", "need attention", "what's wrong", "alert", "alert level",
@@ -89,8 +90,8 @@ BEFORE_RULES = [
      ["notification", "push notification", "notify", "notified", "notify me", "phone alert", "alert my phone", "text me", "ntfy"],
      [S5, S2], None),
     ("leak_response", "A water leak alert and turning the water back on",
-     ["leak", "water leak", "water back on", "turn the water", "main water", "water valve", "shut off the water", "flood"],
-     [S6, S3, RULES_SAFETY], None),
+     ["leak", "water leak", "water back on", "turn the water", "main water", "water valve", "shut off the water", "flood", "leak alert", "leak alarm", "leak alert keep firing", "leak alert keeps firing"],
+     [S6H, S6], None),
     ("workflow_reset_undo", "Reset, Mark seen and why there is no undo",
      ["undo", "reset", "mark seen", "reverse", "take back", "firing"],
      [S7, S6], 1),
@@ -163,6 +164,7 @@ APPENDED = [
 
 # existing category edits: id -> (remove, add, documents to append)
 EDITS = {
+    "alert_noise": ([], ["keep firing", "alert keep firing", "alerts keep firing", "keeps on firing", "keep on firing", "alert that keeps firing", "alerts that keep firing"], []),
     "deployment_source": (["workflow", "manual"], ["github workflow", "deployed", "update", "roll back", "rollback"], []),
     "backup_restore_recipes": ([], ["restore from a backup"], []),
     "self_healing_recovery": ([], ["how do i restart", "restart a service", "restart one service", "blink bridge"], []),

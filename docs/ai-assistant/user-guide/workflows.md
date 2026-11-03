@@ -4,6 +4,8 @@ Audience: people who use Rules & Alerts. Behavior as of `main` on 2026-10-31, re
 
 ## What a workflow is and where it runs
 
+Audience: household.
+
 **Short answer.** A workflow is a rule you build in the app: "when this happens, do that." It lives in Rules & Alerts, in the **Workflows** card ("Real, persisted trigger -> action rules (separate from the rules below and from Node-RED)"). It runs in the app's own backend on the cabin hub.
 
 The app is one of three places automations run, and they are separate:
@@ -42,6 +44,8 @@ Evidence: `WorkflowCreateForm`, `actionsFor` (privileged actions only for MANUAL
 
 ## Turn a workflow on or off, run it by hand, and see when it ran
 
+Audience: administrator.
+
 **Short answer.** Each workflow row shows **draft** or **active**. **Activate** turns it on, **Deactivate** turns it off, **Delete** removes it (there is no confirmation step). These buttons appear only when you are signed in.
 
 - **Activate** checks the workflow again before turning it on: every action that needs a device must point at a device that exists, can take commands and is assigned. If a check fails, the workflow stays a draft. As of main the row does not display the reason, so a row that still says draft after Activate means a check failed; look for a **Broken** label or a target device that is not assigned. Deactivate does no checks.
@@ -75,6 +79,8 @@ A trigger with no "cleared" signal (for example "Camera detects motion" or "Home
 Evidence: reset-mode options, cooldown field and health tooltips in `App.jsx`; `findActive` edge-detection guard, `STATE_TRIGGERS_WITH_CLEAR_SIGNAL` and cooldown handling in `WorkflowRuleService.java`; `retarget` in `RulesController.java`.
 
 ## Can a workflow run on a schedule or at a time of day
+
+Audience: household.
 
 **No, not today.** A workflow starts only when a device reports one of the events in the catalog, or when a person presses **Fire now**. There is no time-of-day, daily, nightly or calendar trigger, so "every night at 10" or "turn on at 6 am" cannot be built as a workflow. Time and schedule triggers are planned (backlog W-71, status proposed) and are not built.
 

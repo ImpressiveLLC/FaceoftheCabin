@@ -1,6 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
+import { dashboardCommandLimit } from "./App.jsx";
 import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, cameraBelongsToLocation, CameraHealthPanel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, outdoorBaselineSeries, OUTDOOR_BASELINE_FIELDS, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
@@ -1919,6 +1920,65 @@ describe("DmCapabilityActions — one-tap action hint", () => {
     expect(screen.getByRole("button", { name: "Turn on" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Turn off" })).toBeTruthy();
     expect(screen.queryByText(/safe one-tap buttons for a small preset/i)).toBeNull();
+  });
+});
+
+describe("DmCapabilityActions: no dashboard command buttons for a valve or a lock (safety order 2026-10-31)", () => {
+  afterEach(cleanup);
+
+  const base = { state: "ONLINE", location: "cabin", type: "HOME_ASSISTANT_ENTITY",
+    attributes: { deviceLifecycle: "ASSIGNED", capabilities: ["COMMAND"] } };
+
+  it("renders no Turn on, Turn off, Open or Close for the main water valve, however it is named", () => {
+    const valves = [
+      { ...base, deviceId: "z2m-main_water_valve", name: "Main shutoff", attributes: { ...base.attributes, entityId: "switch.main_water_valve" } },
+      { ...base, deviceId: "ha-cabin-switch-x", name: "Main Water Valve", attributes: { ...base.attributes, entityId: "switch.shutoff" } },
+      { ...base, deviceId: "ha-cabin-cover-y", name: "Shutoff", attributes: { ...base.attributes, entityId: "cover.water_valve" } },
+    ];
+    for (const valve of valves) {
+      cleanup();
+      render(<DmDeviceDetail device={valve} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+      for (const label of ["Turn on", "Turn off", "Open", "Close"]) {
+        expect(screen.queryByRole("button", { name: label }), `${valve.deviceId} ${label}`).toBeNull();
+      }
+      expect(screen.getByText(/does not send commands to a valve or a lock/i)).toBeTruthy();
+    }
+  });
+
+  it("a lock keeps the secure Lock button and loses Unlock", () => {
+    const lock = { ...base, deviceId: "lock_front", name: "Front Door Lock", type: "LOCK",
+      attributes: { ...base.attributes, entityId: "lock.front_door" } };
+    render(<AppContext.Provider value={{ refreshDevices: vi.fn() }}>
+      <DmDeviceDetail device={lock} onConfigure={() => {}} onLifecycleAction={vi.fn()} />
+    </AppContext.Provider>);
+    expect(screen.getByRole("button", { name: /^lock$/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /unlock/i })).toBeNull();
+  });
+
+  it("anything else named lock gets no buttons, and an ordinary switch still does", () => {
+    const relay = { ...base, deviceId: "ha-cabin-switch-z", name: "Garage Lock Relay", attributes: { ...base.attributes, entityId: "switch.garage_lock" } };
+    render(<DmDeviceDetail device={relay} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Turn on" })).toBeNull();
+    cleanup();
+    const porch = { ...base, deviceId: "ha-cabin-switch-p", name: "Porch Light", attributes: { ...base.attributes, entityId: "switch.porch" } };
+    render(<DmDeviceDetail device={porch} onConfigure={() => {}} onLifecycleAction={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Turn on" })).toBeTruthy();
+  });
+
+  it("dashboardCommandLimit also uses the device type and capability, not only the labels", () => {
+    expect(dashboardCommandLimit({ deviceId: "a", name: "Plug", type: "WATER_VALVE" })).toBe("none");
+    expect(dashboardCommandLimit({ deviceId: "a", name: "Plug", type: "POWER_METER", attributes: { capabilities: ["COMMAND", "ACCESS_CONTROL"] } })).toBe("lock-only");
+    expect(dashboardCommandLimit({ deviceId: "a", name: "Plug", type: "POWER_METER", attributes: { capabilities: ["COMMAND"] } })).toBeNull();
+  });
+
+  it("dashboardCommandLimit mirrors the backend rules", () => {
+    expect(dashboardCommandLimit({ deviceId: "z2m-main_water_valve" })).toBe("none");
+    expect(dashboardCommandLimit({ deviceId: "a", name: "Water Valve" })).toBe("none");
+    expect(dashboardCommandLimit({ deviceId: "a", type: "LOCK", name: "Water valve lock" })).toBe("none");
+    expect(dashboardCommandLimit({ deviceId: "lock_front", type: "LOCK", name: "Front Door Lock" })).toBe("lock-only");
+    expect(dashboardCommandLimit({ deviceId: "g", name: "Garage Lock Relay" })).toBe("none");
+    expect(dashboardCommandLimit({ deviceId: "p", name: "Porch Light" })).toBeNull();
+    expect(dashboardCommandLimit(null)).toBeNull();
   });
 });
 
@@ -5126,6 +5186,60 @@ describe("FamilyConfigPanel — Managed Users (Tier 2)", () => {
     expect(await screen.findByText("Invite sent.")).toBeTruthy();
   });
 
+  it("copy sign-in link shows the link once with a Copy button and calls the no-email route", async () => {
+    const auth = mockAuth([
+      { ok: true, json: async () => [{ id: "u5", email: "eli@example.com", name: "Eli", role: "HOUSEHOLD_MEMBER", active: true }] },
+      { ok: true, json: async () => ({ url: "https://cabin.example.com/auth/magic/abc-123", expiresInMinutes: 30 }) },
+    ]);
+
+    renderPanel(auth);
+    await screen.findByText("Eli");
+    fireEvent.click(screen.getByText("Copy sign-in link"));
+
+    expect(await screen.findByText("https://cabin.example.com/auth/magic/abc-123")).toBeTruthy();
+    expect(screen.getByText(/Anyone who holds it can sign in as Eli until it is used once or expires in 30 minutes/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy" })).toBeTruthy();
+    const calls = managedUserCalls(auth);
+    expect(calls[1][0]).toContain("/api/managed-users/u5/sign-in-link");
+    expect(calls[1][1].method).toBe("POST");
+  });
+
+  it("the Copy button says Copied when the clipboard takes it and how to copy by hand when it is blocked", async () => {
+    const auth = mockAuth([
+      { ok: true, json: async () => [{ id: "u5", email: "eli@example.com", name: "Eli", role: "HOUSEHOLD_MEMBER", active: true }] },
+      { ok: true, json: async () => ({ url: "https://cabin.example.com/auth/magic/abc-123", expiresInMinutes: 30 }) },
+    ]);
+    const writeText = vi.fn().mockResolvedValue();
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+
+    renderPanel(auth);
+    await screen.findByText("Eli");
+    fireEvent.click(screen.getByText("Copy sign-in link"));
+    await screen.findByText("https://cabin.example.com/auth/magic/abc-123");
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    expect(await screen.findByText("Copied.")).toBeTruthy();
+    expect(writeText).toHaveBeenCalledWith("https://cabin.example.com/auth/magic/abc-123");
+
+    // no clipboard at all (a plain http address): the person is told what to do instead
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    expect(await screen.findByText(/Copy was blocked by the browser/)).toBeTruthy();
+    expect(screen.queryByText("Copied.")).toBeNull();
+  });
+
+  it("copy sign-in link says so when the server cannot make one", async () => {
+    const auth = mockAuth([
+      { ok: true, json: async () => [{ id: "u6", email: "fay@example.com", name: "Fay", role: "VIEWER", active: true }] },
+      { ok: true, json: async () => ({ error: "Managed user not found: u6" }) },
+    ]);
+
+    renderPanel(auth);
+    await screen.findByText("Fay");
+    fireEvent.click(screen.getByText("Copy sign-in link"));
+
+    expect(await screen.findByText("Managed user not found: u6")).toBeTruthy();
+  });
+
   it("degrades to an empty list instead of crashing when the request is unauthenticated", async () => {
     const auth = mockAuth([{ ok: false, status: 401, json: async () => ({ error: "Missing bearer token" }) }]);
 
@@ -5244,7 +5358,7 @@ describe("GuestDashboard (Tier 1 share links, /view/{token})", () => {
     render(<GuestDashboard token="secret-abc" />);
 
     expect(await screen.findByText("main_water_valve")).toBeTruthy();
-    expect(screen.queryByText(/isn't valid, has expired/)).toBeFalsy();
+    expect(screen.queryByText(/This link can't be opened/)).toBeFalsy();
   });
 
   it("alerts_read scope shows active alerts (continues to work as before)", async () => {
@@ -5290,7 +5404,7 @@ describe("GuestDashboard (Tier 1 share links, /view/{token})", () => {
 
     render(<GuestDashboard token="secret-abc" />);
 
-    await screen.findByText(/doesn't currently grant access/);
+    await screen.findByText(/There is nothing to show right now/);
     fetchMock.mock.calls.forEach(call => expect(call[0]).toContain("t=secret-abc"));
   });
 
@@ -5299,7 +5413,7 @@ describe("GuestDashboard (Tier 1 share links, /view/{token})", () => {
 
     render(<GuestDashboard token="bad-token" />);
 
-    expect(await screen.findByText(/isn't valid, has expired, or has been revoked/)).toBeTruthy();
+    expect(await screen.findByText(/This link can't be opened/)).toBeTruthy();
   });
 
   it("a token granted no covered scope shows a distinct message, not the invalid-link error", async () => {
@@ -5307,8 +5421,8 @@ describe("GuestDashboard (Tier 1 share links, /view/{token})", () => {
 
     render(<GuestDashboard token="secret-abc" />);
 
-    expect(await screen.findByText(/doesn't currently grant access to any data/)).toBeTruthy();
-    expect(screen.queryByText(/isn't valid, has expired/)).toBeFalsy();
+    expect(await screen.findByText(/There is nothing to show right now/)).toBeTruthy();
+    expect(screen.queryByText(/This link can't be opened/)).toBeFalsy();
   });
 });
 
@@ -6961,7 +7075,7 @@ describe("Trim old backups: big-job helper and automatic policy", () => {
     expect(await screen.findByText(/at 70% full the oldest backup copies are removed until the disk is back to 55%.*fewer than 3 per folder/)).toBeTruthy();
     unmount();
     render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(view({ auto: { enabled: false, aboveFull: 70, downTo: 55, floorKeep: 3 } }))} />);
-    expect(await screen.findByText(/Automatic trimming is turned off on the host/)).toBeTruthy();
+    expect(await screen.findByText(/Automatic trim is turned off on the host/)).toBeTruthy();
   });
 
   it("an automatic result is labelled, and a floor stop is explained", async () => {
@@ -7183,5 +7297,124 @@ describe("SensorHistoryPanel outdoor baseline", () => {
     render(<SensorHistoryPanel devices={devs} apiBase="http://cabin" location="cabin" tempUnit="F" />);
     await screen.findByRole("button", { name: "Mech Room" });
     expect(screen.queryByTestId("outdoor-line-rhPct")).toBeNull();
+  });
+});
+
+
+// Nate, 2026-10-31: with the host trim agent not installed the widget used to say only "has not produced a plan
+// yet". It must say what is wrong, that automatic trim is not running, how to install it, and let the owner copy
+// the commands; and the control must be findable from Monitoring, not only from inside an alert.
+describe("Storage trim: not installed, automatic trim states, and the Monitoring entry point", () => {
+  afterEach(cleanup);
+  const reply = (status, body) => Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) });
+  const GB = 1024 ** 3;
+  const notInstalled = {
+    installed: false, pending: false, autoTrim: "not-installed", disk: { usedPercent: 80, freeGb: 225, totalGb: 916 },
+    message: "Automatic backup trim is not running: the host trim service has not produced a plan, so it is not installed (or has stopped).",
+    installCommands: "git -C ~/repos/FaceoftheCabin pull --ff-only origin main && cd ~/repos/FaceoftheCabin\nsudo systemctl daemon-reload && sudo systemctl enable --now cabin-storage-trim-agent",
+  };
+  const installed = (extra = {}) => ({
+    installed: true, pending: false, stale: false, sizesMeasured: true, lastResult: null, autoTrim: "on",
+    disk: { usedPercent: 80, freeGb: 225, totalGb: 916 }, auto: { enabled: true, aboveFull: 70, downTo: 55, floorKeep: 3 },
+    targets: [{ id: "backups-home", keep: 3, count: 6, snapshots: Array.from({ length: 6 }, (_, i) => ({ name: `2026-01-0${i + 1}`, bytes: 10 * GB })) }],
+    ...extra,
+  });
+
+  it("not installed: says what is wrong, shows the disk, the exact install commands, and no slider", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, notInstalled)} />);
+    expect(await screen.findByText("Automatic backup trim is not running")).toBeTruthy();
+    expect(screen.getByText(/Disk now: 80% full, 225 GB free of 916 GB/)).toBeTruthy();
+    expect(screen.getByText(/not installed \(or has stopped\)/)).toBeTruthy();
+    const cmds = screen.getByLabelText("Install commands for the host trim service");
+    expect(cmds.textContent).toBe(notInstalled.installCommands);
+    expect(screen.queryByRole("slider")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Go" })).toBeNull();
+  });
+
+  it("not installed: falls back to the built-in commands if the backend sent none", async () => {
+    const { installCommands, ...old } = notInstalled;
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, old)} />);
+    const cmds = await screen.findByLabelText("Install commands for the host trim service");
+    expect(cmds.textContent).toContain("sudo install -m 0755 scripts/host/cabin-storage-trim-agent /usr/local/bin/cabin-storage-trim-agent");
+    expect(cmds.textContent).toContain("sudo systemctl daemon-reload && sudo systemctl enable --now cabin-storage-trim-agent");
+  });
+
+  it("the copy button puts the commands on the clipboard", async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, notInstalled)} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Copy commands" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(notInstalled.installCommands));
+    expect(await screen.findByRole("button", { name: "Copied" })).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+
+  it("installed with automatic trim on: slider stays and the thresholds come from the plan", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, installed({ auto: { enabled: true, aboveFull: 66, downTo: 44, floorKeep: 5 } }))} />);
+    expect(await screen.findByRole("slider")).toBeTruthy();
+    expect(screen.getByText(/Automatic trim is on: at 66% full .* back to 44%, never leaving fewer than 5 per folder/)).toBeTruthy();
+    expect(screen.queryByText(/Automatic backup trim is not running/)).toBeNull();
+  });
+
+  it("installed with automatic trim off: says nothing trims on its own, slider stays", async () => {
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, installed({ autoTrim: "disabled", auto: { enabled: false, aboveFull: 70, downTo: 55, floorKeep: 3 } }))} />);
+    expect(await screen.findByText(/Automatic trim is turned off on the host \(TRIM_AUTO=0\), so nothing trims on its own/)).toBeTruthy();
+    expect(screen.getByRole("slider")).toBeTruthy();
+  });
+
+  it("flags a stopped agent and a stuck automatic run", async () => {
+    const { unmount } = render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, installed({ autoTrim: "stale", stale: true }))} />);
+    expect(await screen.findByText(/has stopped updating its plan, so automatic trim may not be running/)).toBeTruthy();
+    unmount();
+    render(<StorageTrimWidget apiBase="http://hub" authedFetch={() => reply(200, installed({ autoTrim: "stuck" }))} />);
+    expect(await screen.findByText(/could not get the disk under its line/)).toBeTruthy();
+  });
+
+  it("the disk-alert Act step shows the install help when the agent is absent", async () => {
+    vi.stubGlobal("fetch", vi.fn((url) => (String(url).includes("/api/system/storage/trim") ? reply(200, notInstalled) : new Promise(() => {}))));
+    render(
+      <AppContext.Provider value={{
+        activeLocation: "cabin", activeAlertLocations: ["cabin"], activeAlerts: [],
+        automationAlerts: [{
+          eventId: "e2", sourceDeviceId: "storage-storage-hdd", severity: "CRITICAL", timestamp: "2026-10-31T12:00:00Z",
+          payload: { ruleId: "STORAGE_THRESHOLD", see: "storage-hdd is 80% full", think: "Crossed the 75% critical line",
+            act: "Automatic trim is not installed on the host, so nothing will clear this on its own and it needs you." },
+        }],
+      }}>
+        <RulesPanel />
+      </AppContext.Provider>
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "See more" }));
+    expect(await screen.findByLabelText("Install commands for the host trim service")).toBeTruthy();
+    expect(screen.getByText(/needs you/)).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+
+  it("Monitoring has a Storage section an administrator can reach without an alert", async () => {
+    const authedFetch = vi.fn((url) => (String(url).includes("/api/system/storage/trim") ? reply(200, notInstalled) : new Promise(() => {})));
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    render(
+      <ThemeProvider>
+        <AppContext.Provider value={{ devices: [], activeLocation: "cabin", activeProfile: "AT_CABIN", alertAcknowledgments: [], activeAlerts: [], activeAlertLocations: [], automationAlerts: [] }}>
+          <MonitoringPanel active={true} auth={{ authedFetch, signedIn: true }} />
+        </AppContext.Provider>
+      </ThemeProvider>
+    );
+    expect(await screen.findByText("Storage — backups and disk space")).toBeTruthy();
+    expect(await screen.findByLabelText("Install commands for the host trim service")).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+
+  it("Monitoring shows nothing about storage to a non-administrator or a signed-out visitor", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    const ctx = { devices: [], activeLocation: "cabin", activeProfile: "AT_CABIN", alertAcknowledgments: [], activeAlerts: [], activeAlertLocations: [], automationAlerts: [] };
+    const forbidden = vi.fn(() => reply(403, {}));
+    const { unmount } = render(<ThemeProvider><AppContext.Provider value={ctx}><MonitoringPanel active={true} auth={{ authedFetch: forbidden, signedIn: true }} /></AppContext.Provider></ThemeProvider>);
+    await waitFor(() => expect(forbidden).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByText(/Only an administrator can trim storage/)).toBeNull());
+    unmount();
+    render(<ThemeProvider><AppContext.Provider value={ctx}><MonitoringPanel active={true} auth={{ authedFetch: () => new Promise(() => {}), signedIn: false }} /></AppContext.Provider></ThemeProvider>);
+    expect(screen.queryByText("Storage — backups and disk space")).toBeNull();
+    vi.unstubAllGlobals();
   });
 });
