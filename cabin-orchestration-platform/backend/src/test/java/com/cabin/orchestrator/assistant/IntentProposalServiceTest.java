@@ -404,4 +404,95 @@ class IntentProposalServiceTest {
         assertTrue(service.enabled());
         verify(helpdesk, org.mockito.Mockito.never()).ask(any(), any());
     }
+
+    // ── W-140: after a politeness wrapper, answer what follows ───────────
+
+    @Test
+    void aWrappedCommandIsTheCommandAndOnlyEverAProposal() {
+        for (String wrapped : List.of("Can I ask for you to turn on the heater", "Could I ask you to turn on the heater", "May I ask you to turn on the heater?",
+                "Might I ask for you to turn on the heater", "Am I able to ask you to turn on the heater", "Is it ok if I ask you to turn on the heater",
+                "Hi, can I ask for you to turn on the heater", "can we inquire you to turn on the heater",
+                "Can I ask for us to turn on the heater", "Can I ask for you to turn on the heater if it is cold")) {
+            prompts.clear();
+            Response r = propose(intent("set_device_state", "{\"device_name\":\"heater\",\"location\":\"mech room\",\"state\":\"on\"}", true), wrapped);
+
+            assertEquals(Status.PROPOSAL, r.status(), wrapped);
+            assertEquals("heater_mech_room", r.steps().get(0).entityId(), wrapped);
+            assertTrue(r.proposal().requiresConfirmation(), wrapped);
+            assertEquals(1, prompts.size(), wrapped);
+            // the model saw the command, not the wrapper
+            assertTrue(prompts.get(0).contains("turn on the heater"), wrapped);
+            assertFalse(prompts.get(0).toLowerCase().contains("can i ask") || prompts.get(0).toLowerCase().contains("could i ask"), wrapped);
+        }
+    }
+
+    @Test
+    void aWrappedFragmentIsAnsweredAsTheFragment() {
+        TinyHelpdeskAnswer answer = new TinyHelpdeskAnswer("weather", "No weather feed.", List.of(), true);
+        when(helpdesk.ask("weather", HouseholdRole.ADMINISTRATOR)).thenReturn(answer);
+
+        Response r = propose(intent("answer_question", "{}", false), "Can I ask weather");
+
+        assertEquals(Status.ANSWER, r.status());
+        assertSame(answer, r.answer());
+        verify(helpdesk).ask("weather", HouseholdRole.ADMINISTRATOR);
+    }
+
+    @Test
+    void aWrappedQuestionIsAnsweredWithoutItsWrapper() {
+        TinyHelpdeskAnswer answer = new TinyHelpdeskAnswer("how the heater works", "It is a plug.", List.of(), true);
+        when(helpdesk.ask("how the heater works", HouseholdRole.ADMINISTRATOR)).thenReturn(answer);
+
+        Response r = propose(intent("answer_question", "{}", false), "Could I ask how the heater works");
+
+        assertEquals(Status.ANSWER, r.status());
+        verify(helpdesk).ask("how the heater works", HouseholdRole.ADMINISTRATOR);
+    }
+
+    @Test
+    void aWrapperWithNothingAfterItAsksWhatWithoutCallingTheModel() {
+        for (String wrapper : List.of("may I inquire something", "Can I ask a question?", "Could I ask you something", "Am I able to ask?",
+                "Is it ok to ask one quick question")) {
+            prompts.clear();
+            Response r = propose(intent("set_device_state", "{\"device_name\":\"heater\",\"state\":\"on\"}", true), wrapper);
+
+            assertEquals(Status.CLARIFY, r.status(), wrapper);
+            assertEquals("WRAPPER_ONLY", r.code(), wrapper);
+            assertTrue(r.message().contains("What would you like to ask"), wrapper);
+            assertNull(r.proposal(), wrapper);
+            assertTrue(prompts.isEmpty(), wrapper + ": no model call");
+        }
+    }
+
+    @Test
+    void aWrappedCommandStillNeverBecomesAnActionOnAnUnresolvableTarget() {
+        Response r = propose(intent("set_device_state", "{\"device_name\":\"jacuzzi\",\"state\":\"on\"}", true), "Can I ask for you to turn on the jacuzzi");
+
+        assertEquals(Status.REFUSED, r.status());
+        assertNull(r.proposal());
+    }
+
+    @Test
+    void theAuditLogKeepsTheTextAsTypedWhileTheModelSeesTheRemainder() {
+        propose(intent("answer_question", "{}", false), "Can I ask weather");
+
+        assertTrue(audit.get(audit.size() - 1).toString().contains("Can I ask weather"));
+        assertFalse(prompts.get(0).toLowerCase().contains("can i ask"), "the model sees the remainder, not the wrapper");
+        assertTrue(prompts.get(0).contains("weather"));
+    }
+
+    @Test
+    void aWrapperThatLeadsIntoAnInquiryNeverBecomesAProposalEvenIfTheModelSaysAct() {
+        for (String typed : List.of("Can I ask if the heater is on", "Can I ask when the heater turns on", "Could I ask about turning on the heater",
+                "May I ask for help with the heater", "Can I ask you to explain how to turn on the heater", "Can I ask you to tell me if the heater is on",
+                "Can I ask if I can turn on the heater", "Can I ask regarding the heater", "Can I ask a question about the heater",
+                "can I ask for you to explain how the heater works", "can I ask for you to tell me if the heater is on", "can I ask for us to tell me if the heater is on",
+                "Can I ask for you to describe the heater", "Can I ask for you to show me the heater", "Can I ask for you to clarify the heater")) {
+            Response r = propose(intent("set_device_state", "{\"device_name\":\"heater\",\"location\":\"mech room\",\"state\":\"on\"}", true), typed);
+
+            assertEquals(Status.CLARIFY, r.status(), typed);
+            assertEquals("QUESTION_SHAPED", r.code(), typed);
+            assertNull(r.proposal(), typed);
+        }
+    }
 }

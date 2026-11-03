@@ -63,7 +63,7 @@ class QuestionShapeNoRegressionTest {
     private static boolean isRequestAfterWrapper(String input) {
         return input.toLowerCase().matches("(?s).*"
             + "(?:(?:can|could|may|might)\\s+(?:i|we)\\s+ask|(?:am\\s+i|are\\s+we)\\s+able\\s+to\\s+ask|is\\s+it\\s+(?:ok|okay)\\s+(?:to|if\\s+(?:i|we))\\s+ask)"
-            + "\\s+(?:you|us)\\s+to\\s+(?!explain|tell|show|describe|clarify).*");
+            + "\\s+(?:for\\s+)?(?:you|us)\\s+to\\s+(?!explain|tell|show|describe|clarify).*");
     }
 
     // Nate (2026-11-01): "can/could/may" in "can I ask ..." is not part of the inquiry; "am I able to ask" standing alone is a question
