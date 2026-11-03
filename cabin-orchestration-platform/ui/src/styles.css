@@ -370,6 +370,9 @@ body {
 }
 .config-card-open .config-card-body { max-height: 75vh; overflow-y: auto; }
 .config-card-toggle { width: 100%; margin: 8px 0 0; }
+/* W-141: a collapsed-by-default card is a summary and one action; the action is a real, reachable button, and Close sits under the opened content. */
+.config-card-entry { margin-top: 6px; }
+.config-card-close { margin-top: 10px; }
 .config-card-header {
   display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: var(--text);
 }
