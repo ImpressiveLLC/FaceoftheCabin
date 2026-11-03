@@ -72,6 +72,32 @@ class HarnessTests(unittest.TestCase):
             server.server_close()
             thread.join()
 
+    def test_a_managed_session_line_is_sent_as_is_and_a_bare_uuid_as_a_cabin_session(self):
+        seen = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                seen.append(self.headers.get("Authorization"))
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"answer":"fixture","sources":[],"answeredByModel":false}')
+
+            def log_message(self, *args):
+                pass
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            url = harness.endpoint(f"http://127.0.0.1:{server.server_port}")
+            managed = "ManagedSession 12345678-1234-1234-1234-123456789012"
+            harness.request_ask(url, "question", managed, 2)
+            harness.request_ask(url, "question", "12345678-1234-1234-1234-123456789012", 2)
+            self.assertEqual(seen, [managed, "CabinSession 12345678-1234-1234-1234-123456789012"])
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_results_omit_token_pointers_raw_sources_and_private_urls(self):
         body = {"answer": "synthetic-token user@example.test https://a.test/?token=other "
                           "password=synthetic-value",
