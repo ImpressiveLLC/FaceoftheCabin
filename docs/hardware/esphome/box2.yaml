@@ -39,6 +39,13 @@ ota:
 wifi:
   power_save_mode: none
   output_power: 15dB
+  # Same subnet and gateway at Home and the cabin (192.168.1.0/24, gateway .1).
+  # Address plan: .130 Box 2, .131 Box 3, .132 Box 4, .133 S6 speed node.
+  manual_ip:
+    static_ip: 192.168.1.130
+    gateway: 192.168.1.1
+    subnet: 255.255.255.0
+    dns1: 192.168.1.1
   ap:
     ssid: "fotc-box2-setup"
     password: !secret ap_password

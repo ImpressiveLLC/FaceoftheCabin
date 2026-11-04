@@ -58,6 +58,19 @@ ESPHome-native path (not ratified): `docs/hardware/esphome/box2-bench.yaml`.
 
 `box2.yaml`: INFO logging, no heartbeat line (deliberately held back; can be added later over the air, e.g. an INFO line every 60 s). Per-component fault colours: SEN66 red, SHT45 cyan, both alternating, rainbow when healthy. Pushed over Wi-Fi to the node with `esphome upload --device 192.168.1.130` (no USB needed once Wi-Fi works).
 
+## Address plan (2026-11-04)
+
+Home and the cabin are both `192.168.1.0/24`, gateway `.1` (Home: Linksys Smart Wi-Fi; cabin: Starlink). `.128` to `.135` answered nothing at either site on 2026-11-04. Box 2 now has a static IP in firmware; a router reservation is still preferred because the cabin DHCP pool covers the `.1xx` range (the M920q holds `.155`).
+
+| IP | Node | Status |
+|---|---|---|
+| `192.168.1.130` | Box 2 (`SensorCollectionBox` Cabin Upstairs), MAC `90:DA:72:71:51:10` | static IP in `box2.yaml`; Home reservation exists; Starlink reservation not yet set (needs the Starlink app) |
+| `192.168.1.131` | Box 3 (Bathroom `RelayControlBox`) | held, not assigned |
+| `192.168.1.132` | Box 4 (Mech Room `RelayControlBox`) | held, not assigned |
+| `192.168.1.133` | S6 speed node (W-78, Freenove ESP32-S3) | held, not assigned |
+
+Reserve each in the Starlink app by MAC once the board's MAC is known (read it with `esptool flash-id`), and use `manual_ip` in firmware only as a fallback. Nothing in the cabin DHCP pool was changed; these are plan entries, not router settings.
+
 ## Next
 
 1. Calibrated reference beside the box (thermometer or live SNZB-02P); re-check inside the enclosure.
