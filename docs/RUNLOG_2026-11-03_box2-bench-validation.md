@@ -22,7 +22,7 @@ ESPHome-native path (not ratified): `docs/hardware/esphome/box2-bench.yaml`.
 | Update schedule | **PASS** as configured: both sensors every 10 s; SEN66 gives no values for the first ~60 s (ESPHome startup delay) | change times in 150 s serial capture |
 | SEN66 vs SHT45 | T 22.73 vs 22.76 °C (0.03 apart), RH 53.0 vs 54.8 % (1.8 apart) | same capture |
 | Other readings | PM1 3.9, PM2.5 5.2, PM4 6.2, PM10 6.7 µg/m³; CO2 1258 ppm; VOC index 105; NOx index 1 (VOC/NOx algorithms still learning) | same capture |
-| Status light | **PASS**, blinking purple = Wi-Fi up, waiting for HA client, as designed | user observation |
+| Status light | **PASS**: purple blink with no HA client; **rainbow** while an API client was connected (2026-11-04, release build `box2.yaml`, deployed over the air) | user observation |
 
 ## What is NOT verified
 
@@ -53,6 +53,10 @@ ESPHome-native path (not ratified): `docs/hardware/esphome/box2-bench.yaml`.
 ## Status light (bench firmware)
 
 15 % brightness, NeoPixel on `GPIO39`, power on `GPIO38`. Blue solid: starting (first 8 s). Yellow slow blink: Wi-Fi connecting or lost. Purple blink: Wi-Fi up, waiting for HA. Red fast blink: sensor fault. Rainbow: healthy.
+
+## Release build (2026-11-04)
+
+`box2.yaml`: INFO logging, no heartbeat line (deliberately held back; can be added later over the air, e.g. an INFO line every 60 s). Per-component fault colours: SEN66 red, SHT45 cyan, both alternating, rainbow when healthy. Pushed over Wi-Fi to the node with `esphome upload --device 192.168.1.130` (no USB needed once Wi-Fi works).
 
 ## Next
 
