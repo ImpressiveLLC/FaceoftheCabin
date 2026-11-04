@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "applies_to": "sensor_collection_box / relay_control_box QT Py ESP32-S3 sensor half (docs/hardware/esphome/box2-bench.yaml)",
+  "source_of_truth": "box2-bench.yaml; this file mirrors it for docs and the other boxes",
+  "hardware": {
+    "led": "QT Py ESP32-S3 onboard NeoPixel",
+    "data_pin": "GPIO39",
+    "power_pin": "GPIO38 (drive high)",
+    "chipset": "WS2812",
+    "rgb_order": "GRB",
+    "brightness": 0.15,
+    "exposed_to_ha": false
+  },
+  "evaluation": "re-evaluated every 1 s; first matching state in priority order wins",
+  "states": [
+    {
+      "priority": 0,
+      "id": "starting",
+      "meaning": "first 8 s after boot",
+      "when": "uptime < 8 s",
+      "pattern": "solid",
+      "color": { "name": "blue", "r": 0.0, "g": 0.0, "b": 1.0 }
+    },
+    {
+      "priority": 1,
+      "id": "wifi_down",
+      "meaning": "Wi-Fi connecting or lost",
+      "when": "Wi-Fi not connected",
+      "pattern": "blink",
+      "on_ms": 1000,
+      "off_ms": 1000,
+      "color": { "name": "yellow", "r": 1.0, "g": 0.7, "b": 0.0 }
+    },
+    {
+      "priority": 2,
+      "id": "syncing",
+      "meaning": "Wi-Fi up, no Home Assistant API client connected yet",
+      "when": "Wi-Fi connected and API client not connected",
+      "pattern": "blink",
+      "on_ms": 500,
+      "off_ms": 500,
+      "color": { "name": "purple", "r": 0.6, "g": 0.0, "b": 1.0 }
+    },
+    {
+      "priority": 3,
+      "id": "sensor_fault",
+      "meaning": "SEN66 or SHT45 failed, or no temperature reading after 120 s",
+      "when": "sensor component failed, or uptime > 120 s and a temperature is NaN",
+      "pattern": "blink",
+      "on_ms": 250,
+      "off_ms": 250,
+      "color": { "name": "red", "r": 1.0, "g": 0.0, "b": 0.0 }
+    },
+    {
+      "priority": 4,
+      "id": "healthy",
+      "meaning": "Wi-Fi up, HA connected, both sensors reporting",
+      "when": "none of the above",
+      "pattern": "rainbow",
+      "effect": { "name": "addressable_rainbow", "speed": 20, "width": 1 }
+    }
+  ],
+  "notes": [
+    "The ESP32-S3 is 2.4 GHz only.",
+    "On a bench with no HA client the light shows purple blink, not rainbow.",
+    "Check the colours through the acrylic light pipe; amber at 15 % brightness reads as orange."
+  ]
+}
