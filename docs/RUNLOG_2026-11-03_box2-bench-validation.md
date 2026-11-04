@@ -26,7 +26,7 @@ ESPHome-native path (not ratified): `docs/hardware/esphome/box2-bench.yaml`.
 
 ## What is NOT verified
 
-- **Independent reference.** The Home Z2M is down (`NOT_CONNECTED`, last state file 2026-10-27), so no live Zigbee temperature was available. Needs a room thermometer or a live SNZB-02P. The 1258 ppm CO2 is plausible for a closed room but unchecked.
+- **Independent reference: loosely checked only.** The Home Z2M is down (`NOT_CONNECTED`, last state file 2026-10-27). Nate's room estimate was about 70 °F (21.1 °C, approximate, instrument not recorded) against SEN66 22.7 °C and SHT45 23.0 °C, so the box reads about 1.6 to 2 °C warm. That is plausible bench self-heating (MCU, SEN66 fan, USB supply) but is unconfirmed. Needs a calibrated thermometer placed beside the box, and a re-check once it is in its enclosure, before choosing the authoritative ambient channel (doc27 S1). The 1258 ppm CO2 is plausible for a closed room but unchecked.
 - **Home Wi-Fi: RESOLVED 2026-11-04.** Two real causes, both fixed. (1) Provisioned credentials never persisted: ESPHome flushes saved Wi-Fi to flash on a 60 s timer, and every reset or replug inside that minute reverted the node to the previous network (`Nathan `, the phone hotspot). Fixed with `preferences: flash_write_interval: 10s`. (2) IP conflict: the router handed Box 2 `192.168.1.112`, which the LG webOS TV also held. Fixed with a DHCP reservation, MAC `90:DA:72:71:51:10` to `192.168.1.130`. The early `Association Leave` timeouts occur before any IP is assigned, so the conflict cannot explain those; they stopped once credentials persisted and the reservation existed, but the exact trigger was not isolated. Verified: node at `192.168.1.130` (-61 to -63 dBm), ESPHome API reachable, rejoins after a full power-cycle with no intervention.
 - **HA discovery and stable device ID.** Cabin HA has no `esphome` config entry; the inventory `runtime_device_id` for Box 2 is `null`; no `device` row exists. Discovery can only be tried where the node can reach HA (the cabin LAN).
 - **Phone proxy only.** The Termux phone has no ambient sensor; its battery reads 23.0 °C while charging (Box 2: SEN66 22.7, SHT45 23.0). Not a reference.
@@ -56,7 +56,7 @@ ESPHome-native path (not ratified): `docs/hardware/esphome/box2-bench.yaml`.
 
 ## Next
 
-1. Independent reference reading (thermometer or live SNZB-02P).
+1. Calibrated reference beside the box (thermometer or live SNZB-02P); re-check inside the enclosure.
 2. At the cabin: the SSID is the same name; confirm it joins (and add a DHCP reservation there). If association fails, re-provision through the fallback AP portal, wait over 10 s, no resets.
 3. Add the ESPHome integration in cabin HA with the node's API key (vault, not repo), confirm discovery picks it up, then record `runtime_device_id` under D1/D28.
 4. Release build: `logger: INFO`, drop the heartbeat, decide the final update interval.
