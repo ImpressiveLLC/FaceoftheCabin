@@ -1,8 +1,9 @@
 # Run Log — Box 2 bench validation at Home (2026-11-03)
 
-> **Result: PARTIAL.** Hardware and sensors validated on the bench. Home Wi-Fi
-> association, HA discovery under a stable device ID, and an independent
-> temperature reference are **not** done. Box 2 is **not** cleared for the box.
+> **Result: PARTIAL (updated 2026-11-04).** Hardware, sensors and Home Wi-Fi
+> validated on the bench; the node survives a power-cycle and rejoins by itself.
+> HA discovery under a stable device ID and an independent temperature reference
+> are **not** done. Box 2 is **not** cleared for the box.
 
 Scope: `SensorCollectionBox` (Box 2), QT Py ESP32-S3 (PID 5426) + SEN6x adapter
 (PID 6331) + SEN66 + SHT45 (PID 6174), bench-powered over USB-C, outside the
@@ -26,8 +27,9 @@ ESPHome-native path (not ratified): `docs/hardware/esphome/box2-bench.yaml`.
 ## What is NOT verified
 
 - **Independent reference.** The Home Z2M is down (`NOT_CONNECTED`, last state file 2026-10-27), so no live Zigbee temperature was available. Needs a room thermometer or a live SNZB-02P. The 1258 ppm CO2 is plausible for a closed room but unchecked.
-- **Home Wi-Fi.** Against the Home router (`Unicorn Ping-Pong`, 2.4 GHz, BSSID `48:F8:B3:F6:4E:2A`, channel 11) every association attempt timed out with `Association Leave` and full signal bars, across firmware revisions, on USB and wall power, with and without the SEN66, router client not blocked. It joined once early on (no sensors attached). It **does** join a phone hotspot (WPA2, 2.4 GHz, channel 6, -63 dB), on the second attempt (first: `Authentication Failed` or `Auth Expired`). Cause not found.
+- **Home Wi-Fi: RESOLVED 2026-11-04.** Two real causes, both fixed. (1) Provisioned credentials never persisted: ESPHome flushes saved Wi-Fi to flash on a 60 s timer, and every reset or replug inside that minute reverted the node to the previous network (`Nathan `, the phone hotspot). Fixed with `preferences: flash_write_interval: 10s`. (2) IP conflict: the router handed Box 2 `192.168.1.112`, which the LG webOS TV also held. Fixed with a DHCP reservation, MAC `90:DA:72:71:51:10` to `192.168.1.130`. The early `Association Leave` timeouts occur before any IP is assigned, so the conflict cannot explain those; they stopped once credentials persisted and the reservation existed, but the exact trigger was not isolated. Verified: node at `192.168.1.130` (-61 to -63 dBm), ESPHome API reachable, rejoins after a full power-cycle with no intervention.
 - **HA discovery and stable device ID.** Cabin HA has no `esphome` config entry; the inventory `runtime_device_id` for Box 2 is `null`; no `device` row exists. Discovery can only be tried where the node can reach HA (the cabin LAN).
+- **Phone proxy only.** The Termux phone has no ambient sensor; its battery reads 23.0 °C while charging (Box 2: SEN66 22.7, SHT45 23.0). Not a reference.
 - **Final voltage under startup.** Only a steady-state reading; startup inrush not captured.
 
 ## Lessons (reusable for Boxes 3, 4 and the S6 controller box)
@@ -43,7 +45,9 @@ ESPHome-native path (not ratified): `docs/hardware/esphome/box2-bench.yaml`.
 9. The captive portal and a phone hotspot cannot share one phone; Improv over USB avoids the conflict.
 10. ARP entries go stale: a `.112` address showed the node's MAC for a while after the node left and the address went to another device.
 11. The debug log can look silent. A periodic `ESP_LOGW` heartbeat with uptime and all sensor values (in `box2-bench.yaml`) is the reliable way to read values over USB. Remove it, and set `logger: INFO`, for the release build.
-12. A multimeter reading is DC volts (`V` with a straight line). Probe the adapter VIN against GND with the board running.
+12. Wi-Fi credentials entered through Improv (`web.esphome.io`) did not persist in this setup; the captive portal on the fallback AP did, once the 10 s flush interval was set. Never reset or unplug within 60 s (default) of provisioning. A held `COM8` (browser tab) blocks every serial tool: disconnect the tab first.
+12a. Reserve a DHCP address for each node in the router before relying on it. Two devices on one IP look like random drops.
+12b. A multimeter reading is DC volts (`V` with a straight line). Probe the adapter VIN against GND with the board running.
 13. Spray foam inside the box is a bad idea near the SEN66 (VOC off-gassing, blocked inlet and fan, trapped heat, no rework), and over mains terminals or relays. Use standoffs, foam blocks, RTV dabs; mask the light pipe.
 
 ## Status light (bench firmware)
@@ -53,7 +57,7 @@ ESPHome-native path (not ratified): `docs/hardware/esphome/box2-bench.yaml`.
 ## Next
 
 1. Independent reference reading (thermometer or live SNZB-02P).
-2. Re-provision the cabin Wi-Fi (2.4 GHz) at the cabin and confirm it joins there; if association fails there too, treat it as a firmware or board issue.
+2. At the cabin: the SSID is the same name; confirm it joins (and add a DHCP reservation there). If association fails, re-provision through the fallback AP portal, wait over 10 s, no resets.
 3. Add the ESPHome integration in cabin HA with the node's API key (vault, not repo), confirm discovery picks it up, then record `runtime_device_id` under D1/D28.
 4. Release build: `logger: INFO`, drop the heartbeat, decide the final update interval.
 5. Correct the build doc per PR #258 (still unapplied on main as of this run).
