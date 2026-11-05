@@ -3557,7 +3557,8 @@ export function DeviceManagerPanel({ auth }) {
             <Search size={14} aria-hidden="true"/>
             <input ref={searchInputRef} type="search" value={searchQuery}
               aria-label="Search devices and services"
-              placeholder="Search any data: kitchen, room:kitchen, battery:<20, state:offline -zigbee, leak OR flood  ( / )"
+              title="Shortcut: /. Try room:kitchen, battery:<20, state:offline -zigbee, leak OR flood"
+              placeholder="Search, e.g. room:kitchen battery:<20"
               onChange={e => setSearchQuery(e.target.value)}
               onKeyDown={e => { if (e.key === "Escape") { setSearchQuery(""); e.currentTarget.blur(); } }} />
             {searchQuery && (
@@ -3568,7 +3569,9 @@ export function DeviceManagerPanel({ auth }) {
           {searchActive && (
             <span className="dm-search-status" role="status">
               {searchedDevices.length} of {locDevices.length} match
-              {" "}(all states and kinds; filters are paused while searching)
+              {reviewingPrevious
+                ? " (Review is on: only Saved for later and Ignored devices are shown)"
+                : " (all states and kinds; filters are paused while searching)"}
             </span>
           )}
         </div>

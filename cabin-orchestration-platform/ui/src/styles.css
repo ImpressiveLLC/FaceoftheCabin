@@ -3164,3 +3164,25 @@ select option { background: var(--bg-secondary); color: var(--text); }
 .dm-search-clear { background:transparent; border:0; color:var(--text-dim); font-size:18px; line-height:1; cursor:pointer; padding:0 2px; }
 .dm-search-clear:hover { color:var(--text); }
 .dm-search-status { font-size:12px; color:var(--text-dim); }
+
+/* ─── Mobile Monitoring layout (2026-11-05) ────────────────────────────────
+   Found on a phone: the Signal theme's 200px minimum column left one KPI tile per row (the content area is about 260px once the nav rail and
+   padding are taken out), and the See/Change/Add/Remove row could not wrap, so it ran past the right edge. Rule of 3 for the grid:
+     up to 600px   2 columns (three would leave each tile about 80px, too narrow for a 22px reading)
+     601 to 900px  3 columns
+     over 900px    the auto-fill grids above (3 or more as width allows)
+   The theme-qualified selectors are needed because the Signal grid and tile rules are more specific than the plain ones. */
+.dm-l1-nav { flex-wrap: wrap; }
+@media (min-width: 601px) and (max-width: 900px) {
+  .kpi-grid, [data-theme="signal"] .kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .panel-content { padding: 14px 12px; }
+  .kpi-grid, [data-theme="signal"] .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .kpi-tile, [data-theme="signal"] .kpi-tile { padding: 12px 10px 14px; min-width: 0; }
+  .kpi-value, [data-theme="signal"] .kpi-value { font-size: 20px; }
+  /* Tab row: equal-width buttons that fit the screen; the location hint drops to its own line. */
+  .dm-l1-nav { display: grid; grid-template-columns: repeat(auto-fit, minmax(60px, 1fr)); gap: 6px; }
+  .dm-l1-nav .dm-l1-btn { justify-content: center; min-width: 0; min-height: 40px; padding: 8px 4px; gap: 4px; font-size: 12px; }
+  .dm-l1-nav .mn-profile-hint { grid-column: 1 / -1; margin-left: 0; }
+}
