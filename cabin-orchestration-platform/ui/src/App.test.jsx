@@ -141,19 +141,21 @@ describe("kpiTileFor", () => {
       expect(kpiTileFor(motion({ occupancy: true }), "F", {}, { signedIn: true }).value).toBe("Motion");
     });
 
-    it("shows a signed-out viewer only that the sensor is online and its battery -- never the reading", () => {
+    it("shows a signed-out viewer a sign-in prompt -- never the reading, and never battery as the headline", () => {
       for (const occupancy of [true, false]) {
         const tile = kpiTileFor(motion({ occupancy }), "F");
-        expect(tile.value).toBe("100% battery");
-        expect(JSON.stringify(tile)).not.toMatch(/motion"|clear/i);
+        expect(tile.value).toBe("Sign in for status");
+        expect(JSON.stringify(tile)).not.toMatch(/motion"|clear|battery/i);
       }
-      expect(kpiTileFor(motion({ battery: undefined }), "F").value).toBe("Online");
+      expect(kpiTileFor(motion({ battery: undefined }), "F").value).toBe("Sign in for status");
     });
 
     it("treats a door contact the same way: Open/Closed only when signed in, and the icon follows the state", () => {
       expect(kpiTileFor(contact({ contact: false }), "F", {}, { signedIn: true })).toMatchObject({ value: "Open" });
       expect(kpiTileFor(contact({ contact: true }), "F", {}, { signedIn: true })).toMatchObject({ value: "Closed" });
-      expect(kpiTileFor(contact(), "F").value).toBe("87% battery");
+      expect(kpiTileFor(contact(), "F").value).toBe("Sign in for status");
+      // the icon must not leak the reading to a signed-out viewer
+      expect(kpiTileFor(contact({ contact: false }), "F").icon).toBe(kpiTileFor(contact({ contact: true }), "F").icon);
     });
 
     it("shows a leak reading to everyone, and raises ALARM only when wet", () => {
@@ -828,7 +830,8 @@ describe("Monitoring reorder actually reaches the real grid (found 2026-08-25)",
     const out = renderWith({ signedIn: false });
     const gridOut = out.container.querySelector(".kpi-grid");
     expect(within(gridOut).getByText("motion_entry_movement_detect")).toBeTruthy();
-    expect(within(gridOut).getByText("100% battery")).toBeTruthy();
+    expect(within(gridOut).getByText("Sign in for status")).toBeTruthy();
+    expect(within(gridOut).queryByText(/battery/)).toBeNull();
     expect(within(gridOut).queryByText("Motion")).toBeNull();
     cleanup();
 
