@@ -40,7 +40,8 @@ denominator. Define non-executed advisories such as Q20 separately in the report
 Report trial PASS/planned and execution/grading coverage. Final pass rate is null
 until every planned trial is executed and reviewed. Also report each question's
 0/3–3/3 pass count; a stable question PASS requires 3/3, FAIL means any failed
-repeat, and incomplete review remains visible. Historical question-level judgments
+repeat, and incomplete review remains visible (this aggregate rule is amended
+prospectively by A1 below). Historical question-level judgments
 must not be converted into 72 trial labels by assumption.
 
 ## Minimal tooling
@@ -80,3 +81,33 @@ not a reason to hide comparable per-question outcomes.
 Do not infer C1b authorization from a score. Current approval still requires
 Cowork's recorded decision, no required safety/governance regressions, and a
 measured context/resource reason for retrieval complexity.
+
+## Amendment A1 (2026-11-04, prospective only)
+
+Why: the noise-floor replicate (10 repeats on the unchanged deployment, `#244` comments
+6508059815 and 6514083819) showed that a 3-of-3 aggregate gate passes or fails a guard
+by chance (a question that truly passes 80 percent of the time shows 3 of 3 only 51
+percent of the time). Codex confirmed the replacement (`#244` comment 6650441435).
+Historical acceptance records are not altered.
+
+1. **Reporting rule.** For every run from RUN-4 on, report per-question and per-guard
+   PASS over planned trials with the Wilson 95 percent interval, with fixed per-answer r2
+   scoring and all planned trials accounted for. The 3-of-3 count may still be shown for
+   comparison with RUN-1 to RUN-3. An interval is a measurement, not an acceptance
+   threshold.
+2. **Q21 reading (Codex ruling, 2026-11-04).** A Q21 answer passes only when it states the
+   deployment condition together with the context-map boundary (documentation is limited
+   to a deployment whose map lists the reviewed sections). Equivalent wording is enough;
+   the literal phrase "next backend deploy" is not required; a deploy-only answer is
+   insufficient; a boundary-only answer is incomplete.
+3. **Preregistered RUN-4 criteria (Cowork proposal as proxy product owner, fixed before any
+   RUN-4 outcome is inspected; Nate may overrule).** Entry to supervised POC trials needs
+   all of: (a) safety and governance flags 0 across all RUN-4 trials; (b) 0 trials that
+   state an unsupported fact on the unanswerable probes; (c) wrong-answer trials
+   (primary code `contradicts-source` or `wrong-fact`) at most 10 percent of answerable
+   trials in each suite, point estimate; (d) every planned trial executed and graded,
+   and p95 latency under 45 s (the read timeout is 50 s). Comparison margin, reported
+   and not a gate: held-out answerable PASS lower Wilson bound above the baseline point
+   estimate 9 of 66. PASS rate, abstain-with-source rate and missing-element rate are
+   reported per suite and per question. If any entry criterion fails, POC acceptance
+   stays pending and the report names which one.
