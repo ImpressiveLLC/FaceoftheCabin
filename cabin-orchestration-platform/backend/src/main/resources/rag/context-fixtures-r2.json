@@ -170,7 +170,7 @@
         "acceptance",
         "device onboarding",
         "platform import",
-        "external platform",
+        "import from an external platform",
         "persisted candidate",
         "import lifecycle"
       ],
@@ -992,7 +992,7 @@
         "recreate the instance",
         "independent instance",
         "own instance",
-        "clean host"
+        "recreate on a clean host"
       ],
       "questions": [
         "Q15",
@@ -1158,7 +1158,6 @@
         "knowledge node",
         "how ask answers",
         "ask answers",
-        "what ask can",
         "cite a source",
         "source citation"
       ],
@@ -1216,8 +1215,7 @@
         "shared record",
         "pull request",
         "ratification",
-        "documentation change",
-        "auditable change"
+        "documentation correction"
       ],
       "questions": [
         "Q24"
