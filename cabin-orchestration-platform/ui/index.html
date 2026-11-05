@@ -3,6 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Public hostnames are https only. Found 2026-11-05: http://cabin.unicornpingpong.com served the app with no
+         redirect, so Google sign-in failed with origin_mismatch (the OAuth client lists only the https origin). Runs
+         before anything else loads. Only unicornpingpong.com names are touched: localhost, LAN IPs and Tailscale
+         names (plain http by design) never match. Cloudflare "Always Use HTTPS" does the same at the edge; this is
+         the fallback if that setting is ever off. -->
+    <script>
+      (function () {
+        var h = location.hostname;
+        if (location.protocol === "http:" && (h === "unicornpingpong.com" || h.endsWith(".unicornpingpong.com"))) {
+          location.replace("https://" + location.host + location.pathname + location.search + location.hash);
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="%BASE_URL%fonts/retro-fonts.css" />
     <title>Cabin Control Hub</title>
   </head>
