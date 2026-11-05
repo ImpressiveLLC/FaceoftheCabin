@@ -5808,12 +5808,15 @@ export function kpiTileFor(device, tempUnit, reportingRelationships = {}, { sign
     case "CONTACT_SENSOR": {
       const isMotion = device.type === "MOTION_SENSOR";
       if (!deviceIsInActiveUse(device) || !reportsField(device, isMotion ? "occupancy" : "contact")) return null;
-      const icon = isMotion ? Activity : (device.attributes?.contact === false ? DoorOpen : DoorClosed);
+      // 2026-11-05 (user report): a signed-out tile headlined "100% battery", which says nothing about what
+      // the sensor is for. Battery is maintenance, not monitoring: it lives in the battery grouping, the
+      // maintenance card and low-battery alerts. A signed-out viewer now gets a plain prompt instead, and a
+      // neutral icon: the open/closed door icon would itself reveal the reading this branch withholds.
       if (!signedIn) {
-        const battery = device.attributes?.battery;
-        return { icon, label: device.name, deviceId: device.deviceId,
-          value: battery != null ? `${battery}% battery` : "Online", state: device.state };
+        return { icon: isMotion ? Activity : DoorClosed, label: device.name, deviceId: device.deviceId,
+          value: "Sign in for status", state: device.state };
       }
+      const icon = isMotion ? Activity : (device.attributes?.contact === false ? DoorOpen : DoorClosed);
       const raw = isMotion ? device.attributes.occupancy : device.attributes.contact;
       const value = raw !== true && raw !== false ? "—"
         : isMotion ? (raw ? "Motion" : "Clear")
