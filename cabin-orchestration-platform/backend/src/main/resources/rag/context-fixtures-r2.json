@@ -167,7 +167,12 @@
         "candidate",
         "missing after restart",
         "import proposals",
-        "acceptance"
+        "acceptance",
+        "device onboarding",
+        "platform import",
+        "external platform",
+        "persisted candidate",
+        "lifecycle state"
       ],
       "questions": [
         "Q05",
@@ -757,7 +762,10 @@
         "disarming",
         "home is empty",
         "live reading",
-        "live data"
+        "live data",
+        "capability map",
+        "what can the platform",
+        "what the platform can"
       ],
       "questions": [
         "Q09",
@@ -981,7 +989,14 @@
         "installed",
         "independent",
         "standalone",
-        "overlay"
+        "overlay",
+        "minimum inputs",
+        "minimum input",
+        "clean host",
+        "fresh machine",
+        "recreate",
+        "own instance",
+        "replication"
       ],
       "questions": [
         "Q15",
@@ -1143,7 +1158,13 @@
         "helpdesk",
         "paragraph",
         "stale source",
-        "retrieved document"
+        "retrieved document",
+        "knowledge node",
+        "cite",
+        "how ask answers",
+        "ask answers",
+        "what ask can",
+        "useful limits"
       ],
       "questions": [
         "Q21",
@@ -1196,7 +1217,14 @@
         "claude found",
         "contribute",
         "contribution",
-        "shared record"
+        "shared record",
+        "pull request",
+        "ratification",
+        "ratify",
+        "dispute",
+        "documentation change",
+        "small change",
+        "auditable"
       ],
       "questions": [
         "Q24"
