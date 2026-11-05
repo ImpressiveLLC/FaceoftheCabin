@@ -172,7 +172,7 @@
         "platform import",
         "external platform",
         "persisted candidate",
-        "lifecycle state"
+        "import lifecycle"
       ],
       "questions": [
         "Q05",
@@ -763,9 +763,7 @@
         "home is empty",
         "live reading",
         "live data",
-        "capability map",
-        "what can the platform",
-        "what the platform can"
+        "capability map"
       ],
       "questions": [
         "Q09",
@@ -990,13 +988,11 @@
         "independent",
         "standalone",
         "overlay",
-        "minimum inputs",
-        "minimum input",
-        "clean host",
-        "fresh machine",
-        "recreate",
+        "recreate an instance",
+        "recreate the instance",
+        "independent instance",
         "own instance",
-        "replication"
+        "clean host"
       ],
       "questions": [
         "Q15",
@@ -1160,11 +1156,11 @@
         "stale source",
         "retrieved document",
         "knowledge node",
-        "cite",
         "how ask answers",
         "ask answers",
         "what ask can",
-        "useful limits"
+        "cite a source",
+        "source citation"
       ],
       "questions": [
         "Q21",
@@ -1220,11 +1216,8 @@
         "shared record",
         "pull request",
         "ratification",
-        "ratify",
-        "dispute",
         "documentation change",
-        "small change",
-        "auditable"
+        "auditable change"
       ],
       "questions": [
         "Q24"

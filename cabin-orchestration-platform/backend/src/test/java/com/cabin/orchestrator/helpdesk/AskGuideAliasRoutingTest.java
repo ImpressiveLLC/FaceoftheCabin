@@ -44,7 +44,7 @@ class AskGuideAliasRoutingTest {
             "Walk me through device onboarding after a platform import.", "device_import_lifecycle",
             "Show me the capability map of the platform.", "live_sensors",
             "What are the minimum inputs to recreate an instance?", "installation",
-            "Can I follow the guide on a fresh machine or a clean host?", "installation",
+            "Can I follow the guide on a clean host?", "installation",
             "How does Ask cite a knowledge node?", "ask_helpdesk_behavior",
             "Who ratifies a documentation change made in a pull request?", "governance_contribution");
         pinned.forEach((question, category) ->
@@ -62,5 +62,24 @@ class AskGuideAliasRoutingTest {
             "Why does my sensor say offline?", "device_health");
         unchanged.forEach((question, category) ->
             assertThat(builder.categoryIdFor(question)).as(question).isEqualTo(category));
+    }
+
+    @Test
+    void ordinaryHouseholdWordingIsNotCapturedByTheNewPhrases() {
+        // Phrases once considered and rejected because they outscored the right category on ordinary questions.
+        Map<String, String> notCaptured = Map.ofEntries(
+            Map.entry("I made a small change to the alarm schedule, why isn't it working?", "governance_contribution"),
+            Map.entry("Is a small change to the thermostat temperature safe?", "governance_contribution"),
+            Map.entry("What can the platform do when a leak is detected?", "live_sensors"),
+            Map.entry("What the platform can do with the water valve?", "live_sensors"),
+            Map.entry("What lifecycle state is my leak sensor in?", "device_import_lifecycle"),
+            Map.entry("What are the minimum inputs for the heater rule?", "installation"),
+            Map.entry("I need a fresh machine for the cameras, what do I buy?", "installation"),
+            Map.entry("What are the useful limits of the freezer temperature?", "ask_helpdesk_behavior"),
+            Map.entry("Recreate the morning workflow", "installation"),
+            Map.entry("Dispute a false alarm on the front door", "governance_contribution"),
+            Map.entry("Cite where the heater setting is documented", "ask_helpdesk_behavior"));
+        notCaptured.forEach((question, category) ->
+            assertThat(builder.categoryIdsFor(question)).as(question).doesNotContain(category));
     }
 }
