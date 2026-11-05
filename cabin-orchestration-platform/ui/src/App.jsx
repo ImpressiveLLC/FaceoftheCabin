@@ -3,6 +3,7 @@ import { collapseDuplicateZigbeeServices, duplicateOfZigbeeParent } from "./zigb
 import { ExpandableList, COLLAPSED_LIMIT } from "./ExpandableList";
 import { DEVICE_KIND_OPTIONS, batteryLevel, makeKindOf } from "./deviceKinds";
 import { BatteryMaintenanceCard } from "./BatteryMaintenanceCard";
+import { buildDeviceIndex, matchesDeviceQuery, parseDeviceQuery } from "./deviceSearch";
 /**
  * Cabin Orchestration Platform — Shell UI
  *
@@ -21,7 +22,7 @@ import { BatteryMaintenanceCard } from "./BatteryMaintenanceCard";
  * Env vars VITE_CABIN_* and VITE_HOME_* override defaults for local dev.
  */
 
-import React, { useEffect, useState, useRef, useCallback, useMemo, createContext, useContext, forwardRef } from "react";
+import React, { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo, createContext, useContext, forwardRef } from "react";
 import { createRoot } from "react-dom/client";
 import { ThemeProvider, ThemeSwitcher, useTheme } from "./ThemeProvider.jsx";
 import {
@@ -3252,6 +3253,10 @@ export function DeviceManagerPanel({ auth }) {
   const [view, setView]             = useState("see");
   const [selected, setSelected]     = useState(null);
   const [reorderMode, setReorderMode] = useState(false);
+  // Free-text search over every data element of a device or service (see deviceSearch.js). Deliberately
+  // not persisted: a stale query silently hiding most of the list on the next visit is worse than retyping.
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchInputRef = useRef(null);
 
   const [groupBy, setGroupBy] = useState(() => localStorage.getItem("devices.groupBy") || "type");
   const [groupFlow, setGroupFlow] = useState(() => localStorage.getItem("devices.groupFlow") || "horizontal");
@@ -3336,9 +3341,36 @@ export function DeviceManagerPanel({ auth }) {
   const importOptions = useMemo(() => importedFromOptions(managerDevices), [managerDevices]);
   const activeImportedFrom = importOptions.includes(importedFromFilter) ? importedFromFilter : "";
   const kindOf = useMemo(() => makeKindOf(managerDevices), [managerDevices]);
+
+  // Search reduces the list to the devices whose data matches, across ALL lifecycle states, kinds and
+  // scopes: a search is for finding one thing, and a saved State/Kind filter hiding it would defeat that.
+  const parsedQuery = useMemo(() => parseDeviceQuery(searchQuery), [searchQuery]);
+  const searchActive = !parsedQuery.empty;
+  const searchIndex = useMemo(() => searchActive
+    ? buildDeviceIndex(locDevices, { workflows, kindOf, lifecycleOf: deviceLifecycleState })
+    : null, [searchActive, locDevices, workflows, kindOf]);
+  const searchedDevices = useMemo(() => searchIndex
+    ? locDevices.filter(d => matchesDeviceQuery(parsedQuery, searchIndex.get(d.deviceId)))
+    : locDevices, [searchIndex, parsedQuery, locDevices]);
+  // "/" jumps to the search box from anywhere on the panel that is not itself a text field.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
+      const tag = e.target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target?.isContentEditable) return;
+      if (!searchInputRef.current) return;
+      e.preventDefault();
+      searchInputRef.current.focus();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
   const effectiveDeviceFilter = reviewingPrevious
     ? { parentOnly: false, lifecycle: ["DEFERRED", "IGNORED"], importedFrom: "" }
-    : resolveDeviceManagerFilter(groupBy, { parentOnly, lifecycle: lifecycleFilter, importedFrom: activeImportedFrom, kind: kindFilter, kindOf });
+    : searchActive
+      ? { parentOnly: false, lifecycle: LIFECYCLE_FILTER_OPTIONS.map(o => o.value), importedFrom: "", kind: "", kindOf }
+      : resolveDeviceManagerFilter(groupBy, { parentOnly, lifecycle: lifecycleFilter, importedFrom: activeImportedFrom, kind: kindFilter, kindOf });
 
   // Hoisted up from DmSeeView (was local there) so See and Change render
   // the exact same saved grouping/order -- Change is a read-only consumer
@@ -3356,7 +3388,7 @@ export function DeviceManagerPanel({ auth }) {
     `order.deviceGroups.${activeLocation}.${groupBy}`,
     `order.devices.${activeLocation}.${groupBy}`,
     `order.devices.${activeLocation}`,
-    locDevices, groupBy, isAlarm, isIgnored
+    searchedDevices, groupBy, isAlarm, isIgnored
   );
   // Collapse state is keyed per grouping dimension -- "collapsed by Room" and
   // "collapsed by Type" are independent, since the group names themselves
@@ -3382,6 +3414,7 @@ export function DeviceManagerPanel({ auth }) {
     const target = managerDevices.find(d => d.deviceId === pendingDeviceFocus);
     setSelected(pendingDeviceFocus);
     setView("see");
+    setSearchQuery(""); // being sent to a device is an explicit choice; a leftover query must not hide it
     setPendingDeviceFocus(null);
     if (!target) {
       setFocusNotice(`Device "${pendingDeviceFocus}" isn't in the device list for this location.`);
@@ -3518,6 +3551,31 @@ export function DeviceManagerPanel({ auth }) {
           <button className="btn-ghost" onClick={refreshManagerDevices}><RefreshCw size={14}/> Refresh</button>
         </div>
       </div>
+      {(view === "see" || view === "change") && (
+        <div className="dm-search" role="search">
+          <label className="dm-search-box">
+            <Search size={14} aria-hidden="true"/>
+            <input ref={searchInputRef} type="search" value={searchQuery}
+              aria-label="Search devices and services"
+              title="Shortcut: /. Try room:kitchen, battery:<20, state:offline -zigbee, leak OR flood"
+              placeholder="Search, e.g. room:kitchen battery:<20"
+              onChange={e => setSearchQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === "Escape") { setSearchQuery(""); e.currentTarget.blur(); } }} />
+            {searchQuery && (
+              <button type="button" className="dm-search-clear" aria-label="Clear search"
+                onClick={() => { setSearchQuery(""); searchInputRef.current?.focus(); }}>×</button>
+            )}
+          </label>
+          {searchActive && (
+            <span className="dm-search-status" role="status">
+              {searchedDevices.length} of {locDevices.length} match
+              {reviewingPrevious
+                ? " (Review is on: only Saved for later and Ignored devices are shown)"
+                : " (all states and kinds; filters are paused while searching)"}
+            </span>
+          )}
+        </div>
+      )}
 
       <AlertControls panelId="DEVICE_MANAGER" />
 
@@ -3547,7 +3605,7 @@ export function DeviceManagerPanel({ auth }) {
       {kindFilter === "battery" && !reviewingPrevious && (
         <BatteryMaintenanceCard devices={managerDevices} kindOf={kindOf} onSelect={setSelected} />
       )}
-      {view === "see"    && <DmSeeView key={`${activeLocation}:${groupBy}`} groups={groups} reorderGroup={reorderGroup} reorderDevice={reorderDevice}
+      {view === "see"    && <DmSeeView key={`${activeLocation}:${groupBy}`} searchActive={searchActive} groups={groups} reorderGroup={reorderGroup} reorderDevice={reorderDevice}
         selected={selected} onSelect={setSelected}
         reorderMode={reorderMode} groupFlow={groupFlow}
         deviceFilter={effectiveDeviceFilter}
@@ -3557,7 +3615,7 @@ export function DeviceManagerPanel({ auth }) {
         onConfigure={(id) => { setSelected(id); setView("change"); setReorderMode(false); }}
         onManageWorkflows={() => setActivePanel("RULES_ENGINE")}
         onRefresh={refreshManagerDevices} workflows={workflows} auth={auth} />}
-      {view === "change" && <DmChangeView groups={groups} deviceFilter={effectiveDeviceFilter} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices}
+      {view === "change" && <DmChangeView searchActive={searchActive} groups={groups} deviceFilter={effectiveDeviceFilter} selected={selected} onSelect={setSelected} onRefresh={refreshManagerDevices}
         isGroupCollapsed={isGroupCollapsed} onToggleGroup={toggleGroup}
         onOpenDiscovery={(device, mode) => setDiscoveryTarget({ device, mode })}
         onManageWorkflows={() => setActivePanel("RULES_ENGINE")}
@@ -3757,6 +3815,16 @@ export function filterDeviceManagerDevices(devices, { parentOnly = false, lifecy
     (!kind || kindFor(d) === kind));
 }
 
+// The device the person has selected stays in the list while they work on it,
+// even when what they just did to it (disable, ignore) makes it fall outside
+// the saved State/Kind/Parent filters: it must not vanish from under them,
+// taking its detail pane with it. It leaves the list once they select
+// something else.
+export function filterKeepingSelected(items, filter, selectedId) {
+  const passing = new Set(filterDeviceManagerDevices(items, filter).map(d => d.deviceId));
+  return items.filter(d => passing.has(d.deviceId) || d.deviceId === selectedId);
+}
+
 // 2026-08-25: the toolbar's device count used raw devices.length -- every
 // HA sub-entity/service counted as its own "device" (Kidde's ~9-18
 // entities, Liebherr's 9, each a separate row), producing a number like
@@ -3917,27 +3985,85 @@ function useGroupedDraggableOrder(groupStorageKey, deviceStorageKey, legacyStora
   return { groups, reorderGroup, reorderDevice };
 }
 
-// See/Change (2026-08-27, user report): the shared `selected` state already
-// carries a selection across a See<->Change tab switch, but each view fully
-// unmounts/remounts on switch (conditional rendering, not a hidden pane) --
-// so nothing ever scrolled the still-selected row into view, leaving a
-// person to manually scroll and hunt for it in any list of real length even
-// though the "right" device was, in fact, still selected the whole time.
-// Ref goes on the currently-selected row only (see call sites below);
-// re-fires on mount AND whenever `selected` itself changes (e.g. picking a
-// different device while already on this tab).
-function useScrollSelectedIntoView(selected) {
-  const ref = useRef(null);
-  useEffect(() => {
-    // jsdom (this project's test environment) doesn't implement
-    // scrollIntoView at all -- optional-call, not just optional-chained on
-    // ref.current, so tests exercising this component don't need a mock.
-    ref.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
-  }, [selected]);
-  return ref;
+// 2026-11-05 (user report): a device the person is sent to (from Monitoring,
+// or carried across See -> Change) landed on the very bottom edge of the list
+// (block: "nearest" stops at the first edge that makes it visible), and the
+// first refresh after a toggle then moved it again. Two rules now:
+//   1. A selection that arrives by navigation (not by clicking a row that is
+//      already under the pointer) is centred, including when its row only
+//      mounts a render later (a collapsed group expanding, a filter reset).
+//   2. Whatever a re-render does to the layout (list re-sorted, detail pane
+//      opening, a poll replacing the data), the selected row keeps the
+//      viewport position it had: the scroll position is corrected by however
+//      far the row moved, in every scrollable ancestor.
+// Returns [rowRef, markClickPick]; call markClickPick() right before onSelect
+// from a row click so that pick is not re-centred under the pointer.
+function shiftScrollBy(node, delta) {
+  let remaining = delta;
+  for (let el = node.parentElement; el && remaining !== 0; el = el.parentElement) {
+    if (el === document.body || el === document.documentElement) break;
+    const overflowY = window.getComputedStyle(el).overflowY;
+    if ((overflowY === "auto" || overflowY === "scroll") && el.scrollHeight > el.clientHeight) {
+      const before = el.scrollTop;
+      el.scrollTop = before + remaining;
+      remaining -= el.scrollTop - before;
+    }
+  }
+  if (remaining !== 0) window.scrollBy?.(0, remaining);
 }
 
-function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, reorderMode, groupFlow, deviceFilter, isGroupCollapsed, onToggleGroup, onConfigure, onLifecycleAction, onOpenDiscovery, onRefresh, workflows, onManageWorkflows, auth }) {
+function useCenteredSelection(selected) {
+  const rowNode = useRef(null);
+  const wantCenter = useRef(false);
+  const clickPick = useRef(false);
+  const anchorTop = useRef(null); // viewport offset of the selected row to hold steady
+
+  const center = useCallback(() => {
+    const node = rowNode.current;
+    if (!node) return false;
+    // jsdom (this project's test environment) doesn't implement scrollIntoView -- optional-call.
+    node.scrollIntoView?.({ block: "center", inline: "nearest", behavior: "auto" });
+    anchorTop.current = node.getBoundingClientRect().top;
+    return true;
+  }, []);
+
+  const rowRef = useCallback((node) => {
+    rowNode.current = node;
+    if (node && wantCenter.current && center()) wantCenter.current = false;
+  }, [center]);
+
+  useEffect(() => {
+    if (!selected) { wantCenter.current = false; clickPick.current = false; anchorTop.current = null; return; }
+    if (clickPick.current) {
+      clickPick.current = false;
+      anchorTop.current = rowNode.current ? rowNode.current.getBoundingClientRect().top : null;
+      return;
+    }
+    wantCenter.current = !center();
+  }, [selected, center]);
+
+  // The person scrolling is the only thing allowed to change where the row sits.
+  useEffect(() => {
+    const onScroll = () => {
+      if (rowNode.current && !wantCenter.current) anchorTop.current = rowNode.current.getBoundingClientRect().top;
+    };
+    document.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    return () => document.removeEventListener("scroll", onScroll, { capture: true });
+  }, []);
+
+  // After every render of the view: if the row drifted, scroll it back to where it was.
+  useLayoutEffect(() => {
+    const node = rowNode.current;
+    if (!node || anchorTop.current == null || wantCenter.current) return;
+    const delta = node.getBoundingClientRect().top - anchorTop.current;
+    if (Math.abs(delta) > 1) shiftScrollBy(node, delta);
+  });
+
+  const markClickPick = useCallback(() => { clickPick.current = true; }, []);
+  return [rowRef, markClickPick];
+}
+
+function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, reorderMode, groupFlow, deviceFilter, searchActive, isGroupCollapsed, onToggleGroup, onConfigure, onLifecycleAction, onOpenDiscovery, onRefresh, workflows, onManageWorkflows, auth }) {
   const [health, setHealth] = useState(null);
   const [dragItem, setDragItem] = useState(null);
   const [overItem, setOverItem] = useState(null);
@@ -3955,12 +4081,13 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
   const isAlarm = useCallback((d) => d.state === "ALARM" || d.state === "CRITICAL", []);
 
   const visibleGroups = groups
-    .map(([name, items]) => [name, filterDeviceManagerDevices(items, deviceFilter)])
+    .map(([name, items]) => [name, filterKeepingSelected(items, deviceFilter, selected)])
     .filter(([, items]) => items.length > 0);
   const visibleDevices = visibleGroups.flatMap(([, items]) => items);
   const totalDevices = groups.reduce((n, [, items]) => n + items.length, 0);
   const sel = selected ? visibleDevices.find(d => d.deviceId === selected) : null;
-  const selectedRowRef = useScrollSelectedIntoView(selected);
+  const [selectedRowRef, markClickPick] = useCenteredSelection(selected);
+  const pick = (id) => { markClickPick(); onSelect(id); };
 
   const clearDrag = () => { setDragItem(null); setOverItem(null); };
   const onGroupDragStart = (groupName) => (e) => {
@@ -4013,7 +4140,7 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
         <div className={`dm-groups dm-groups-${groupFlow}`}>
         {visibleGroups.map(([groupName, groupItems]) => {
           const groupHasAlarm = groupItems.some(isAlarm);
-          const groupOpen = reorderMode || groupHasAlarm || !isGroupCollapsed(groupName);
+          const groupOpen = reorderMode || searchActive || groupHasAlarm || !isGroupCollapsed(groupName);
           return (
           <section className={`dm-device-group ${reorderMode && overItem?.kind === "group" && overItem.groupName === groupName && dragItem?.groupName !== groupName ? "drag-over-group" : ""}`}
             key={groupName}
@@ -4040,7 +4167,7 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
                 )}
               </span>
             </header>
-            {groupOpen && <ExpandableList items={groupItems} noun="devices" limit={COLLAPSED_LIMIT} forceOpen={reorderMode}
+            {groupOpen && <ExpandableList items={groupItems} noun="devices" limit={COLLAPSED_LIMIT} forceOpen={reorderMode || searchActive}
               isPinned={d => isAlarm(d) || d.deviceId === selected}
               renderItem={(d) => {
           const ignored = deviceLifecycleState(d) === "IGNORED";
@@ -4061,7 +4188,7 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
                 selected={selected === d.deviceId}
                 ref={selected === d.deviceId ? selectedRowRef : undefined}
                 checkinStatus={checkinDetails[d.deviceId]?.status || checkinStatuses[d.deviceId]}
-                onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)}
+                onClick={() => pick(selected === d.deviceId ? null : d.deviceId)}
                 onToggled={onRefresh}
                 auth={auth}
                 workflows={workflows}
@@ -4099,22 +4226,23 @@ function DmSeeView({ groups, reorderGroup, reorderDevice, selected, onSelect, re
 // no drag props passed here, so there's no way for a Reorder control to
 // appear in Change even by accident. A saved See-mode order/grouping just
 // shows up identically, with no separate state to keep in sync.
-function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, isGroupCollapsed, onToggleGroup, onOpenDiscovery, workflows, onManageWorkflows, auth }) {
+function DmChangeView({ groups, deviceFilter, searchActive, selected, onSelect, onRefresh, isGroupCollapsed, onToggleGroup, onOpenDiscovery, workflows, onManageWorkflows, auth }) {
   const isAlarm = useCallback((d) => d.state === "ALARM" || d.state === "CRITICAL", []);
   const visibleGroups = groups
-    .map(([name, items]) => [name, filterDeviceManagerDevices(items, deviceFilter)])
+    .map(([name, items]) => [name, filterKeepingSelected(items, deviceFilter, selected)])
     .filter(([, items]) => items.length > 0);
   const visibleDevices = visibleGroups.flatMap(([, items]) => items);
   const totalDevices = groups.reduce((n, [, items]) => n + items.length, 0);
   const sel = selected ? visibleDevices.find(d => d.deviceId === selected) : null;
-  const selectedRowRef = useScrollSelectedIntoView(selected);
+  const [selectedRowRef, markClickPick] = useCenteredSelection(selected);
+  const pick = (id) => { markClickPick(); onSelect(id); };
   return (
     <div className="dm-layout">
       <div className="dm-list">
         <p className="dm-hint">Select a device to review its details or save an actual configuration change.</p>
         {visibleGroups.map(([groupName, groupItems]) => {
           const groupHasAlarm = groupItems.some(isAlarm);
-          const groupOpen = groupHasAlarm || !isGroupCollapsed(groupName);
+          const groupOpen = searchActive || groupHasAlarm || !isGroupCollapsed(groupName);
           return (
           <section className="dm-device-group" key={groupName}>
             <header className="dm-device-group-header">
@@ -4132,11 +4260,11 @@ function DmChangeView({ groups, deviceFilter, selected, onSelect, onRefresh, isG
                 </button>
               </span>
             </header>
-            {groupOpen && <ExpandableList items={groupItems} noun="devices" limit={COLLAPSED_LIMIT}
+            {groupOpen && <ExpandableList items={groupItems} noun="devices" limit={COLLAPSED_LIMIT} forceOpen={searchActive}
               isPinned={d => isAlarm(d) || d.deviceId === selected}
               renderItem={d => <DmDeviceRow key={d.deviceId} device={d} selected={selected === d.deviceId}
                 ref={selected === d.deviceId ? selectedRowRef : undefined}
-                onClick={() => onSelect(selected === d.deviceId ? null : d.deviceId)} onToggled={onRefresh} auth={auth} workflows={workflows} />} />}
+                onClick={() => pick(selected === d.deviceId ? null : d.deviceId)} onToggled={onRefresh} auth={auth} workflows={workflows} />} />}
           </section>
           );
         })}
@@ -10169,7 +10297,9 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
     }));
     Promise.allSettled(attempts.map(a => a.promise)).then(results => {
       const succeeded = results.filter(r => r.status === "fulfilled");
-      setDevices(succeeded.map(r => r.value).flat());
+      // Every fetch failing (a blip during a toggle, a restart) must not wipe the list: that unmounted every
+      // row and sent the person back to the top. Keep the last good data; apiError below says it is stale.
+      if (succeeded.length > 0) setDevices(succeeded.map(r => r.value).flat());
 
       const relevant = attempts
         .map((a, i) => ({ loc: a.loc, result: results[i] }))

@@ -3591,6 +3591,64 @@ describe("DeviceManagerPanel — selection stickiness, shared order, Reset Filte
     delete Element.prototype.scrollIntoView;
   });
 
+  // 2026-11-05 (user report): "nearest" parked the device a person was sent to on the very bottom edge of
+  // the list. Navigation now centres it; a click on a row that is already under the pointer does not scroll.
+  it("centres the selected row when navigating to it, but not when clicking a visible row", async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    try {
+      renderPanel({ devices: twoDevices });
+      await waitFor(() => expect(fetch).toHaveBeenCalled());
+      fireEvent.click(screen.getByText("Device One"));
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "Change" }));
+      expect(scrollIntoView).toHaveBeenCalledWith(expect.objectContaining({ block: "center" }));
+    } finally {
+      delete Element.prototype.scrollIntoView;
+    }
+  });
+
+  it("keeps the selected device and its detail visible after it is disabled out of the saved filters", async () => {
+    vi.stubGlobal("fetch", deviceManagerFetchMock());
+    const ctx = (devices) => ({ devices, workflows: [], activeLocation: "cabin", refreshDevices: vi.fn(), setActivePanel: vi.fn() });
+    const ui = (devices) => (
+      <AppContext.Provider value={ctx(devices)}><DeviceManagerPanel /></AppContext.Provider>
+    );
+    const view = render(ui(twoDevices));
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    fireEvent.click(screen.getByText("Device One"));
+    // The refresh after a disable: Device One is now "Saved for later", which the default State filter hides.
+    view.rerender(ui([
+      { ...twoDevices[0], attributes: { deviceLifecycle: "DEFERRED" } }, twoDevices[1],
+    ]));
+    expect(screen.getAllByText("Device One").length).toBeGreaterThan(0);
+    expect(document.querySelector(".dm-detail")).toBeTruthy();
+    // Selecting another device lets it leave the list, as the filter says.
+    fireEvent.click(screen.getByText("Device Two"));
+    expect(screen.queryByText("Device One")).toBeNull();
+  });
+
+  it("search reduces the list by any data element and looks past the saved lifecycle filter", async () => {
+    renderPanel({ devices: [
+      { deviceId: "d1", name: "Device One", type: "LOCK", state: "ONLINE", location: "cabin", attributes: { deviceLifecycle: "ASSIGNED", room: "Kitchen" } },
+      { deviceId: "d2", name: "Device Two", type: "LOCK", state: "ONLINE", location: "cabin", attributes: { deviceLifecycle: "ASSIGNED", room: "Garage" } },
+      { deviceId: "d3", name: "Old Sensor", type: "TEMPERATURE_SENSOR", state: "OFFLINE", location: "cabin", attributes: { deviceLifecycle: "IGNORED", room: "Garage" } },
+    ] });
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    expect(screen.queryByText("Old Sensor")).toBeNull(); // hidden by the default State filter
+    const box = screen.getByRole("searchbox", { name: /search devices/i });
+    fireEvent.change(box, { target: { value: "room:garage" } });
+    expect(screen.getByText("Device Two")).toBeTruthy();
+    expect(screen.getByText("Old Sensor")).toBeTruthy();
+    expect(screen.queryByText("Device One")).toBeNull();
+    expect(screen.getByRole("status").textContent).toMatch(/2 of 3 match/);
+    fireEvent.change(box, { target: { value: "room:garage -type:sensor" } });
+    expect(screen.queryByText("Old Sensor")).toBeNull();
+    fireEvent.keyDown(box, { key: "Escape" });
+    expect(screen.getByText("Device One")).toBeTruthy();
+    expect(screen.queryByText("Old Sensor")).toBeNull(); // filters resume once the search is cleared
+  });
+
   it("clears the selection when switching to Add -- no device context makes sense there", async () => {
     renderPanel({ devices: twoDevices });
     await waitFor(() => expect(fetch).toHaveBeenCalled());

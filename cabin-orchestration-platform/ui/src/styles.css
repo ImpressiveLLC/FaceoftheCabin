@@ -3155,6 +3155,16 @@ select option { background: var(--bg-secondary); color: var(--text); }
 .expandable-list-chevron { font-size: 11px; }
 .dm-duplicate-note { margin: 6px 0; }
 
+/* Device Manager search (2026-11-05): one box over every data element of a device or service. */
+.dm-search { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:0 0 10px; }
+.dm-search-box { display:flex; align-items:center; gap:8px; flex:1 1 360px; max-width:760px; padding:6px 10px;
+  background:var(--bg-card, transparent); border:1px solid var(--border); border-radius:6px; color:var(--text-dim); }
+.dm-search-box:focus-within { border-color:var(--text-dim); color:var(--text); }
+.dm-search-box input { flex:1; min-width:0; background:transparent; border:0; outline:0; color:var(--text); font-size:13px; }
+.dm-search-clear { background:transparent; border:0; color:var(--text-dim); font-size:18px; line-height:1; cursor:pointer; padding:0 2px; }
+.dm-search-clear:hover { color:var(--text); }
+.dm-search-status { font-size:12px; color:var(--text-dim); }
+
 /* ─── Mobile Monitoring layout (2026-11-05) ────────────────────────────────
    Found on a phone: the Signal theme's 200px minimum column left one KPI tile per row (the content area is about 260px once the nav rail and
    padding are taken out), and the See/Change/Add/Remove row could not wrap, so it ran past the right edge. Rule of 3 for the grid:
