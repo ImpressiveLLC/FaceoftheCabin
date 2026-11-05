@@ -43,7 +43,7 @@ class AskGuideAliasRoutingTest {
         Map<String, String> pinned = Map.of(
             "Walk me through device onboarding after a platform import.", "device_import_lifecycle",
             "Show me the capability map of the platform.", "live_sensors",
-            "What are the minimum inputs to recreate an instance?", "installation",
+            "What are the minimum inputs for an independent instance?", "installation",
             "Can I recreate on a clean host by following the guide?", "installation",
             "How does Ask cite a knowledge node?", "ask_helpdesk_behavior",
             "Who handles a documentation correction made in a pull request?", "governance_contribution");
@@ -79,6 +79,10 @@ class AskGuideAliasRoutingTest {
             Map.entry("Recreate the morning workflow", "installation"),
             Map.entry("Dispute a false alarm on the front door", "governance_contribution"),
             Map.entry("Cite where the heater setting is documented", "ask_helpdesk_behavior"),
+            Map.entry("Can my wife have her own instance of the family notepad?", "installation"),
+            Map.entry("Does Home Assistant need its own instance at home?", "installation"),
+            Map.entry("How do I recreate the instance of a deleted rule?", "installation"),
+            Map.entry("Can I recreate the instance of the porch light rule every day?", "installation"),
             Map.entry("Can Alexa control the heater through an external platform?", "device_import_lifecycle"),
             Map.entry("Can I unlock the front door from an external platform?", "device_import_lifecycle"),
             Map.entry("How do I make an auditable change to the thermostat schedule?", "governance_contribution"),

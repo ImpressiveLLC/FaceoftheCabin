@@ -988,10 +988,9 @@
         "independent",
         "standalone",
         "overlay",
-        "recreate an instance",
-        "recreate the instance",
+        "recreate the platform",
         "independent instance",
-        "own instance",
+        "independent installation",
         "recreate on a clean host"
       ],
       "questions": [
