@@ -1,0 +1,136 @@
+{
+  "version": "synthetic",
+  "description": "Synthetic categories for AskContextBuilderMatcherTest. Invented words only: no question text, no alias and no keyword from any evaluation set.",
+  "categories": [
+    {
+      "id": "cat_alpha",
+      "keywordPatterns": [
+        "zorbit",
+        "quillon sync"
+      ],
+      "contextNodes": [
+        {
+          "entityRef": "syn.alpha",
+          "chunkType": "DESCRIPTION"
+        },
+        {
+          "entityRef": "syn.shared",
+          "chunkType": "DESCRIPTION"
+        }
+      ],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/syn.md",
+          "section": "alpha-part",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "cat_beta",
+      "keywordPatterns": [
+        "zorbit"
+      ],
+      "contextNodes": [
+        {
+          "entityRef": "syn.beta",
+          "chunkType": "DESCRIPTION"
+        },
+        {
+          "entityRef": "syn.shared",
+          "chunkType": "DESCRIPTION"
+        }
+      ],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/syn.md",
+          "section": "alpha-part",
+          "audience": "household"
+        },
+        {
+          "path": "ai-assistant/user-guide/syn.md",
+          "section": "beta-part",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "cat_gamma",
+      "keywordPatterns": [
+        "zorbit",
+        "flumph"
+      ],
+      "contextNodes": [
+        {
+          "entityRef": "syn.gamma",
+          "chunkType": "DESCRIPTION"
+        }
+      ],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/syn.md",
+          "section": "small-part",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "cat_delta",
+      "keywordPatterns": [
+        "flumph"
+      ],
+      "contextNodes": [
+        {
+          "entityRef": "syn.delta",
+          "chunkType": "DESCRIPTION"
+        }
+      ],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/syn.md",
+          "section": "small-part",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "cat_stem",
+      "keywordPatterns": [
+        "wibble",
+        "frobnicate",
+        "gronk"
+      ],
+      "contextNodes": [
+        {
+          "entityRef": "syn.stem",
+          "chunkType": "DESCRIPTION"
+        }
+      ]
+    },
+    {
+      "id": "cat_dup",
+      "keywordPatterns": [
+        "glorp",
+        "glorped"
+      ],
+      "contextNodes": [
+        {
+          "entityRef": "syn.dup",
+          "chunkType": "DESCRIPTION"
+        }
+      ]
+    },
+    {
+      "id": "cat_one",
+      "keywordPatterns": [
+        "glorped"
+      ],
+      "contextNodes": [
+        {
+          "entityRef": "syn.one",
+          "chunkType": "DESCRIPTION"
+        }
+      ]
+    }
+  ]
+}

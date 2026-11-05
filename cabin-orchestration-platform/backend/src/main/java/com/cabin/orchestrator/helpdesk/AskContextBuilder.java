@@ -17,10 +17,13 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -48,6 +51,13 @@ public class AskContextBuilder {
     /** Below this remaining budget a section is skipped rather than truncated to a stub. */
     private static final int MIN_USEFUL_SECTION_CHARS = 300;
     private static final String DOCUMENT_REF_PREFIX = "doc:";
+    /**
+     * Endings a keyword may take and still count as that keyword: plural, past, progressive, adverb,
+     * agent and -ation noun forms (install -> installs, installed, installing, installation). A keyword
+     * ending in "e" also takes -ing and -ation after dropping it (configure -> configuring). Doubled
+     * letters and other stem changes are not handled; list that form as its own keyword where it matters.
+     */
+    private static final String INFLECTION = "(?:s|es|ed|d|ing|ings|ly|er|ers|ation|ations)?";
 
     private final KnowledgeNodeRepository knowledgeNodeRepository;
     private final ReviewedDocumentSource documentSource;
@@ -79,14 +89,30 @@ public class AskContextBuilder {
     }
 
     public List<KnowledgeNode> buildContext(String question, HouseholdRole role) {
-        CompiledCategory selected = select(question);
-        if (selected == null) {
+        List<CompiledCategory> selected = select(question);
+        if (selected.isEmpty()) {
             return List.of();
         }
-        List<KnowledgeNode> nodes = resolveNodes(selected.category());
-        List<KnowledgeNode> documents = resolveDocuments(selected.category(), role);
-        log.info("AskContextBuilder: category '{}' -> {} KnowledgeNodes, {} document sections ({} chars){}",
-            selected.category().id(), nodes.size(), documents.size(),
+        List<KnowledgeNode> nodes = new ArrayList<>();
+        List<KnowledgeNode> documents = new ArrayList<>();
+        Set<String> seenNodes = new HashSet<>();
+        Set<String> seenDocuments = new HashSet<>();
+        int remaining = maxDocumentChars;
+        for (int i = 0; i < selected.size(); i++) {
+            ContextCategory category = selected.get(i).category();
+            for (KnowledgeNode node : resolveNodes(category)) {
+                if (seenNodes.add(nodeKey(node.entityRef(), node.chunkType()))) {
+                    nodes.add(node);
+                }
+            }
+            // The first (declaration-order) category of a tie keeps the budget-truncation behavior;
+            // the other tied categories only add sections that fit whole in what is left.
+            List<KnowledgeNode> added = resolveDocuments(category, role, remaining, seenDocuments, i == 0);
+            documents.addAll(added);
+            remaining -= added.stream().mapToInt(d -> d.content().length()).sum();
+        }
+        log.info("AskContextBuilder: categories {} -> {} KnowledgeNodes, {} document sections ({} chars){}",
+            selected.stream().map(c -> c.category().id()).toList(), nodes.size(), documents.size(),
             documents.stream().mapToInt(d -> d.content().length()).sum(),
             role == HouseholdRole.ADMINISTRATOR ? "" : " [non-admin audience]");
         List<KnowledgeNode> context = new ArrayList<>(nodes);
@@ -94,22 +120,34 @@ public class AskContextBuilder {
         return List.copyOf(context);
     }
 
-    /** Which category a question routes to (null if none) -- lets tests assert routing without fixture nodes. */
+    /** Which category a question routes to first (null if none) -- lets tests assert routing without fixture nodes. */
     String categoryIdFor(String question) {
-        CompiledCategory selected = select(question);
-        return selected == null ? null : selected.category().id();
+        List<CompiledCategory> selected = select(question);
+        return selected.isEmpty() ? null : selected.get(0).category().id();
     }
 
-    /** Highest score wins; ties keep declaration order; no matching pattern selects nothing. */
-    private CompiledCategory select(String question) {
+    /** Every category that tied for the top score, in declaration order (empty if none matched). */
+    List<String> categoryIdsFor(String question) {
+        return select(question).stream().map(c -> c.category().id()).toList();
+    }
+
+    /**
+     * Highest score wins; categories that tie for it are all kept, in declaration order, so a tie no
+     * longer drops the right section just because another category was declared first. No matching
+     * pattern selects nothing.
+     */
+    private List<CompiledCategory> select(String question) {
         String normalized = question.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
-        CompiledCategory best = null;
+        List<CompiledCategory> best = new ArrayList<>();
         int bestScore = 0;
         for (CompiledCategory candidate : categories) {
             int score = candidate.score(normalized);
             if (score > bestScore) {
-                best = candidate;
+                best.clear();
+                best.add(candidate);
                 bestScore = score;
+            } else if (score == bestScore && score > 0) {
+                best.add(candidate);
             }
         }
         return best;
@@ -139,15 +177,24 @@ public class AskContextBuilder {
             .toList();
     }
 
-    private List<KnowledgeNode> resolveDocuments(ContextCategory category, HouseholdRole role) {
+    /**
+     * @param remaining       document characters still available across all selected categories
+     * @param seen            "path#section" keys already supplied by an earlier tied category (updated here)
+     * @param truncateToFit   false for a secondary tied category: a section that does not fit whole is skipped
+     */
+    private List<KnowledgeNode> resolveDocuments(ContextCategory category, HouseholdRole role, int remaining,
+                                                 Set<String> seen, boolean truncateToFit) {
         if (category.contextDocuments() == null || category.contextDocuments().isEmpty()) {
             return List.of();
         }
         boolean administrator = role == HouseholdRole.ADMINISTRATOR;
         List<KnowledgeNode> documents = new ArrayList<>();
-        int remaining = maxDocumentChars;
         for (ContextDocumentRef ref : category.contextDocuments()) {
             if (!administrator && !"household".equalsIgnoreCase(ref.audience())) {
+                continue;
+            }
+            String key = ref.path() + "#" + ref.section();
+            if (seen.contains(key)) {
                 continue;
             }
             var section = documentSource.section(ref.path(), ref.section());
@@ -156,6 +203,11 @@ public class AskContextBuilder {
             }
             String text = section.get().text();
             if (text.length() > remaining) {
+                if (!truncateToFit) {
+                    log.warn("AskContextBuilder: tied category '{}' section {} skipped, does not fit whole in {} chars left",
+                        category.id(), key, remaining);
+                    continue;
+                }
                 if (remaining < MIN_USEFUL_SECTION_CHARS) {
                     log.warn("AskContextBuilder: category '{}' section {}#{} skipped, {} of {} chars of budget left",
                         category.id(), ref.path(), ref.section(), remaining, maxDocumentChars);
@@ -167,6 +219,7 @@ public class AskContextBuilder {
                     category.id(), ref.path(), ref.section(), remaining);
             }
             remaining -= Math.min(text.length(), remaining);
+            seen.add(key);
             documents.add(new KnowledgeNode(DOCUMENT_REF_PREFIX + ref.path() + "#" + ref.section(),
                 KnowledgeChunkType.DESCRIPTION, text, KnowledgeSource.REVIEWED_DOCUMENT,
                 section.get().lastModified()));
@@ -221,10 +274,20 @@ public class AskContextBuilder {
             this.category = category;
             List<String> keywords = category.keywordPatterns() == null ? List.of() : category.keywordPatterns();
             this.patterns = keywords.stream()
-                .map(k -> Pattern.compile("(?<![a-z0-9_])" + Pattern.quote(k.toLowerCase(Locale.ROOT).strip())
-                    + "(?:s|es)?(?![a-z0-9_])"))
+                .map(k -> Pattern.compile("(?<![a-z0-9_])" + withEndings(k.toLowerCase(Locale.ROOT).strip())
+                    + "(?![a-z0-9_])"))
                 .toList();
             this.wordCounts = keywords.stream().map(k -> k.strip().split("\\s+").length).toList();
+        }
+
+        /** The keyword plus its allowed endings; a keyword ending in "e" also takes the e-dropping forms (-ing, -ation). */
+        private static String withEndings(String keyword) {
+            String base = Pattern.quote(keyword) + INFLECTION;
+            if (keyword.length() > 3 && keyword.endsWith("e")) {
+                return "(?:" + base + "|" + Pattern.quote(keyword.substring(0, keyword.length() - 1))
+                    + "(?:ing|ings|ation|ations))";
+            }
+            return base;
         }
 
         ContextCategory category() {
@@ -235,10 +298,16 @@ public class AskContextBuilder {
         int score(String normalizedQuestion) {
             int score = 0;
             boolean matched = false;
+            // Two keywords that differ only by an ending (ignore, ignored) both match the same words once
+            // endings are accepted; the same span is worth one keyword, not two.
+            Set<String> countedSpans = new HashSet<>();
             for (int i = 0; i < patterns.size(); i++) {
-                if (patterns.get(i).matcher(normalizedQuestion).find()) {
-                    score += wordCounts.get(i);
+                Matcher m = patterns.get(i).matcher(normalizedQuestion);
+                if (m.find()) {
                     matched = true;
+                    if (countedSpans.add(m.start() + ":" + m.end())) {
+                        score += wordCounts.get(i);
+                    }
                 }
             }
             return matched ? score + (category.boost() == null ? 0 : category.boost()) : 0;
