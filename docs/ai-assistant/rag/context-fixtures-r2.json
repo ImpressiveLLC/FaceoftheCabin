@@ -169,7 +169,7 @@
         "import proposals",
         "acceptance",
         "device onboarding",
-        "platform import",
+        "a platform import",
         "import from an external platform",
         "persisted candidate",
         "import lifecycle"
@@ -988,8 +988,6 @@
         "independent",
         "standalone",
         "overlay",
-        "recreate the platform",
-        "independent instance",
         "independent installation",
         "recreate on a clean host"
       ],
@@ -1156,7 +1154,6 @@
         "retrieved document",
         "knowledge node",
         "how ask answers",
-        "ask answers",
         "cite a source",
         "source citation"
       ],

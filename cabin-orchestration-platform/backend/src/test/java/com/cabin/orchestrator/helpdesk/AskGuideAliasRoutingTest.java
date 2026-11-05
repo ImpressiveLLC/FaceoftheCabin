@@ -15,8 +15,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * W-151 part 2: curated guide-vocabulary phrases (device onboarding, capability map, minimum inputs, clean host,
- * knowledge nodes, citations, pull requests) route to the category whose section covers them. The phrasings are written
+ * W-151 part 2: curated guide-vocabulary phrases (device onboarding, capability map, independent installation,
+ * recreate on a clean host, knowledge nodes, citations, pull requests) route to the category whose section covers them. The phrasings are written
  * from the guide sections' own wording, not from any evaluation question, and none is a held-out or sealed-set question.
  */
 class AskGuideAliasRoutingTest {
@@ -83,6 +83,11 @@ class AskGuideAliasRoutingTest {
             Map.entry("Does Home Assistant need its own instance at home?", "installation"),
             Map.entry("How do I recreate the instance of a deleted rule?", "installation"),
             Map.entry("Can I recreate the instance of the porch light rule every day?", "installation"),
+            Map.entry("How often does the platform import new temperature readings?", "device_import_lifecycle"),
+            Map.entry("Does the platform import Frigate clips to the backup drive?", "device_import_lifecycle"),
+            Map.entry("How do I recreate the platform schedule for the sprinklers?", "installation"),
+            Map.entry("I deleted the heater rule, how do I recreate the platform rule?", "installation"),
+            Map.entry("Can I ask answers about the dishwasher leak?", "ask_helpdesk_behavior"),
             Map.entry("Can Alexa control the heater through an external platform?", "device_import_lifecycle"),
             Map.entry("Can I unlock the front door from an external platform?", "device_import_lifecycle"),
             Map.entry("How do I make an auditable change to the thermostat schedule?", "governance_contribution"),
