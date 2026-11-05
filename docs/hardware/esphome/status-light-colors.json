@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "applies_to": "sensor_collection_box / relay_control_box QT Py ESP32-S3 sensor half (docs/hardware/esphome/box2-bench.yaml)",
+  "source_of_truth": "box2.yaml (release); box2-bench.yaml is the bench variant with debug logging and a heartbeat",
+  "hardware": {
+    "led": "QT Py ESP32-S3 onboard NeoPixel",
+    "data_pin": "GPIO39",
+    "power_pin": "GPIO38 (drive high)",
+    "chipset": "WS2812",
+    "rgb_order": "GRB",
+    "brightness": 0.15,
+    "exposed_to_ha": false
+  },
+  "evaluation": "re-evaluated every 1 s; first matching state in priority order wins",
+  "states": [
+    {
+      "priority": 0,
+      "id": "starting",
+      "meaning": "first 8 s after boot",
+      "when": "uptime < 8 s",
+      "pattern": "solid",
+      "color": {
+        "name": "blue",
+        "r": 0.0,
+        "g": 0.0,
+        "b": 1.0
+      }
+    },
+    {
+      "priority": 1,
+      "id": "wifi_down",
+      "meaning": "Wi-Fi connecting or lost",
+      "when": "Wi-Fi not connected",
+      "pattern": "blink",
+      "on_ms": 1000,
+      "off_ms": 1000,
+      "color": {
+        "name": "yellow",
+        "r": 1.0,
+        "g": 0.7,
+        "b": 0.0
+      }
+    },
+    {
+      "priority": 2,
+      "id": "sen66_fault",
+      "meaning": "SEN66 failed, or no temperature reading after 120 s",
+      "when": "SEN66 bad and SHT45 ok",
+      "pattern": "blink",
+      "on_ms": 250,
+      "off_ms": 250,
+      "color": {
+        "name": "red",
+        "r": 1.0,
+        "g": 0.0,
+        "b": 0.0
+      }
+    },
+    {
+      "priority": 3,
+      "id": "sht45_fault",
+      "meaning": "SHT45 failed, or no temperature reading after 120 s",
+      "when": "SHT45 bad and SEN66 ok",
+      "pattern": "blink",
+      "on_ms": 250,
+      "off_ms": 250,
+      "color": {
+        "name": "cyan",
+        "r": 0.0,
+        "g": 1.0,
+        "b": 1.0
+      }
+    },
+    {
+      "priority": 4,
+      "id": "both_sensors_fault",
+      "meaning": "SEN66 and SHT45 both faulted",
+      "when": "both bad",
+      "pattern": "alternate",
+      "step_ms": 250,
+      "colors": [
+        {
+          "name": "red",
+          "r": 1.0,
+          "g": 0.0,
+          "b": 0.0
+        },
+        {
+          "name": "cyan",
+          "r": 0.0,
+          "g": 1.0,
+          "b": 1.0
+        }
+      ]
+    },
+    {
+      "priority": 5,
+      "id": "syncing",
+      "meaning": "Wi-Fi up, no Home Assistant API client connected yet",
+      "when": "Wi-Fi connected, sensors ok, API client not connected",
+      "pattern": "blink",
+      "on_ms": 500,
+      "off_ms": 500,
+      "color": {
+        "name": "purple",
+        "r": 0.6,
+        "g": 0.0,
+        "b": 1.0
+      }
+    },
+    {
+      "priority": 6,
+      "id": "healthy",
+      "meaning": "Wi-Fi up, HA connected, both sensors reporting (the QT Py's own normal colour)",
+      "when": "none of the above",
+      "pattern": "rainbow",
+      "effect": {
+        "name": "addressable_rainbow",
+        "speed": 20,
+        "width": 1
+      }
+    }
+  ],
+  "notes": [
+    "The ESP32-S3 is 2.4 GHz only.",
+    "Sensor faults outrank 'syncing' so a bad sensor is never hidden while HA is down.",
+    "On a bench with no HA client the light shows purple blink, not rainbow.",
+    "The SEN6x adapter and SHT45 breakout power LEDs are fixed green and not programmable; the QT Py light carries per-component status.",
+    "Check colours through the acrylic light pipe; amber at 15 % brightness reads as orange."
+  ]
+}

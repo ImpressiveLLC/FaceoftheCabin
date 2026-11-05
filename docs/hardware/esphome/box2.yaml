@@ -1,0 +1,206 @@
+esphome:
+  name: fotc-qtpy-box2
+  friendly_name: Box 2
+  min_version: 2026.10.2
+
+  on_boot:
+    priority: 600
+    then:
+      - output.turn_on: neopixel_power
+      - light.turn_on:
+          id: status_led
+          brightness: 15%
+          red: 0%
+          green: 0%
+          blue: 100%
+
+esp32:
+  board: adafruit_qtpy_esp32s3_nopsram
+  framework:
+    type: esp-idf
+
+# Default 60 s: a reset or unplug within a minute of provisioning loses the saved Wi-Fi.
+preferences:
+  flash_write_interval: 10s
+
+logger:
+  level: INFO
+
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+# Wi-Fi credentials are not stored in this file. Join the network with Improv
+# (web.esphome.io, "Connect to Wi-Fi" after flashing) or the fallback AP below.
+wifi:
+  power_save_mode: none
+  output_power: 15dB
+  # Same subnet and gateway at Home and the cabin (192.168.1.0/24, gateway .1).
+  # Address plan: .130 Box 2, .131 Box 3, .132 Box 4, .133 S6 speed node.
+  manual_ip:
+    static_ip: 192.168.1.130
+    gateway: 192.168.1.1
+    subnet: 255.255.255.0
+    dns1: 192.168.1.1
+  ap:
+    ssid: "fotc-box2-setup"
+    password: !secret ap_password
+
+captive_portal:
+improv_serial:
+
+# STEMMA QT port on the QT Py ESP32-S3 is the second I2C bus: SDA1=GPIO41, SCL1=GPIO40
+i2c:
+  sda: GPIO41
+  scl: GPIO40
+  scan: true
+  frequency: 100kHz
+
+# Onboard NeoPixel: GPIO39 data, GPIO38 powers it. Kept internal (not exposed to HA).
+output:
+  - platform: gpio
+    pin: GPIO38
+    id: neopixel_power
+
+light:
+  - platform: esp32_rmt_led_strip
+    id: status_led
+    internal: true
+    pin: GPIO39
+    num_leds: 1
+    rgb_order: GRB
+    chipset: WS2812
+    effects:
+      - addressable_rainbow:
+          name: Rainbow
+          speed: 20
+          width: 1
+      - strobe:
+          name: Blink Yellow
+          colors:
+            - {state: true, red: 100%, green: 70%, blue: 0%, brightness: 100%, duration: 1000ms}
+            - {state: false, duration: 1000ms}
+      - strobe:
+          name: Blink Purple
+          colors:
+            - {state: true, red: 60%, green: 0%, blue: 100%, brightness: 100%, duration: 500ms}
+            - {state: false, duration: 500ms}
+      - strobe:
+          name: Blink Red
+          colors:
+            - {state: true, red: 100%, green: 0%, blue: 0%, brightness: 100%, duration: 250ms}
+            - {state: false, duration: 250ms}
+      - strobe:
+          name: Blink Cyan
+          colors:
+            - {state: true, red: 0%, green: 100%, blue: 100%, brightness: 100%, duration: 250ms}
+            - {state: false, duration: 250ms}
+      - strobe:
+          name: Blink Red Cyan
+          colors:
+            - {state: true, red: 100%, green: 0%, blue: 0%, brightness: 100%, duration: 250ms}
+            - {state: true, red: 0%, green: 100%, blue: 100%, brightness: 100%, duration: 250ms}
+
+globals:
+  - id: led_state
+    type: int
+    initial_value: "-1"
+
+# Status light, 15% brightness. Priority order, first match wins:
+#   blue, solid            = starting up (first 8 s)
+#   yellow, slow blink     = Wi-Fi connecting or lost
+#   red, fast blink        = SEN66 fault (failed, or no reading after warm-up)
+#   cyan, fast blink       = SHT45 fault
+#   red/cyan alternating   = both sensors faulted
+#   purple, medium blink   = Wi-Fi up, waiting for Home Assistant (syncing)
+#   rainbow                = healthy: Wi-Fi up, HA connected, both sensors reporting
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          bool sen_bad = id(sen66_hub).is_failed() || (millis() > 120000 && std::isnan(id(sen66_temp).state));
+          bool sht_bad = id(sht45_hub).is_failed() || (millis() > 120000 && std::isnan(id(sht45_temp).state));
+          int s;
+          if (millis() < 8000) s = 0;
+          else if (!wifi::global_wifi_component->is_connected()) s = 1;
+          else if (sen_bad && sht_bad) s = 5;
+          else if (sen_bad) s = 3;
+          else if (sht_bad) s = 4;
+          else if (!api::global_api_server->is_connected()) s = 2;
+          else s = 6;
+          if (s == id(led_state)) return;
+          id(led_state) = s;
+          auto call = id(status_led).turn_on();
+          call.set_brightness(0.15f);
+          switch (s) {
+            case 0: call.set_effect("None"); call.set_rgb(0.0f, 0.0f, 1.0f); break;
+            case 1: call.set_effect("Blink Yellow"); break;
+            case 2: call.set_effect("Blink Purple"); break;
+            case 3: call.set_effect("Blink Red"); break;
+            case 4: call.set_effect("Blink Cyan"); break;
+            case 5: call.set_effect("Blink Red Cyan"); break;
+            default: call.set_effect("Rainbow"); break;
+          }
+          call.perform();
+
+sensor:
+  - platform: sen6x
+    id: sen66_hub
+    type: SEN66
+    address: 0x6B
+    update_interval: 10s
+    pm_1_0:
+      id: sen66_pm1
+      name: "SEN66 PM1.0"
+    pm_2_5:
+      id: sen66_pm25
+      name: "SEN66 PM2.5"
+    pm_4_0:
+      id: sen66_pm4
+      name: "SEN66 PM4.0"
+    pm_10_0:
+      id: sen66_pm10
+      name: "SEN66 PM10"
+    co2:
+      id: sen66_co2
+      name: "SEN66 CO2"
+    voc_index:
+      id: sen66_voc
+      name: "SEN66 VOC index"
+    nox_index:
+      id: sen66_nox
+      name: "SEN66 NOx index"
+    temperature:
+      id: sen66_temp
+      name: "SEN66 temperature"
+    humidity:
+      id: sen66_rh
+      name: "SEN66 humidity"
+
+  - platform: sht4x
+    id: sht45_hub
+    address: 0x44
+    update_interval: 10s
+    temperature:
+      id: sht45_temp
+      name: "SHT45 temperature"
+    humidity:
+      id: sht45_rh
+      name: "SHT45 humidity"
+
+  - platform: uptime
+    name: "Uptime"
+    entity_category: diagnostic
+
+  - platform: wifi_signal
+    name: "WiFi signal"
+    update_interval: 30s
+    entity_category: diagnostic
+
+text_sensor:
+  - platform: version
+    name: "ESPHome version"
