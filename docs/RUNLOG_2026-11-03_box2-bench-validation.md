@@ -78,3 +78,13 @@ Reserve each in the Starlink app by MAC once the board's MAC is known (read it w
 3. Add the ESPHome integration in cabin HA with the node's API key (vault, not repo), confirm discovery picks it up, then record `runtime_device_id` under D1/D28.
 4. Release build: `logger: INFO`, drop the heartbeat, decide the final update interval.
 5. Correct the build doc per PR #258 (still unapplied on main as of this run).
+
+## Home collector restored (2026-11-05)
+
+Home temperature and humidity were missing because the Termux phone (`G3223`) was off Tailscale and Home Zigbee2MQTT was wedged (`STOPABORT`, then daily `NOT_CONNECTED` backup errors since 2026-10-27). The retained `home_z2m/bridge/state` was `offline` for days and nothing alerted.
+
+- Tailscale turned on via adb; Z2M restarted; `home_z2m/bridge/state` is `online`; network-scan-agent reconnected to the cabin broker.
+- Tailscale is now set as the Android Always-on VPN on `G3223` (Settings, VPN, gear). Block-connections-without-VPN is left off so the phone keeps its own internet if the tunnel is down. Setting `always_on_vpn_app` with `adb shell settings put` did not register in the UI; the toggle had to be tapped.
+- Lesson: a quick-settings tap on the phone switched Wi-Fi off once. Check Wi-Fi after any UI tapping on the phone.
+- Only one Home SNZB-02P is joined; the five planned Home sensors (W-80) are not paired.
+- Alert gap logged as backlog W-151.
