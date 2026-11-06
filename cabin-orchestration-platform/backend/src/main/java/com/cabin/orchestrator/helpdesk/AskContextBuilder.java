@@ -307,7 +307,7 @@ public class AskContextBuilder {
             String text = section.get().text();
             if (text.length() > remaining) {
                 if (!truncateToFit) {
-                    log.warn("AskContextBuilder: tied category '{}' section {} skipped, does not fit whole in {} chars left",
+                    log.warn("AskContextBuilder: '{}' section {} skipped, does not fit whole in the {} chars left",
                         sourceId, key, remaining);
                     continue;
                 }
