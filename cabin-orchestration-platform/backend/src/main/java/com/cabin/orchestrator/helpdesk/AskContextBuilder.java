@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
@@ -50,6 +51,7 @@ public class AskContextBuilder {
 
     /** Below this remaining budget a section is skipped rather than truncated to a stub. */
     private static final int MIN_USEFUL_SECTION_CHARS = 300;
+    private static final int DEFAULT_LEXICAL_MIN_TERMS = 3;
     private static final String DOCUMENT_REF_PREFIX = "doc:";
     /**
      * Endings a keyword may take and still count as that keyword: plural, past, progressive, adverb,
@@ -63,7 +65,23 @@ public class AskContextBuilder {
     private final ReviewedDocumentSource documentSource;
     private final List<CompiledCategory> categories;
     private final int maxDocumentChars;
+    private final int lexicalSections;
+    private final int lexicalMinTerms;
+    /** "path#section" keys the context map lists with the household audience; every other guide section is administrator-only. */
+    private final Set<String> householdSections;
 
+    /** Lexical supplement off: category sections only. The five-argument form every existing test uses. */
+    public AskContextBuilder(
+            KnowledgeNodeRepository knowledgeNodeRepository,
+            ReviewedDocumentSource documentSource,
+            ResourceLoader resourceLoader,
+            String fixturesLocation,
+            int maxDocumentChars) {
+        this(knowledgeNodeRepository, documentSource, resourceLoader, fixturesLocation, maxDocumentChars, 0,
+            DEFAULT_LEXICAL_MIN_TERMS);
+    }
+
+    @Autowired
     public AskContextBuilder(
             KnowledgeNodeRepository knowledgeNodeRepository,
             ReviewedDocumentSource documentSource,
@@ -72,15 +90,28 @@ public class AskContextBuilder {
             // ~4 chars/token: 6000 chars is ~1.5k tokens, sized to stay inside a default Ollama
             // context window with the prompt scaffold and answer. Measure before raising (C1's
             // context-fit rule); Ollama silently drops the *start* of an oversized prompt.
-            @Value("${ask.context.max-document-chars:6000}") int maxDocumentChars) {
+            @Value("${ask.context.max-document-chars:6000}") int maxDocumentChars,
+            // Guide sections ranked by word overlap and put ahead of the context-map sections. 0 turns the
+            // supplement off (the previous behavior); ASK_CONTEXT_LEXICAL_SECTIONS=0 is the rollback.
+            @Value("${ask.context.lexical-sections:3}") int lexicalSections,
+            // A lexical section is used only when it shares at least this many distinct words with the question.
+            @Value("${ask.context.lexical-min-terms:3}") int lexicalMinTerms) {
         this.knowledgeNodeRepository = knowledgeNodeRepository;
         this.documentSource = documentSource;
         this.maxDocumentChars = maxDocumentChars;
+        this.lexicalSections = Math.max(0, lexicalSections);
+        this.lexicalMinTerms = Math.max(1, lexicalMinTerms);
         this.categories = loadCategories(resourceLoader, fixturesLocation).stream()
             .map(CompiledCategory::new)
             .toList();
-        log.info("AskContextBuilder loaded {} categories from {} (document budget {} chars)",
-            categories.size(), fixturesLocation, maxDocumentChars);
+        this.householdSections = this.categories.stream()
+            .flatMap(c -> c.category().contextDocuments() == null ? java.util.stream.Stream.<ContextDocumentRef>empty()
+                : c.category().contextDocuments().stream())
+            .filter(ref -> "household".equalsIgnoreCase(ref.audience()))
+            .map(ref -> ref.path() + "#" + ref.section())
+            .collect(Collectors.toUnmodifiableSet());
+        log.info("AskContextBuilder loaded {} categories from {} (document budget {} chars, lexical sections {}, min terms {})",
+            categories.size(), fixturesLocation, maxDocumentChars, this.lexicalSections, this.lexicalMinTerms);
     }
 
     /** Role-less overload: equivalent to a null role, i.e. household-audience document entries only. */
@@ -90,7 +121,8 @@ public class AskContextBuilder {
 
     public List<KnowledgeNode> buildContext(String question, HouseholdRole role) {
         List<CompiledCategory> selected = select(question);
-        if (selected.isEmpty()) {
+        List<ContextDocumentRef> lexical = lexicalRefs(question);
+        if (selected.isEmpty() && lexical.isEmpty()) {
             return List.of();
         }
         List<KnowledgeNode> nodes = new ArrayList<>();
@@ -98,6 +130,11 @@ public class AskContextBuilder {
         Set<String> seenNodes = new HashSet<>();
         Set<String> seenDocuments = new HashSet<>();
         int remaining = maxDocumentChars;
+        // Word-overlap matches go first: they are chosen by this question's own words, so they are the
+        // sections most likely to answer it when no context-map keyword anticipated the wording.
+        List<KnowledgeNode> lexicalAdded = resolveRefs("lexical", lexical, role, remaining, seenDocuments, true);
+        documents.addAll(lexicalAdded);
+        remaining -= lexicalAdded.stream().mapToInt(d -> d.content().length()).sum();
         for (int i = 0; i < selected.size(); i++) {
             ContextCategory category = selected.get(i).category();
             for (KnowledgeNode node : resolveNodes(category)) {
@@ -105,19 +142,39 @@ public class AskContextBuilder {
                     nodes.add(node);
                 }
             }
-            // The first (declaration-order) category of a tie keeps the budget-truncation behavior;
-            // the other tied categories only add sections that fit whole in what is left.
-            List<KnowledgeNode> added = resolveDocuments(category, role, remaining, seenDocuments, i == 0);
+            // The first (declaration-order) category of a tie keeps the budget-truncation behavior when
+            // nothing came before it; the other tied categories only add sections that fit whole.
+            List<KnowledgeNode> added = resolveRefs(category.id(), category.contextDocuments(), role, remaining,
+                seenDocuments, i == 0 && lexicalAdded.isEmpty());
             documents.addAll(added);
             remaining -= added.stream().mapToInt(d -> d.content().length()).sum();
         }
-        log.info("AskContextBuilder: categories {} -> {} KnowledgeNodes, {} document sections ({} chars){}",
-            selected.stream().map(c -> c.category().id()).toList(), nodes.size(), documents.size(),
+        log.info("AskContextBuilder: categories {} + {} lexical -> {} KnowledgeNodes, {} document sections ({} chars){}",
+            selected.stream().map(c -> c.category().id()).toList(), lexicalAdded.size(), nodes.size(), documents.size(),
             documents.stream().mapToInt(d -> d.content().length()).sum(),
             role == HouseholdRole.ADMINISTRATOR ? "" : " [non-admin audience]");
         List<KnowledgeNode> context = new ArrayList<>(nodes);
         context.addAll(documents);
         return List.copyOf(context);
+    }
+
+    /**
+     * Guide sections ranked by word overlap with the question, as context-map style references. A section the
+     * context map does not list as household has no audience of its own, so it is administrator-only
+     * (fail closed, same as an unspecified map entry).
+     */
+    private List<ContextDocumentRef> lexicalRefs(String question) {
+        if (lexicalSections <= 0 || question == null) {
+            return List.of();
+        }
+        return GuideSectionRanker.rank(question, documentSource.leafSections(), lexicalSections, lexicalMinTerms)
+            .stream()
+            .map(r -> {
+                String key = r.section().path() + "#" + r.section().anchor();
+                return new ContextDocumentRef(r.section().path(), r.section().anchor(),
+                    householdSections.contains(key) ? "household" : "administrator");
+            })
+            .toList();
     }
 
     /** Which category a question routes to first (null if none) -- lets tests assert routing without fixture nodes. */
@@ -182,14 +239,14 @@ public class AskContextBuilder {
      * @param seen            "path#section" keys already supplied by an earlier tied category (updated here)
      * @param truncateToFit   false for a secondary tied category: a section that does not fit whole is skipped
      */
-    private List<KnowledgeNode> resolveDocuments(ContextCategory category, HouseholdRole role, int remaining,
-                                                 Set<String> seen, boolean truncateToFit) {
-        if (category.contextDocuments() == null || category.contextDocuments().isEmpty()) {
+    private List<KnowledgeNode> resolveRefs(String sourceId, List<ContextDocumentRef> refs, HouseholdRole role,
+                                            int remaining, Set<String> seen, boolean truncateToFit) {
+        if (refs == null || refs.isEmpty()) {
             return List.of();
         }
         boolean administrator = role == HouseholdRole.ADMINISTRATOR;
         List<KnowledgeNode> documents = new ArrayList<>();
-        for (ContextDocumentRef ref : category.contextDocuments()) {
+        for (ContextDocumentRef ref : refs) {
             if (!administrator && !"household".equalsIgnoreCase(ref.audience())) {
                 continue;
             }
@@ -205,18 +262,18 @@ public class AskContextBuilder {
             if (text.length() > remaining) {
                 if (!truncateToFit) {
                     log.warn("AskContextBuilder: tied category '{}' section {} skipped, does not fit whole in {} chars left",
-                        category.id(), key, remaining);
+                        sourceId, key, remaining);
                     continue;
                 }
                 if (remaining < MIN_USEFUL_SECTION_CHARS) {
                     log.warn("AskContextBuilder: category '{}' section {}#{} skipped, {} of {} chars of budget left",
-                        category.id(), ref.path(), ref.section(), remaining, maxDocumentChars);
+                        sourceId, ref.path(), ref.section(), remaining, maxDocumentChars);
                     continue;
                 }
                 text = truncateAtParagraph(text, remaining)
                     + "\n[section truncated to fit the context budget -- see " + ref.path() + "#" + ref.section() + "]";
                 log.warn("AskContextBuilder: category '{}' section {}#{} truncated to {} chars",
-                    category.id(), ref.path(), ref.section(), remaining);
+                    sourceId, ref.path(), ref.section(), remaining);
             }
             remaining -= Math.min(text.length(), remaining);
             seen.add(key);
