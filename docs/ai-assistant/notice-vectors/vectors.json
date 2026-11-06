@@ -1,0 +1,655 @@
+{
+ "version": 1,
+ "spec": "docs/ai-assistant/proposals/ask-no-source-guard.md",
+ "note": "Shared by the Python reference (scripts/ask_notice_rules.py) and the later Java implementation. Expected values are written by hand from the spec. contextKind: EMPTY, FALLBACK_ONLY, NODES_ONLY, WITH_DOCS. answerRepeat builds prefix + unit*count + suffix so long inputs stay small on disk.",
+ "vectors": [
+  {
+   "id": "supplied-exact",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "Do X. [source: ai-assistant/user-guide/operations.md#users-and-family-data]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data"
+   ],
+   "expectedNotice": null
+  },
+  {
+   "id": "supplied-abbrev-path",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "Do X. [source: ai-assistant/user-guide/operations.md]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md"
+   ],
+   "expectedNotice": null
+  },
+  {
+   "id": "unsupplied-label",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "Do X. [source: other/file.md#nope]",
+   "expectedLabels": [
+    "other/file.md#nope"
+   ],
+   "expectedNotice": "N3"
+  },
+  {
+   "id": "dropped-directory",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: operations.md#users-and-family-data]",
+   "expectedLabels": [
+    "operations.md#users-and-family-data"
+   ],
+   "expectedNotice": "N3"
+  },
+  {
+   "id": "no-citation",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "I do not know.",
+   "expectedLabels": [],
+   "expectedNotice": "N2"
+  },
+  {
+   "id": "paren-source-not-recognized",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "(source: ai-assistant/user-guide/operations.md#users-and-family-data)",
+   "expectedLabels": [],
+   "expectedNotice": "N2"
+  },
+  {
+   "id": "bare-path-not-recognized",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "See ai-assistant/user-guide/operations.md#users-and-family-data for details.",
+   "expectedLabels": [],
+   "expectedNotice": "N2"
+  },
+  {
+   "id": "multi-comma",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: ai-assistant/user-guide/operations.md#users-and-family-data, ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "expectedNotice": null
+  },
+  {
+   "id": "multi-semicolon",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: ai-assistant/user-guide/operations.md#users-and-family-data; ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "expectedNotice": null
+  },
+  {
+   "id": "multi-one-unsupplied",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: ai-assistant/user-guide/operations.md#users-and-family-data, nope.md#x]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "nope.md#x"
+   ],
+   "expectedNotice": "N3"
+  },
+  {
+   "id": "repeated-label",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: ai-assistant/user-guide/operations.md#users-and-family-data] and again [source: ai-assistant/user-guide/operations.md#users-and-family-data]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/operations.md#users-and-family-data"
+   ],
+   "expectedNotice": null
+  },
+  {
+   "id": "two-brackets-one-bad",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: ai-assistant/user-guide/operations.md#users-and-family-data] then [source: nope.md]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "nope.md"
+   ],
+   "expectedNotice": "N3"
+  },
+  {
+   "id": "line-split-label",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: ai-assistant/user-guide/oper\nations.md#users-and-\nfamily-data]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data"
+   ],
+   "expectedNotice": null
+  },
+  {
+   "id": "mixed-case-keyword",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[SoUrCe: ai-assistant/user-guide/operations.md#users-and-family-data]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data"
+   ],
+   "expectedNotice": null
+  },
+  {
+   "id": "space-before-colon",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[ source : ai-assistant/user-guide/operations.md#users-and-family-data ]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data"
+   ],
+   "expectedNotice": null
+  },
+  {
+   "id": "mixed-case-label",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: AI-ASSISTANT/USER-GUIDE/OPERATIONS.MD#USERS-AND-FAMILY-DATA]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data"
+   ],
+   "expectedNotice": null
+  },
+  {
+   "id": "doc-prefix",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: doc:ai-assistant/user-guide/operations.md#users-and-family-data]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data"
+   ],
+   "expectedNotice": null
+  },
+  {
+   "id": "doc-prefix-mixed-case",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: Doc:ai-assistant/user-guide/operations.md#users-and-family-data]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data"
+   ],
+   "expectedNotice": null
+  },
+  {
+   "id": "backtick-trailing-period",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: `ai-assistant/user-guide/operations.md#users-and-family-data`.]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data"
+   ],
+   "expectedNotice": null
+  },
+  {
+   "id": "double-quoted",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: \"ai-assistant/user-guide/operations.md#users-and-family-data\"]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data"
+   ],
+   "expectedNotice": null
+  },
+  {
+   "id": "parenthesized-label",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: (ai-assistant/user-guide/operations.md#users-and-family-data)]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data"
+   ],
+   "expectedNotice": null
+  },
+  {
+   "id": "trailing-punctuation",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: ai-assistant/user-guide/operations.md#users-and-family-data;.]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data"
+   ],
+   "expectedNotice": null
+  },
+  {
+   "id": "empty-echo-ellipsis",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: ...]",
+   "expectedLabels": [],
+   "expectedNotice": "N2"
+  },
+  {
+   "id": "empty-echo-blank",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: ]",
+   "expectedLabels": [],
+   "expectedNotice": "N2"
+  },
+  {
+   "id": "empty-echo-unicode-ellipsis",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: \u2026]",
+   "expectedLabels": [],
+   "expectedNotice": "N2"
+  },
+  {
+   "id": "doc-colon-only",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: doc:]",
+   "expectedLabels": [],
+   "expectedNotice": "N2"
+  },
+  {
+   "id": "doc-colon-parenthesized",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: (doc:)]",
+   "expectedLabels": [],
+   "expectedNotice": "N2"
+  },
+  {
+   "id": "doc-colon-ellipsis",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: doc:...]",
+   "expectedLabels": [],
+   "expectedNotice": "N2"
+  },
+  {
+   "id": "dot-doc-colon-upper",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: .DOC:]",
+   "expectedLabels": [],
+   "expectedNotice": "N2"
+  },
+  {
+   "id": "bare-doc-is-a-label",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: doc]",
+   "expectedLabels": [
+    "doc"
+   ],
+   "expectedNotice": "N3"
+  },
+  {
+   "id": "docs-not-a-doc-prefix",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: docs/x.md]",
+   "expectedLabels": [
+    "docs/x.md"
+   ],
+   "expectedNotice": "N3"
+  },
+  {
+   "id": "unclosed-before-valid",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: broken [source: ai-assistant/user-guide/operations.md#users-and-family-data]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data"
+   ],
+   "expectedNotice": null
+  },
+  {
+   "id": "unclosed-no-close",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: ai-assistant/user-guide/operations.md#users-and-family-data",
+   "expectedLabels": [],
+   "expectedNotice": "N2"
+  },
+  {
+   "id": "bracket-not-source",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[note: ai-assistant/user-guide/operations.md#users-and-family-data]",
+   "expectedLabels": [],
+   "expectedNotice": "N2"
+  },
+  {
+   "id": "kelvin-sign-not-k",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: ai-assistant/user-guide/operations.md#users-and-family-data] and [\u212aelvin: x]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data"
+   ],
+   "expectedNotice": null
+  },
+  {
+   "id": "long-s-not-source",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[\u017fource: ai-assistant/user-guide/operations.md#users-and-family-data]",
+   "expectedLabels": [],
+   "expectedNotice": "N2"
+  },
+  {
+   "id": "nbsp-not-whitespace",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source:\u00a0ai-assistant/user-guide/operations.md#users-and-family-data]",
+   "expectedLabels": [
+    "\u00a0ai-assistant/user-guide/operations.md#users-and-family-data"
+   ],
+   "expectedNotice": "N3"
+  },
+  {
+   "id": "nbsp-before-keyword-not-skipped",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[\u00a0source: ai-assistant/user-guide/operations.md#users-and-family-data]",
+   "expectedLabels": [],
+   "expectedNotice": "N2"
+  },
+  {
+   "id": "em-space-not-whitespace",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: ai-assistant/user-guide/operations.md#users-and-family-data\u2003]",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data\u2003"
+   ],
+   "expectedNotice": "N3"
+  },
+  {
+   "id": "zero-width-space-kept",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: ai\u200b-assistant/x.md]",
+   "expectedLabels": [
+    "ai\u200b-assistant/x.md"
+   ],
+   "expectedNotice": "N3"
+  },
+  {
+   "id": "vt-ff-not-whitespace",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source:\u000bai-assistant/user-guide/operations.md#users-and-family-data\f]",
+   "expectedLabels": [
+    "\u000bai-assistant/user-guide/operations.md#users-and-family-data\f"
+   ],
+   "expectedNotice": "N3"
+  },
+  {
+   "id": "fallback-only",
+   "contextKind": "FALLBACK_ONLY",
+   "supplied": [],
+   "answer": "Answer. [source: anything]",
+   "expectedLabels": [
+    "anything"
+   ],
+   "expectedNotice": "N1"
+  },
+  {
+   "id": "fallback-only-no-label",
+   "contextKind": "FALLBACK_ONLY",
+   "supplied": [],
+   "answer": "Answer.",
+   "expectedLabels": [],
+   "expectedNotice": "N1"
+  },
+  {
+   "id": "nodes-only",
+   "contextKind": "NODES_ONLY",
+   "supplied": [],
+   "answer": "Answer.",
+   "expectedLabels": [],
+   "expectedNotice": "N1"
+  },
+  {
+   "id": "empty-context-no-notice",
+   "contextKind": "EMPTY",
+   "supplied": [],
+   "answer": "I don't have any information about that yet.",
+   "expectedLabels": [],
+   "expectedNotice": null
+  },
+  {
+   "id": "raw-facts-fallback-no-notice",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "Facts.",
+   "expectedLabels": [],
+   "expectedNotice": null,
+   "modelBacked": false
+  },
+  {
+   "id": "cap-300-accepted",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: [source: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx]",
+   "expectedLabels": [
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   ],
+   "expectedNotice": "N3"
+  },
+  {
+   "id": "cap-301-rejected",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "[source: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx]",
+   "expectedLabels": [],
+   "expectedNotice": "N2"
+  },
+  {
+   "id": "long-unclosed-run",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "",
+   "expectedLabels": [],
+   "expectedNotice": "N2",
+   "answerRepeat": {
+    "prefix": "[source:",
+    "unit": " ",
+    "count": 200000,
+    "suffix": " tail"
+   }
+  },
+  {
+   "id": "many-open-brackets",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "",
+   "expectedLabels": [],
+   "expectedNotice": "N2",
+   "answerRepeat": {
+    "prefix": "",
+    "unit": "[source:",
+    "count": 50000
+   }
+  },
+  {
+   "id": "many-bare-brackets",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "",
+   "expectedLabels": [],
+   "expectedNotice": "N2",
+   "answerRepeat": {
+    "prefix": "",
+    "unit": "[ ",
+    "count": 100000
+   }
+  },
+  {
+   "id": "unclosed-run-then-valid",
+   "contextKind": "WITH_DOCS",
+   "supplied": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data",
+    "ai-assistant/user-guide/ask-and-helpdesk.md#current-behavior"
+   ],
+   "answer": "",
+   "expectedLabels": [
+    "ai-assistant/user-guide/operations.md#users-and-family-data"
+   ],
+   "expectedNotice": null,
+   "answerRepeat": {
+    "prefix": "[source:",
+    "unit": " ",
+    "count": 50000,
+    "suffix": "[source: ai-assistant/user-guide/operations.md#users-and-family-data]"
+   }
+  }
+ ]
+}
