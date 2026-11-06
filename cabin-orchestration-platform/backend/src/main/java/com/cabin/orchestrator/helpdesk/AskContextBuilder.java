@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
@@ -50,7 +51,13 @@ public class AskContextBuilder {
 
     /** Below this remaining budget a section is skipped rather than truncated to a stub. */
     private static final int MIN_USEFUL_SECTION_CHARS = 300;
+    private static final int DEFAULT_LEXICAL_MIN_TERMS = 3;
     private static final String DOCUMENT_REF_PREFIX = "doc:";
+    /** Default total characters of word-overlap sections (whole sections only), independent of the document budget. */
+    static final int DEFAULT_LEXICAL_ALLOWANCE_CHARS = 2000;
+
+    /** Extra ranked sections considered so ones the context map already supplied can be skipped. */
+    private static final int LEXICAL_RANK_SPARES = 4;
     /**
      * Endings a keyword may take and still count as that keyword: plural, past, progressive, adverb,
      * agent and -ation noun forms (install -> installs, installed, installing, installation). A keyword
@@ -63,7 +70,37 @@ public class AskContextBuilder {
     private final ReviewedDocumentSource documentSource;
     private final List<CompiledCategory> categories;
     private final int maxDocumentChars;
+    private final int lexicalSections;
+    private final int lexicalMinTerms;
+    private final int lexicalAllowanceChars;
+    /** "path#section" keys the context map lists with the household audience; every other guide section is administrator-only. */
+    private final Set<String> householdSections;
 
+    /** Lexical supplement off: category sections only. The five-argument form every existing test uses. */
+    public AskContextBuilder(
+            KnowledgeNodeRepository knowledgeNodeRepository,
+            ReviewedDocumentSource documentSource,
+            ResourceLoader resourceLoader,
+            String fixturesLocation,
+            int maxDocumentChars) {
+        this(knowledgeNodeRepository, documentSource, resourceLoader, fixturesLocation, maxDocumentChars, 0,
+            DEFAULT_LEXICAL_MIN_TERMS);
+    }
+
+    /** Lexical supplement with the default allowance: the seven-argument form existing tests use. */
+    public AskContextBuilder(
+            KnowledgeNodeRepository knowledgeNodeRepository,
+            ReviewedDocumentSource documentSource,
+            ResourceLoader resourceLoader,
+            String fixturesLocation,
+            int maxDocumentChars,
+            int lexicalSections,
+            int lexicalMinTerms) {
+        this(knowledgeNodeRepository, documentSource, resourceLoader, fixturesLocation, maxDocumentChars,
+            lexicalSections, lexicalMinTerms, DEFAULT_LEXICAL_ALLOWANCE_CHARS);
+    }
+
+    @Autowired
     public AskContextBuilder(
             KnowledgeNodeRepository knowledgeNodeRepository,
             ReviewedDocumentSource documentSource,
@@ -72,15 +109,34 @@ public class AskContextBuilder {
             // ~4 chars/token: 6000 chars is ~1.5k tokens, sized to stay inside a default Ollama
             // context window with the prompt scaffold and answer. Measure before raising (C1's
             // context-fit rule); Ollama silently drops the *start* of an oversized prompt.
-            @Value("${ask.context.max-document-chars:6000}") int maxDocumentChars) {
+            @Value("${ask.context.max-document-chars:6000}") int maxDocumentChars,
+            // Guide sections ranked by word overlap and appended after the context-map sections. 0 turns the
+            // supplement off (the previous behavior); ASK_CONTEXT_LEXICAL_SECTIONS=0 is the rollback.
+            @Value("${ask.context.lexical-sections:1}") int lexicalSections,
+            // A lexical section is used only when it shares at least this many distinct words with the question.
+            @Value("${ask.context.lexical-min-terms:3}") int lexicalMinTerms,
+            // Total characters of word-overlap sections, whole sections only, independent of the document budget.
+            // They are appended after the context-map sections and never take budget from them, so a mapped
+            // section is never lost; 0 supplies none.
+            @Value("${ask.context.lexical-allowance-chars:2000}") int lexicalAllowanceChars) {
         this.knowledgeNodeRepository = knowledgeNodeRepository;
         this.documentSource = documentSource;
         this.maxDocumentChars = maxDocumentChars;
+        this.lexicalSections = Math.max(0, lexicalSections);
+        this.lexicalMinTerms = Math.max(1, lexicalMinTerms);
+        this.lexicalAllowanceChars = Math.max(0, lexicalAllowanceChars);
         this.categories = loadCategories(resourceLoader, fixturesLocation).stream()
             .map(CompiledCategory::new)
             .toList();
-        log.info("AskContextBuilder loaded {} categories from {} (document budget {} chars)",
-            categories.size(), fixturesLocation, maxDocumentChars);
+        this.householdSections = this.categories.stream()
+            .flatMap(c -> c.category().contextDocuments() == null ? java.util.stream.Stream.<ContextDocumentRef>empty()
+                : c.category().contextDocuments().stream())
+            .filter(ref -> "household".equalsIgnoreCase(ref.audience()))
+            .map(ref -> ref.path() + "#" + ref.section())
+            .collect(Collectors.toUnmodifiableSet());
+        log.info("AskContextBuilder loaded {} categories from {} (document budget {} chars, lexical sections {}, min terms {}, allowance {} chars)",
+            categories.size(), fixturesLocation, maxDocumentChars, this.lexicalSections, this.lexicalMinTerms,
+            this.lexicalAllowanceChars);
     }
 
     /** Role-less overload: equivalent to a null role, i.e. household-audience document entries only. */
@@ -90,7 +146,8 @@ public class AskContextBuilder {
 
     public List<KnowledgeNode> buildContext(String question, HouseholdRole role) {
         List<CompiledCategory> selected = select(question);
-        if (selected.isEmpty()) {
+        List<ContextDocumentRef> lexical = lexicalRefs(question, role);
+        if (selected.isEmpty() && lexical.isEmpty()) {
             return List.of();
         }
         List<KnowledgeNode> nodes = new ArrayList<>();
@@ -105,19 +162,65 @@ public class AskContextBuilder {
                     nodes.add(node);
                 }
             }
-            // The first (declaration-order) category of a tie keeps the budget-truncation behavior;
-            // the other tied categories only add sections that fit whole in what is left.
-            List<KnowledgeNode> added = resolveDocuments(category, role, remaining, seenDocuments, i == 0);
+            // The first (declaration-order) category of a tie keeps the budget-truncation behavior; the other
+            // tied categories only add sections that fit whole.
+            List<KnowledgeNode> added = resolveRefs(category.id(), category.contextDocuments(), role, remaining,
+                seenDocuments, i == 0);
             documents.addAll(added);
-            remaining -= added.stream().mapToInt(d -> d.content().length()).sum();
+            remaining = Math.max(0, remaining - added.stream().mapToInt(d -> d.content().length()).sum());
         }
-        log.info("AskContextBuilder: categories {} -> {} KnowledgeNodes, {} document sections ({} chars){}",
-            selected.stream().map(c -> c.category().id()).toList(), nodes.size(), documents.size(),
+        // Word-overlap matches are appended after the context-map sections, so they can only add: whatever the
+        // map selected is exactly what it selected without the supplement. They have a budget of their own, the
+        // allowance, whether or not the map matched: at most that many characters of word-overlap text in
+        // total, whole sections only (a section that does not fit is skipped, never cut). The budget does not
+        // grow with what the map left over; the earlier version gave them that leftover plus the allowance
+        // (or the whole budget with no map match), and sets 5 and 6 showed that large supplements are where
+        // wrong facts entered.
+        int lexicalBudget = lexicalAllowanceChars;
+        // Rank a few extra so sections the map already supplied do not use up the slots.
+        List<ContextDocumentRef> lexicalNew = lexical.stream()
+            .filter(ref -> !seenDocuments.contains(ref.path() + "#" + ref.section()))
+            .limit(lexicalSections)
+            .toList();
+        List<KnowledgeNode> lexicalAdded = resolveRefs("lexical", lexicalNew, role, lexicalBudget, seenDocuments,
+            false);
+        documents.addAll(lexicalAdded);
+        log.info("AskContextBuilder: categories {} + {} lexical -> {} KnowledgeNodes, {} document sections ({} chars){}",
+            selected.stream().map(c -> c.category().id()).toList(), lexicalAdded.size(), nodes.size(), documents.size(),
             documents.stream().mapToInt(d -> d.content().length()).sum(),
             role == HouseholdRole.ADMINISTRATOR ? "" : " [non-admin audience]");
         List<KnowledgeNode> context = new ArrayList<>(nodes);
         context.addAll(documents);
         return List.copyOf(context);
+    }
+
+    /**
+     * Guide sections ranked by word overlap with the question, as context-map style references. A section the
+     * context map does not list as household has no audience of its own, so it is administrator-only
+     * (fail closed, same as an unspecified map entry).
+     */
+    private List<ContextDocumentRef> lexicalRefs(String question, HouseholdRole role) {
+        if (lexicalSections <= 0 || question == null) {
+            return List.of();
+        }
+        boolean administrator = role == HouseholdRole.ADMINISTRATOR;
+        // Rank only what this role may be given, so top slots are not spent on sections that would be dropped.
+        List<ReviewedDocumentSource.DocumentSection> visible = documentSource.leafSections().stream()
+            .filter(section -> administrator || householdSections.contains(section.path() + "#" + section.anchor()))
+            .toList();
+        return GuideSectionRanker.rank(question, visible, lexicalSections + LEXICAL_RANK_SPARES, lexicalMinTerms)
+            .stream()
+            .map(r -> {
+                String key = r.section().path() + "#" + r.section().anchor();
+                return new ContextDocumentRef(r.section().path(), r.section().anchor(),
+                    householdSections.contains(key) ? "household" : "administrator");
+            })
+            .toList();
+    }
+
+    /** True when the context map routes the question to at least one category (word-overlap sections alone do not count). */
+    public boolean routesToCategory(String question) {
+        return !select(question).isEmpty();
     }
 
     /** Which category a question routes to first (null if none) -- lets tests assert routing without fixture nodes. */
@@ -182,14 +285,14 @@ public class AskContextBuilder {
      * @param seen            "path#section" keys already supplied by an earlier tied category (updated here)
      * @param truncateToFit   false for a secondary tied category: a section that does not fit whole is skipped
      */
-    private List<KnowledgeNode> resolveDocuments(ContextCategory category, HouseholdRole role, int remaining,
-                                                 Set<String> seen, boolean truncateToFit) {
-        if (category.contextDocuments() == null || category.contextDocuments().isEmpty()) {
+    private List<KnowledgeNode> resolveRefs(String sourceId, List<ContextDocumentRef> refs, HouseholdRole role,
+                                            int remaining, Set<String> seen, boolean truncateToFit) {
+        if (refs == null || refs.isEmpty()) {
             return List.of();
         }
         boolean administrator = role == HouseholdRole.ADMINISTRATOR;
         List<KnowledgeNode> documents = new ArrayList<>();
-        for (ContextDocumentRef ref : category.contextDocuments()) {
+        for (ContextDocumentRef ref : refs) {
             if (!administrator && !"household".equalsIgnoreCase(ref.audience())) {
                 continue;
             }
@@ -204,19 +307,19 @@ public class AskContextBuilder {
             String text = section.get().text();
             if (text.length() > remaining) {
                 if (!truncateToFit) {
-                    log.warn("AskContextBuilder: tied category '{}' section {} skipped, does not fit whole in {} chars left",
-                        category.id(), key, remaining);
+                    log.warn("AskContextBuilder: '{}' section {} skipped, does not fit whole in the {} chars left",
+                        sourceId, key, remaining);
                     continue;
                 }
                 if (remaining < MIN_USEFUL_SECTION_CHARS) {
                     log.warn("AskContextBuilder: category '{}' section {}#{} skipped, {} of {} chars of budget left",
-                        category.id(), ref.path(), ref.section(), remaining, maxDocumentChars);
+                        sourceId, ref.path(), ref.section(), remaining, maxDocumentChars);
                     continue;
                 }
                 text = truncateAtParagraph(text, remaining)
                     + "\n[section truncated to fit the context budget -- see " + ref.path() + "#" + ref.section() + "]";
                 log.warn("AskContextBuilder: category '{}' section {}#{} truncated to {} chars",
-                    category.id(), ref.path(), ref.section(), remaining);
+                    sourceId, ref.path(), ref.section(), remaining);
             }
             remaining -= Math.min(text.length(), remaining);
             seen.add(key);

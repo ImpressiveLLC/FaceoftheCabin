@@ -99,6 +99,47 @@ public class ReviewedDocumentSource {
         }
     }
 
+    /**
+     * Every leaf section (one with no sub-heading) of every Markdown file under {@link #ALLOWED_PREFIXES}, in
+     * path and anchor order, for the lexical ranker. Parent sections are left out because their text repeats
+     * their children and one parent can exceed the whole Ask document budget. Files outside the prefixes
+     * (the {@link #ALLOWED_FILES}) are not enumerated; they stay reachable through the context map only.
+     */
+    public List<DocumentSection> leafSections() {
+        List<DocumentSection> out = new ArrayList<>();
+        for (String prefix : ALLOWED_PREFIXES) {
+            Path dir = root.resolve(prefix).normalize();
+            if (!Files.isDirectory(dir)) {
+                continue;
+            }
+            List<Path> files;
+            try (var stream = Files.list(dir)) {
+                files = stream.filter(f -> f.getFileName().toString().endsWith(".md") && Files.isRegularFile(f))
+                    .sorted().toList();
+            } catch (IOException e) {
+                log.warn("ReviewedDocumentSource: could not list {}: {}", dir, e.getMessage());
+                continue;
+            }
+            for (Path file : files) {
+                String relative = prefix + file.getFileName();
+                try {
+                    if (!file.toRealPath().startsWith(root.toRealPath())) {
+                        continue;
+                    }
+                    CachedDocument document = load(relative, file);
+                    document.sections().entrySet().stream()
+                        .filter(e -> e.getValue().leaf())
+                        .sorted(Map.Entry.comparingByKey())
+                        .forEach(e -> out.add(new DocumentSection(relative, e.getKey(), e.getValue().heading(),
+                            e.getValue().text(), document.lastModified())));
+                } catch (IOException e) {
+                    log.warn("ReviewedDocumentSource: could not read {}: {}", relative, e.getMessage());
+                }
+            }
+        }
+        return out;
+    }
+
     private CachedDocument load(String relativePath, Path file) throws IOException {
         Instant modified = Files.getLastModifiedTime(file).toInstant();
         long size = Files.size(file);
@@ -156,12 +197,14 @@ public class ReviewedDocumentSource {
                 }
             }
             String text = String.join("\n", lines.subList(start.line(), end)).strip();
-            sections.put(start.anchor(), new ParsedSection(start.heading(), text));
+            boolean leaf = s + 1 >= starts.size() || starts.get(s + 1).line() >= end;
+            sections.put(start.anchor(), new ParsedSection(start.heading(), text, leaf));
         }
         return sections;
     }
 
-    record ParsedSection(String heading, String text) {}
+    /** leaf: no sub-heading inside this section, so its text is not also the text of a section below it. */
+    record ParsedSection(String heading, String text, boolean leaf) {}
 
     private record CachedDocument(Instant lastModified, long size, Map<String, ParsedSection> sections) {}
 }
