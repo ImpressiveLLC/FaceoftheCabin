@@ -249,6 +249,30 @@ class AskLexicalSectionTest {
     }
 
     @Test
+    void aNonAdministratorWithAMapMatchGetsTheMappedHouseholdSectionAndNeverAnAdministratorOnlyLexicalOne() {
+        // "chime" maps a household section; the sprinkler words would rank an administrator-listed section.
+        String question = "chime: how do I reset the sprinkler timer after the power cut?";
+
+        assertThat(refs(builder(3, 3).buildContext(question, HouseholdRole.ADULT_HOUSEHOLD_MEMBER)))
+            .containsExactly(CHIME_REF);
+        assertThat(refs(builder(3, 3).buildContext(question, null))).containsExactly(CHIME_REF);
+        assertThat(refs(builder(3, 3).buildContext(question, HouseholdRole.ADMINISTRATOR)))
+            .containsExactly(CHIME_REF, SPRINKLER_REF);
+    }
+
+    @Test
+    void aTruncatedMappedSectionLeavesTheLexicalBudgetAtTheAllowanceNotBelowIt() {
+        // A budget smaller than the mapped section truncates it; the lexical section then gets only the allowance.
+        ReviewedDocumentSource source = new ReviewedDocumentSource(docsRoot.toString());
+        int sprinklerLength = source.section(GUIDE, "reset-the-sprinkler-timer").orElseThrow().text().length();
+
+        List<String> refs = refs(builder(3, 3, 100, sprinklerLength).buildContext(
+            "chime: how do I reset the sprinkler timer after the power cut?", HouseholdRole.ADMINISTRATOR));
+
+        assertThat(refs).containsExactly(CHIME_REF, SPRINKLER_REF);
+    }
+
+    @Test
     void instructionLikeGuideTextIsSuppliedAsPlainDataNotActedOn() {
         List<KnowledgeNode> context = builder(3, 3).buildContext(
             "What does the odd notice about previous instructions and the admin password say?",

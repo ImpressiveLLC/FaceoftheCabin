@@ -53,18 +53,17 @@ public class AskContextBuilder {
     private static final int MIN_USEFUL_SECTION_CHARS = 300;
     private static final int DEFAULT_LEXICAL_MIN_TERMS = 3;
     private static final String DOCUMENT_REF_PREFIX = "doc:";
+    /** Default characters the word-overlap sections may add beyond the document budget. */
+    static final int DEFAULT_LEXICAL_ALLOWANCE_CHARS = 1500;
+
+    /** Extra ranked sections considered so ones the context map already supplied can be skipped. */
+    private static final int LEXICAL_RANK_SPARES = 4;
     /**
      * Endings a keyword may take and still count as that keyword: plural, past, progressive, adverb,
      * agent and -ation noun forms (install -> installs, installed, installing, installation). A keyword
      * ending in "e" also takes -ing and -ation after dropping it (configure -> configuring). Doubled
      * letters and other stem changes are not handled; list that form as its own keyword where it matters.
      */
-    /** Default characters the word-overlap sections may add beyond the document budget. */
-    static final int DEFAULT_LEXICAL_ALLOWANCE_CHARS = 1500;
-
-    /** Extra ranked sections considered so ones the context map already supplied can be skipped. */
-    private static final int LEXICAL_RANK_SPARES = 4;
-
     private static final String INFLECTION = "(?:s|es|ed|d|ing|ings|ly|er|ers|ation|ations)?";
 
     private final KnowledgeNodeRepository knowledgeNodeRepository;
@@ -111,7 +110,7 @@ public class AskContextBuilder {
             // context window with the prompt scaffold and answer. Measure before raising (C1's
             // context-fit rule); Ollama silently drops the *start* of an oversized prompt.
             @Value("${ask.context.max-document-chars:6000}") int maxDocumentChars,
-            // Guide sections ranked by word overlap and put ahead of the context-map sections. 0 turns the
+            // Guide sections ranked by word overlap and appended after the context-map sections. 0 turns the
             // supplement off (the previous behavior); ASK_CONTEXT_LEXICAL_SECTIONS=0 is the rollback.
             @Value("${ask.context.lexical-sections:1}") int lexicalSections,
             // A lexical section is used only when it shares at least this many distinct words with the question.
@@ -167,7 +166,7 @@ public class AskContextBuilder {
             List<KnowledgeNode> added = resolveRefs(category.id(), category.contextDocuments(), role, remaining,
                 seenDocuments, i == 0);
             documents.addAll(added);
-            remaining -= added.stream().mapToInt(d -> d.content().length()).sum();
+            remaining = Math.max(0, remaining - added.stream().mapToInt(d -> d.content().length()).sum());
         }
         // Word-overlap matches are appended after the context-map sections, so they can only add: whatever the
         // map selected is exactly what it selected without the supplement. With no map match at all they get the
