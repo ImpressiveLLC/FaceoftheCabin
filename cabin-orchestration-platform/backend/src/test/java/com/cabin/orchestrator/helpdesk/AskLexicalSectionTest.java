@@ -78,8 +78,12 @@ class AskLexicalSectionTest {
     }
 
     private AskContextBuilder builder(int lexicalSections, int minTerms, int budget) {
+        return builder(lexicalSections, minTerms, budget, AskContextBuilder.DEFAULT_LEXICAL_ALLOWANCE_CHARS);
+    }
+
+    private AskContextBuilder builder(int lexicalSections, int minTerms, int budget, int allowance) {
         return new AskContextBuilder(new NoNodes(), new ReviewedDocumentSource(docsRoot.toString()),
-            new DefaultResourceLoader(), fixtures.toUri().toString(), budget, lexicalSections, minTerms);
+            new DefaultResourceLoader(), fixtures.toUri().toString(), budget, lexicalSections, minTerms, allowance);
     }
 
     private static final String WATERING_QUESTION = "Which watering days can I pick for each zone?";
@@ -143,7 +147,7 @@ class AskLexicalSectionTest {
     }
 
     @Test
-    void lexicalSectionComesFirstAndIsNotRepeatedByTheCategory() {
+    void aSectionBothPathsPickIsSuppliedOnce() {
         List<KnowledgeNode> context = builder(3, 1).buildContext(
             "chime volume", HouseholdRole.ADMINISTRATOR);
 
@@ -180,13 +184,13 @@ class AskLexicalSectionTest {
     }
 
     @Test
-    void lexicalSectionsComeBeforeCategorySectionsAndABothPickedSectionAppearsOnce() {
-        // "chime" routes the chime category; the sprinkler words rank the sprinkler section first.
+    void lexicalSectionsComeAfterCategorySections_andABothPickedSectionAppearsOnce() {
+        // "chime" routes the chime category; the sprinkler words then add the sprinkler section after it.
         List<String> refs = refs(builder(3, 3).buildContext(
             "chime: how do I reset the sprinkler timer after the power cut?", HouseholdRole.ADMINISTRATOR));
 
         assertThat(refs).contains(SPRINKLER_REF, CHIME_REF);
-        assertThat(refs.indexOf(SPRINKLER_REF)).isLessThan(refs.indexOf(CHIME_REF));
+        assertThat(refs.indexOf(CHIME_REF)).isLessThan(refs.indexOf(SPRINKLER_REF));
         assertThat(refs).doesNotHaveDuplicates();
         // Same section chosen by both paths: supplied once.
         assertThat(refs(builder(3, 1).buildContext("chime volume", HouseholdRole.ADMINISTRATOR)))
@@ -194,17 +198,54 @@ class AskLexicalSectionTest {
     }
 
     @Test
-    void lexicalSectionsSpendTheBudgetFirst_aCategorySectionThatNoLongerFitsWholeIsSkippedNotCut() {
+    void theSupplementNeverDisplacesAMappedSection_evenWhenTheBudgetIsExactlyTheMappedSection() {
         ReviewedDocumentSource source = new ReviewedDocumentSource(docsRoot.toString());
-        int sprinklerLength = source.section(GUIDE, "reset-the-sprinkler-timer").orElseThrow().text().length();
         int chimeLength = source.section(GUIDE, "door-chime-volume").orElseThrow().text().length();
-        // Room for the sprinkler section but not for the chime one after it.
-        int budget = sprinklerLength + chimeLength - 1;
+        String question = "chime: how do I reset the sprinkler timer after the power cut?";
 
-        List<String> refs = refs(builder(3, 3, budget).buildContext(
-            "chime: how do I reset the sprinkler timer after the power cut?", HouseholdRole.ADMINISTRATOR));
+        // Budget fits the mapped chime section and nothing else: the word-overlap section must not take it.
+        List<String> noAllowance = refs(builder(3, 3, chimeLength, 0).buildContext(question, HouseholdRole.ADMINISTRATOR));
+        assertThat(noAllowance).containsExactly(CHIME_REF);
 
-        assertThat(refs).contains(SPRINKLER_REF).doesNotContain(CHIME_REF);
+        // With an allowance the sprinkler section is added on top; the mapped one is still there, unchanged.
+        List<String> withAllowance = refs(builder(3, 3, chimeLength, 2000).buildContext(question,
+            HouseholdRole.ADMINISTRATOR));
+        assertThat(withAllowance).containsExactly(CHIME_REF, SPRINKLER_REF);
+
+        // Switched off, the mapped sections are exactly what they were.
+        assertThat(refs(builder(0, 3, chimeLength).buildContext(question, HouseholdRole.ADMINISTRATOR)))
+            .containsExactly(CHIME_REF);
+    }
+
+    @Test
+    void aLexicalSectionThatDoesNotFitTheAllowanceIsSkippedNotCut() {
+        ReviewedDocumentSource source = new ReviewedDocumentSource(docsRoot.toString());
+        int chimeLength = source.section(GUIDE, "door-chime-volume").orElseThrow().text().length();
+        int sprinklerLength = source.section(GUIDE, "reset-the-sprinkler-timer").orElseThrow().text().length();
+
+        List<KnowledgeNode> context = builder(3, 3, chimeLength, sprinklerLength - 1).buildContext(
+            "chime: how do I reset the sprinkler timer after the power cut?", HouseholdRole.ADMINISTRATOR);
+
+        assertThat(refs(context)).containsExactly(CHIME_REF);
+        assertThat(context.get(0).content()).doesNotContain("[section truncated");
+    }
+
+    @Test
+    void whenTheMapMatchesNothingTheWordOverlapSectionsGetTheWholeBudget() {
+        // No map keyword: the best section may still be cut to the budget, as for any first section.
+        List<KnowledgeNode> context = builder(3, 3, 6000, 0).buildContext(SPRINKLER_QUESTION,
+            HouseholdRole.ADMINISTRATOR);
+
+        assertThat(refs(context)).containsExactly(SPRINKLER_REF);
+    }
+
+    @Test
+    void sectionsTheMapAlreadySuppliedDoNotUseUpTheLexicalSlots() {
+        // One lexical slot: the chime section is already supplied by the map, so the slot goes to the next best.
+        List<String> refs = refs(builder(1, 1).buildContext(
+            "chime volume: reset the sprinkler timer", HouseholdRole.ADMINISTRATOR));
+
+        assertThat(refs).containsExactly(CHIME_REF, SPRINKLER_REF);
     }
 
     @Test

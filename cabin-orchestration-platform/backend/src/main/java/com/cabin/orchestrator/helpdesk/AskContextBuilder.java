@@ -59,6 +59,12 @@ public class AskContextBuilder {
      * ending in "e" also takes -ing and -ation after dropping it (configure -> configuring). Doubled
      * letters and other stem changes are not handled; list that form as its own keyword where it matters.
      */
+    /** Default characters the word-overlap sections may add beyond the document budget. */
+    static final int DEFAULT_LEXICAL_ALLOWANCE_CHARS = 1500;
+
+    /** Extra ranked sections considered so ones the context map already supplied can be skipped. */
+    private static final int LEXICAL_RANK_SPARES = 4;
+
     private static final String INFLECTION = "(?:s|es|ed|d|ing|ings|ly|er|ers|ation|ations)?";
 
     private final KnowledgeNodeRepository knowledgeNodeRepository;
@@ -67,6 +73,7 @@ public class AskContextBuilder {
     private final int maxDocumentChars;
     private final int lexicalSections;
     private final int lexicalMinTerms;
+    private final int lexicalAllowanceChars;
     /** "path#section" keys the context map lists with the household audience; every other guide section is administrator-only. */
     private final Set<String> householdSections;
 
@@ -81,6 +88,19 @@ public class AskContextBuilder {
             DEFAULT_LEXICAL_MIN_TERMS);
     }
 
+    /** Lexical supplement with the default allowance: the seven-argument form existing tests use. */
+    public AskContextBuilder(
+            KnowledgeNodeRepository knowledgeNodeRepository,
+            ReviewedDocumentSource documentSource,
+            ResourceLoader resourceLoader,
+            String fixturesLocation,
+            int maxDocumentChars,
+            int lexicalSections,
+            int lexicalMinTerms) {
+        this(knowledgeNodeRepository, documentSource, resourceLoader, fixturesLocation, maxDocumentChars,
+            lexicalSections, lexicalMinTerms, DEFAULT_LEXICAL_ALLOWANCE_CHARS);
+    }
+
     @Autowired
     public AskContextBuilder(
             KnowledgeNodeRepository knowledgeNodeRepository,
@@ -93,14 +113,18 @@ public class AskContextBuilder {
             @Value("${ask.context.max-document-chars:6000}") int maxDocumentChars,
             // Guide sections ranked by word overlap and put ahead of the context-map sections. 0 turns the
             // supplement off (the previous behavior); ASK_CONTEXT_LEXICAL_SECTIONS=0 is the rollback.
-            @Value("${ask.context.lexical-sections:3}") int lexicalSections,
+            @Value("${ask.context.lexical-sections:1}") int lexicalSections,
             // A lexical section is used only when it shares at least this many distinct words with the question.
-            @Value("${ask.context.lexical-min-terms:3}") int lexicalMinTerms) {
+            @Value("${ask.context.lexical-min-terms:3}") int lexicalMinTerms,
+            // Characters the word-overlap sections may add on top of the document budget. They are appended
+            // after the context-map sections and never take budget from them, so a mapped section is never lost.
+            @Value("${ask.context.lexical-allowance-chars:1500}") int lexicalAllowanceChars) {
         this.knowledgeNodeRepository = knowledgeNodeRepository;
         this.documentSource = documentSource;
         this.maxDocumentChars = maxDocumentChars;
         this.lexicalSections = Math.max(0, lexicalSections);
         this.lexicalMinTerms = Math.max(1, lexicalMinTerms);
+        this.lexicalAllowanceChars = Math.max(0, lexicalAllowanceChars);
         this.categories = loadCategories(resourceLoader, fixturesLocation).stream()
             .map(CompiledCategory::new)
             .toList();
@@ -110,8 +134,9 @@ public class AskContextBuilder {
             .filter(ref -> "household".equalsIgnoreCase(ref.audience()))
             .map(ref -> ref.path() + "#" + ref.section())
             .collect(Collectors.toUnmodifiableSet());
-        log.info("AskContextBuilder loaded {} categories from {} (document budget {} chars, lexical sections {}, min terms {})",
-            categories.size(), fixturesLocation, maxDocumentChars, this.lexicalSections, this.lexicalMinTerms);
+        log.info("AskContextBuilder loaded {} categories from {} (document budget {} chars, lexical sections {}, min terms {}, allowance {} chars)",
+            categories.size(), fixturesLocation, maxDocumentChars, this.lexicalSections, this.lexicalMinTerms,
+            this.lexicalAllowanceChars);
     }
 
     /** Role-less overload: equivalent to a null role, i.e. household-audience document entries only. */
@@ -130,11 +155,6 @@ public class AskContextBuilder {
         Set<String> seenNodes = new HashSet<>();
         Set<String> seenDocuments = new HashSet<>();
         int remaining = maxDocumentChars;
-        // Word-overlap matches go first: they are chosen by this question's own words, so they are the
-        // sections most likely to answer it when no context-map keyword anticipated the wording.
-        List<KnowledgeNode> lexicalAdded = resolveRefs("lexical", lexical, role, remaining, seenDocuments, true);
-        documents.addAll(lexicalAdded);
-        remaining -= lexicalAdded.stream().mapToInt(d -> d.content().length()).sum();
         for (int i = 0; i < selected.size(); i++) {
             ContextCategory category = selected.get(i).category();
             for (KnowledgeNode node : resolveNodes(category)) {
@@ -142,13 +162,27 @@ public class AskContextBuilder {
                     nodes.add(node);
                 }
             }
-            // The first (declaration-order) category of a tie keeps the budget-truncation behavior when
-            // nothing came before it; the other tied categories only add sections that fit whole.
+            // The first (declaration-order) category of a tie keeps the budget-truncation behavior; the other
+            // tied categories only add sections that fit whole.
             List<KnowledgeNode> added = resolveRefs(category.id(), category.contextDocuments(), role, remaining,
-                seenDocuments, i == 0 && lexicalAdded.isEmpty());
+                seenDocuments, i == 0);
             documents.addAll(added);
             remaining -= added.stream().mapToInt(d -> d.content().length()).sum();
         }
+        // Word-overlap matches are appended after the context-map sections, so they can only add: whatever the
+        // map selected is exactly what it selected without the supplement. With no map match at all they get the
+        // whole budget (and may truncate the best one); otherwise they get what the map left over plus a bounded
+        // allowance, and a section that does not fit whole is skipped rather than cut.
+        boolean mapMatched = !selected.isEmpty();
+        int lexicalBudget = mapMatched ? remaining + lexicalAllowanceChars : maxDocumentChars;
+        // Rank a few extra so sections the map already supplied do not use up the slots.
+        List<ContextDocumentRef> lexicalNew = lexical.stream()
+            .filter(ref -> !seenDocuments.contains(ref.path() + "#" + ref.section()))
+            .limit(lexicalSections)
+            .toList();
+        List<KnowledgeNode> lexicalAdded = resolveRefs("lexical", lexicalNew, role, lexicalBudget, seenDocuments,
+            !mapMatched);
+        documents.addAll(lexicalAdded);
         log.info("AskContextBuilder: categories {} + {} lexical -> {} KnowledgeNodes, {} document sections ({} chars){}",
             selected.stream().map(c -> c.category().id()).toList(), lexicalAdded.size(), nodes.size(), documents.size(),
             documents.stream().mapToInt(d -> d.content().length()).sum(),
@@ -172,7 +206,7 @@ public class AskContextBuilder {
         List<ReviewedDocumentSource.DocumentSection> visible = documentSource.leafSections().stream()
             .filter(section -> administrator || householdSections.contains(section.path() + "#" + section.anchor()))
             .toList();
-        return GuideSectionRanker.rank(question, visible, lexicalSections, lexicalMinTerms)
+        return GuideSectionRanker.rank(question, visible, lexicalSections + LEXICAL_RANK_SPARES, lexicalMinTerms)
             .stream()
             .map(r -> {
                 String key = r.section().path() + "#" + r.section().anchor();
