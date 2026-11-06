@@ -53,8 +53,8 @@ public class AskContextBuilder {
     private static final int MIN_USEFUL_SECTION_CHARS = 300;
     private static final int DEFAULT_LEXICAL_MIN_TERMS = 3;
     private static final String DOCUMENT_REF_PREFIX = "doc:";
-    /** Default characters the word-overlap sections may add beyond the document budget. */
-    static final int DEFAULT_LEXICAL_ALLOWANCE_CHARS = 1500;
+    /** Default total characters of word-overlap sections (whole sections only), independent of the document budget. */
+    static final int DEFAULT_LEXICAL_ALLOWANCE_CHARS = 2000;
 
     /** Extra ranked sections considered so ones the context map already supplied can be skipped. */
     private static final int LEXICAL_RANK_SPARES = 4;
@@ -115,9 +115,10 @@ public class AskContextBuilder {
             @Value("${ask.context.lexical-sections:1}") int lexicalSections,
             // A lexical section is used only when it shares at least this many distinct words with the question.
             @Value("${ask.context.lexical-min-terms:3}") int lexicalMinTerms,
-            // Characters the word-overlap sections may add on top of the document budget. They are appended
-            // after the context-map sections and never take budget from them, so a mapped section is never lost.
-            @Value("${ask.context.lexical-allowance-chars:1500}") int lexicalAllowanceChars) {
+            // Total characters of word-overlap sections, whole sections only, independent of the document budget.
+            // They are appended after the context-map sections and never take budget from them, so a mapped
+            // section is never lost; 0 supplies none.
+            @Value("${ask.context.lexical-allowance-chars:2000}") int lexicalAllowanceChars) {
         this.knowledgeNodeRepository = knowledgeNodeRepository;
         this.documentSource = documentSource;
         this.maxDocumentChars = maxDocumentChars;
@@ -169,18 +170,20 @@ public class AskContextBuilder {
             remaining = Math.max(0, remaining - added.stream().mapToInt(d -> d.content().length()).sum());
         }
         // Word-overlap matches are appended after the context-map sections, so they can only add: whatever the
-        // map selected is exactly what it selected without the supplement. With no map match at all they get the
-        // whole budget (and may truncate the best one); otherwise they get what the map left over plus a bounded
-        // allowance, and a section that does not fit whole is skipped rather than cut.
-        boolean mapMatched = !selected.isEmpty();
-        int lexicalBudget = mapMatched ? remaining + lexicalAllowanceChars : maxDocumentChars;
+        // map selected is exactly what it selected without the supplement. They have a budget of their own, the
+        // allowance, whether or not the map matched: at most that many characters of word-overlap text in
+        // total, whole sections only (a section that does not fit is skipped, never cut). The budget does not
+        // grow with what the map left over; the earlier version gave them that leftover plus the allowance
+        // (or the whole budget with no map match), and sets 5 and 6 showed that large supplements are where
+        // wrong facts entered.
+        int lexicalBudget = lexicalAllowanceChars;
         // Rank a few extra so sections the map already supplied do not use up the slots.
         List<ContextDocumentRef> lexicalNew = lexical.stream()
             .filter(ref -> !seenDocuments.contains(ref.path() + "#" + ref.section()))
             .limit(lexicalSections)
             .toList();
         List<KnowledgeNode> lexicalAdded = resolveRefs("lexical", lexicalNew, role, lexicalBudget, seenDocuments,
-            !mapMatched);
+            false);
         documents.addAll(lexicalAdded);
         log.info("AskContextBuilder: categories {} + {} lexical -> {} KnowledgeNodes, {} document sections ({} chars){}",
             selected.stream().map(c -> c.category().id()).toList(), lexicalAdded.size(), nodes.size(), documents.size(),

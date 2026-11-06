@@ -231,12 +231,39 @@ class AskLexicalSectionTest {
     }
 
     @Test
-    void whenTheMapMatchesNothingTheWordOverlapSectionsGetTheWholeBudget() {
-        // No map keyword: the best section may still be cut to the budget, as for any first section.
-        List<KnowledgeNode> context = builder(3, 3, 6000, 0).buildContext(SPRINKLER_QUESTION,
-            HouseholdRole.ADMINISTRATOR);
+    void whenTheMapMatchesNothingTheSupplementIsStillBoundedByTheAllowanceNotTheWholeBudget() {
+        ReviewedDocumentSource source = new ReviewedDocumentSource(docsRoot.toString());
+        int sprinklerLength = source.section(GUIDE, "reset-the-sprinkler-timer").orElseThrow().text().length();
 
+        // No map keyword, a 6000-character document budget, but an allowance one character short of the best
+        // section: it is skipped, not cut, and nothing is supplied.
+        assertThat(builder(3, 3, 6000, sprinklerLength - 1).buildContext(SPRINKLER_QUESTION,
+            HouseholdRole.ADMINISTRATOR)).isEmpty();
+
+        // An allowance that fits it whole supplies it, uncut.
+        List<KnowledgeNode> context = builder(3, 3, 6000, sprinklerLength).buildContext(SPRINKLER_QUESTION,
+            HouseholdRole.ADMINISTRATOR);
         assertThat(refs(context)).containsExactly(SPRINKLER_REF);
+        assertThat(context.get(0).content()).doesNotContain("[section truncated");
+
+        // Allowance 0 supplies nothing even with an unused budget.
+        assertThat(builder(3, 3, 6000, 0).buildContext(SPRINKLER_QUESTION, HouseholdRole.ADMINISTRATOR)).isEmpty();
+    }
+
+    @Test
+    void theSupplementDoesNotGrowWithTheBudgetTheMapLeftOver() {
+        ReviewedDocumentSource source = new ReviewedDocumentSource(docsRoot.toString());
+        int sprinklerLength = source.section(GUIDE, "reset-the-sprinkler-timer").orElseThrow().text().length();
+
+        // The chime section is mapped and leaves most of a 6000-character budget unused. The sprinkler section
+        // would fit that leftover, but the supplement is capped at the allowance, which it exceeds by one.
+        List<String> capped = refs(builder(3, 3, 6000, sprinklerLength - 1).buildContext(
+            "chime: how do I reset the sprinkler timer after the power cut?", HouseholdRole.ADMINISTRATOR));
+        assertThat(capped).containsExactly(CHIME_REF);
+
+        List<String> fits = refs(builder(3, 3, 6000, sprinklerLength).buildContext(
+            "chime: how do I reset the sprinkler timer after the power cut?", HouseholdRole.ADMINISTRATOR));
+        assertThat(fits).containsExactly(CHIME_REF, SPRINKLER_REF);
     }
 
     @Test
@@ -261,10 +288,10 @@ class AskLexicalSectionTest {
     }
 
     @Test
-    void aTruncatedMappedSectionLeavesTheLexicalBudgetAtTheAllowanceNotBelowIt() throws IOException {
+    void aTruncatedMappedSectionDoesNotChangeTheSupplementBudget() throws IOException {
         // A long mapped section is cut to the budget and gains a marker line, so what it adds is larger than the
-        // budget it was given. Without a clamp the lexical budget would fall below the allowance and skip a
-        // section that fits it exactly.
+        // budget it was given. The supplement has its own absolute budget, so a section that fits the allowance
+        // exactly is still supplied.
         String paragraph = "The long topic keeps its settings on the long settings page and nowhere else. ";
         Files.writeString(docsRoot.resolve("ai-assistant/user-guide/long.md"),
             "# Long guide\n\n## Long topic\n\n### Long settings\n\n"

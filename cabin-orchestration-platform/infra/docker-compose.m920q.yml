@@ -236,10 +236,10 @@ services:
       # Ollama ends in the raw-facts fallback, not a 504 or 524. A recorded 54 s Ask trial now falls back to raw facts:
       # a known trade-off of the 50 s default. The read timeout is per read, not a total deadline (W-127 item 2).
       # Word-overlap guide sections for Ask (W-155): added after the context-map sections, never in place of them; 0 sections switches them off (previous behavior); min terms is
-      # how many question words a section must share; allowance is the extra characters they may add beyond the document budget.
+      # how many question words a section must share; allowance is the total characters of them (whole sections only, independent of the document budget).
       ASK_CONTEXT_LEXICAL_SECTIONS: ${ASK_CONTEXT_LEXICAL_SECTIONS:-1}
       ASK_CONTEXT_LEXICAL_MIN_TERMS: ${ASK_CONTEXT_LEXICAL_MIN_TERMS:-3}
-      ASK_CONTEXT_LEXICAL_ALLOWANCE_CHARS: ${ASK_CONTEXT_LEXICAL_ALLOWANCE_CHARS:-1500}
+      ASK_CONTEXT_LEXICAL_ALLOWANCE_CHARS: ${ASK_CONTEXT_LEXICAL_ALLOWANCE_CHARS:-2000}
       CABIN_OLLAMA_CONNECT_TIMEOUT_SECONDS: ${CABIN_OLLAMA_CONNECT_TIMEOUT_SECONDS:-3}
       CABIN_OLLAMA_READ_TIMEOUT_SECONDS: ${CABIN_OLLAMA_READ_TIMEOUT_SECONDS:-50}
       # "cabinCameraName:blinkDeviceName" pairs, comma-separated -- see
