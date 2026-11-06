@@ -1,83 +1,105 @@
-# Ask no-source guard: specification before any code
+# Ask source notice: specification before any code (formerly "no-source guard")
 
-Status: proposed 2026-11-05, revised twice after review holds on 3a50173d (CODEX, comment 6673125376) and 1ee01190 (CODEX-PROXY, comment 6674406840) (Cowork, from E1 grading and Codex's method ruling on #244). Specification only. It changes no Ask behavior, authorizes no deploy and allocates no W-, D- or UC-IDs. Any code that follows needs a PR, independent review, Nate's head-bound go and a fresh sealed fourth set (W-151).
+Status: proposed 2026-11-05, revised three times after review holds on 3a50173d (CODEX, comment 6673125376), 1ee01190 (CODEX-PROXY, 6674406840) and e377dcf5 (CODEX-PROXY, 6674531776) (Cowork, from E1 grading and Codex's method ruling on #244). Specification only. It changes no Ask behavior, authorizes no deploy and allocates no W-, D- or UC-IDs. Any code that follows needs a PR, independent review, Nate's head-bound go and a fresh sealed fourth set (W-151).
+
+The title says "notice", not "guard": nothing here stops an unsupported answer. The absence of a notice is not assurance that an answer is supported.
 
 ## Problem
 
-E1 (offline replay, never deployed, claims nothing for A1) showed two things the answer-first wording does not fix:
+E1 (offline replay, never deployed, exploratory, claims nothing for A1) showed two things the answer-first wording does not fix:
 
 1. When no section answers the question, a 3B model sometimes fills the gap with an unsupported fact instead of saying so.
 2. Probes (questions the guides cannot answer) do not reliably state the coverage limit; some say only "I don't know", which the grading rubric scores as failing the coverage-limit criterion.
 
-Offline graders knew whether a supplied section was the answering one (`source_available`). Production cannot: having retrieved text is not the same as having an answering source, and a lexical signal cannot prove either coverage or its absence.
+Offline graders knew whether a supplied section was the answering one (`source_available`). Production cannot: having retrieved text is not the same as having an answering source, and a lexical signal cannot prove coverage or its absence.
 
 ## What this spec does and does not claim
 
-- **Does:** define a server-written **notice** that states facts the server actually knows about one request (what was supplied, whether the answer cites it). It never edits the model's text.
-- **Does not:** prevent fabrication, detect unsupported sentences, withhold answers, or classify operational content. A fabricated command attached to a real supplied label would pass any citation check; this spec does not try to catch it.
-- **Deferred (Tier 2, not specified here):** withholding ungrounded text needs a structured answer format, for example one claim per line each carrying its own source label, so that "which part is supported" is a parse rather than a guess. That is a prompt and contract change with its own proposal, review and approval. Until it exists, no document, UI string or PR may say the guard stops unsupported answers from reaching an operator.
+- **Does:** define a server-written **notice**, carried in its own response field, that states facts the server knows about one request (what kind of material was supplied, whether the answer cites it in a recognizable form). It never edits the model's text.
+- **Does not:** prevent fabrication, detect unsupported sentences, withhold answers or classify operational content. A fabricated command attached to a real supplied label passes any citation check. A notice also does not say an answer is right.
+- **Deferred (Tier 2, not specified here):** withholding ungrounded text needs a structured answer format, for example one claim per line each carrying its own source label, so that "which part is supported" is a parse rather than a guess. That is a prompt and contract change with its own proposal, review and approval. Until it exists, no document, UI string or PR may say the notice stops unsupported answers from reaching an operator.
 
 ## Constraints (from Codex, 2026-11-05)
 
-- The trigger is an observable runtime condition. No grader labels, oracle sections or eval question IDs appear in any rule, threshold or runtime code path.
-- Lexical signals cannot prove that the guides do not cover a question, and they are not triggers in this spec. `overlap` may be logged for development analysis only.
-- Justified refusals stay: the notice never alters model text, so a correct refusal is returned unchanged with a true, neutral notice.
-- Empty context, routed-with-nodes-only, fallback-only, role filtering, conflicting sources and the unreachable-model path are each specified, with tests.
-- Model output remains advisory text. The guard adds no entity IDs, services, topics, credentials or actions.
+- The trigger is an observable runtime condition. No grader labels, oracle sections or eval question IDs appear in any rule, threshold or runtime branch.
+- Lexical signals cannot prove that the guides do not cover a question, and are not triggers here. `overlap` may be logged for development analysis only.
+- Justified refusals stay: the model text is never altered, so a correct refusal is returned unchanged.
+- Empty context, routed-with-nodes-only, fallback-only, documentation-supplied, role filtering, conflicting sources, injected instructions, the unreachable-model path and the intent-proposal path are each specified, with tests.
+- Model output remains advisory text. The notice adds no entity IDs, services, topics, credentials or actions.
 
 ## Observable signals (computed in `TinyHelpdeskService.ask`, after role redaction)
 
 | Signal | Definition against the code | Meaning |
 |---|---|---|
-| `contextKind` | one of `EMPTY` (no nodes at all), `FALLBACK_ONLY` (`buildContext` returned empty, nodes came from `retrieveRelevant`), `NODES_ONLY` (`buildContext` non-empty but no `REVIEWED_DOCUMENT` node), `WITH_DOCS` (at least one `REVIEWED_DOCUMENT` node) | what kind of material the model was given |
-| `docSections` | count of `REVIEWED_DOCUMENT` nodes in the role-filtered list | documentation sections that reached the prompt for this caller |
-| `answerLabels` | labels written as `[source: X]` in the model answer, found by bracket pattern, not sentence splitting (labels contain `.` and `#`) | what the model says it used |
-| `suppliedCited` | `answerLabels` whose `X` equals a label supplied in this request | citations that can be checked |
-| `unsuppliedCited` | `answerLabels` not supplied in this request | citations to material the model was not given |
-| `modelBacked` | the answer came from the model, not the raw-facts fallback | whether the guard applies |
+| `contextKind` | `EMPTY` (no nodes at all), `FALLBACK_ONLY` (`buildContext` returned empty, nodes from `retrieveRelevant`), `NODES_ONLY` (`buildContext` non-empty, no `REVIEWED_DOCUMENT` node), `WITH_DOCS` (at least one `REVIEWED_DOCUMENT` node) | what kind of material the model was given (matches `ask()` as it stands) |
+| `modelBacked` | the answer came from the model, not the raw-facts fallback (`answeredByModel`) | whether the notice applies |
+| `suppliedLabels` | the labels the prompt actually carried: `entityRef` minus the `doc:` prefix, one per `REVIEWED_DOCUMENT` node | what could legitimately be cited |
+| `answerLabels` | labels found in the model answer by the extraction rule below | what the model says it used |
+| `suppliedCited` / `unsuppliedCited` | `answerLabels` that do / do not match `suppliedLabels` under the matching rule below | checkable citations |
 
-`routed` as a separate signal is dropped: it only restated `contextKind`. `redacted` is dropped: it is not used by any case, and the redactor lengthens administrator content, so "visible context is smaller" was not a general truth.
+`docSections` is dropped as a separate signal (it equals the count of `suppliedLabels`). `routed` and `redacted` stay dropped.
 
-## Cases and required behavior
+### Label extraction and matching (normative)
 
-Notice text is fixed, role-independent, and never echoes a label, section title or role-gated detail. A non-administrator whose matching documentation is administrator-only is in the same `contextKind` as any caller with no documentation, so the notice cannot reveal that a gated section exists.
+- Extraction pattern: case-insensitive `\[\s*source\s*:\s*([^\]]+?)\s*\]`, with `\s` including newlines, so a label split across a line inside the bracket is found. A bracket holding several labels separated by `,` or `;` yields each label. Labels contain `.`, `#` and `/`, so the answer is never split into sentences.
+- Normalization: trim, drop a leading `doc:`, compare case-sensitively on the rest.
+- Matching: an answer label matches a supplied label when it equals it, or equals its path part before `#` (an abbreviation to the file). Any other form is `unsuppliedCited`.
+- Forms the pattern does not recognize (for example `(source: x)`, a bare path, prose "according to the install guide") count as no citation. This is a stated limit, not a bug: the notice wording below says only that no label in the expected form was found.
 
-1. **`EMPTY`.** Unchanged: no model call, fixed reply "I don't have any information about that yet."
-2. **`FALLBACK_ONLY`.** Model answer unchanged; append N1: "No documentation section was among the material supplied for this question, so this answer is not tied to the guides." Not triggered by any overlap threshold.
-3. **`NODES_ONLY`.** Same N1 (the fixed set is knowledge nodes, not documentation). This closes a gap the earlier draft left: a category routed to nodes with no document was in no case.
-4. **`WITH_DOCS`, `modelBacked`.**
-   - `suppliedCited` empty: append N2: "This answer does not cite the documentation sections supplied with it." This is a statement about the answer, true for a correct refusal as well, and it does not claim the answer is wrong or unsupported.
-   - `unsuppliedCited` non-empty: append N3: "This answer cites a source that was not supplied for this question." (no label echoed).
-   - Otherwise no notice.
-   Whether the answer is actually right is not asserted. A supported answer that cites a supplied label is returned with no notice and byte-identical text.
-5. **Raw-facts fallback (model unreachable).** The guard does not apply; the existing fallback behavior and `answeredByModel=false` stand. `citations` stays the supplied list in every case; the notice does not change it.
-6. **Conflicting sources.** The server does not detect conflicts (free Markdown has no reliable key/value form). The existing prompt rule stands: report, do not obey. The guard is silent. Tests assert the notice never echoes a label and that a non-administrator conflict case leaks no gated text.
-7. **Injected instructions inside a source.** Unchanged: text in a source is reported, never obeyed. The guard adds nothing; its tests include a source containing an instruction to suppress the notice.
+## Notices
 
-Neutral limits stated openly: for a probe routed to some documentation section whose answer cites it, this guard stays silent and cannot tell that the section does not answer the question. Probe coverage-limit statements remain a prompt and evaluation matter, not something this notice fixes.
+Notice text is fixed, role-independent and never echoes a label, section title or role-gated detail. At most one notice per answer.
 
-## Where it runs
+| Code | Fires when | Fixed text |
+|---|---|---|
+| N0 | never fires for `EMPTY` (existing fixed reply, no model call) | unchanged: "I don't have any information about that yet." |
+| N1 | `modelBacked` and `contextKind` is `FALLBACK_ONLY` or `NODES_ONLY` | "No documentation section was part of the material supplied for this answer." |
+| N3 | `modelBacked`, `contextKind` is `WITH_DOCS`, and `unsuppliedCited` is non-empty | "This answer names a source that was not supplied for this question." |
+| N2 | `modelBacked`, `contextKind` is `WITH_DOCS`, `unsuppliedCited` empty and `suppliedCited` empty | "No documentation label in the expected form was found in this answer." |
 
-Post-call, server-side, in `TinyHelpdeskService.ask` after `ollamaClient.generate` returns, appending the fixed sentence to the returned answer text. No prompt change and no pre-call skip (the empty case already skips). It leaves `answeredByModel`, `citations` and redaction behavior as they are.
+Order: N3 before N2; they never both fire. N3 and N2 are not evaluated for N1 contexts: with no documentation supplied, any citation is already outside the supplied material and N1 says so.
 
-## Tests required before a guard PR merges
+N1 is a true statement, and it will often be correct and unremarkable: device-fact questions answered from curated knowledge nodes are `FALLBACK_ONLY` or `NODES_ONLY` by design. It therefore does not warn that an answer is wrong. The UI shows a "Verified" badge on curated nodes; the implementation PR must show N1 and that badge together in a way that does not read as a contradiction (the badge says who wrote the node, N1 says no documentation was supplied) and must have that wording reviewed before ship.
 
-All tests inspect the returned content (the answer text the caller receives), not only that a notice string exists.
+Neutral limits stated openly: for a probe routed to a documentation section whose answer cites it, no notice fires and the server cannot tell the section does not answer the question. Probe coverage-limit statements remain a prompt and evaluation matter.
 
-- One unit test per `contextKind` and per notice (N1, N2, N3), including the role matrix: ADMINISTRATOR, household adult, null role. Notice text must be identical across roles for the same `contextKind`, and no test output may contain a label or section title from a gated section for a non-administrator.
-- Notice-only: the model text is a byte-identical prefix of the returned text in every case; no wording says "verified", "safe" or "correct".
-- Supported answers: a recorded real-model answer that cites a supplied label returns with no notice and unchanged. The recorded answers come from an offline replay of the development sets run on the real model by the existing harness; hand-written canned answers are not accepted as evidence because they cannot fail. If recorded answers cannot be committed, the test regenerates them through the harness.
-- Citation parsing: labels containing `.`, `#`, `/` and `-`, a label split across a line, a repeated label, an unsupplied label, and a bare "I don't know" with no label.
-- Raw-facts fallback: guard inactive; unchanged text and citations.
-- `Citations` list identical with and without the notice in every case.
-- Production hygiene: no eval question ID, suite ID or grader label appears in main source or resources. The routing map (`context-fixtures-r2.json`) names documentation sections by design and is exempt; the ban covers question and suite IDs and grader labels, not section names. The static check scans main and resources only.
-- Fixtures are separate: test fixtures may carry identifiable suite IDs under test directories so results trace to the suite; they never load from main code.
-- WriteGateAudit and DemoAccess guards still pass; the route and role gating are unchanged.
+## Where it runs and how it is returned
 
-## Evidence plan
+- **Separate field, not appended text.** `TinyHelpdeskAnswer` gains a `notice` field (code plus fixed text, or null); `answer` is exactly the model's output (after the client's existing trimming). The notice is rendered by the UI beside the answer. Mixing server text into the model string is rejected: it would blur what graders and clients read as the model's words and change existing `answer` equality tests.
+- Response field name and UI wording are decided in the implementation PR and reviewed there; the contract change is additive.
+- `sources` (the supplied node list, existing field) is unchanged in every case, including the raw-facts fallback.
+- **Intent-proposal path.** `IntentProposalService` calls `helpdesk.ask`. It uses the answer text only; it ignores `notice`. A test asserts the proposal output is identical with the notice feature on and off.
+- **Raw-facts fallback (model unreachable).** `modelBacked` is false; no notice; `answeredByModel=false` stands.
+- No prompt change and no pre-call skip (the empty case already skips).
 
-1. Offline on the development sets with the two-grader method: report how often each notice fires, and for fired and unfired answers the grader-assessed wrong-fact and needless-refusal counts, next to the unguarded baseline. Because the notice does not change model text, wrong-fact counts cannot change; what is measured is whether the notice fires where wrong facts and unsupported answers are and stays quiet on supported ones. Small counts are reported as observed; no non-inferiority claim.
-2. If the notice looks worth shipping: PR, review of the head, Nate's head-bound go, then one run on a fresh sealed fourth set authored blind to every earlier set. E1 counts do not substitute for it.
+## Cases
+
+1. **`EMPTY`.** Unchanged.
+2. **`FALLBACK_ONLY` and `NODES_ONLY`.** N1. Not triggered by any overlap threshold.
+3. **`WITH_DOCS`.** N3, else N2, else none. A supported answer citing a supplied label gets no notice.
+4. **Role filtering.** Signals are computed after redaction and role gating. A non-administrator whose matching documentation is administrator-only gets a `contextKind` of `FALLBACK_ONLY` or `NODES_ONLY` and the same N1 as any caller with no documentation; the notice cannot reveal that a gated section exists, and `suppliedLabels` never includes a gated section. The same question as ADMINISTRATOR, household adult and null role may differ in `contextKind` and notice only through what that role may see.
+5. **Conflicting sources.** The server does not detect conflicts (free Markdown has no reliable key/value form); the existing prompt rule stands (report, do not obey) and the notice is silent about it.
+6. **Injected instructions inside a source.** Unchanged: reported, never obeyed. Tests with a stubbed model are guard regressions only; real-model behavior comes from the offline replay.
+
+## Tests required before a notice PR merges
+
+All tests inspect the returned content: the `answer` text and the `notice` field.
+
+- One unit test per `contextKind` and per notice code (N1, N2, N3, none), including the role matrix: ADMINISTRATOR, household adult, null role. Notice text is identical across roles for the same code and never contains a label or section title from a gated section.
+- `answer` is byte-identical to the model output with the feature on and off, in every case; `sources` identical; existing `TinyHelpdeskServiceTest` answer-equality assertions pass unchanged.
+- Extraction and matching: labels with `.`, `#`, `/`, `-`; a label split across a line (expected: found); several labels in one bracket (each found); a repeated label; an abbreviated supplied label (path before `#`: supplied); an unsupplied label (N3); `(source: x)` and a bare path (not recognized: counts as no citation, so N2); a bare "I don't know" with no label (N2, text unchanged); order N3 over N2.
+- Raw-facts fallback: no notice; unchanged text and sources.
+- Intent-proposal path: output identical with the feature on and off.
+- Supported answers: recorded real-model answers (captured by the existing replay harness on the development sets, committed only after review confirms they hold nothing sensitive) that cite a supplied label produce no notice. Hand-written canned answers are not accepted as evidence. The unit test reads the recording; regenerating recordings is a separate manual harness step, never part of `mvn test`.
+- Production hygiene: the static check scans main Java and non-fixture resources and fails on any evaluation question ID pattern (`Q\d+`, `T\d+`, `F-Q`, `H-Q`), suite ID or grader label. The routing fixture `rag/context-fixtures-r2.json` is a data file and is explicitly exempt (it holds question IDs, `oracleRefs` and `baseline.passingIds` for evaluation tooling and names every routed section by design); a separate test asserts that `AskContextBuilder` and the notice code never read those evaluation fields.
+- Test fixtures may carry suite IDs under test directories so results trace to the suite; they never load from main code.
+- WriteGateAudit and DemoAccess guards still pass; route and role gating are unchanged.
+
+## Evidence plan and ship criterion
+
+1. Offline on the development sets with the two-grader method, graders judging the model `answer` only (the notice excluded, so grading cannot change by construction): report how often each notice code fires, and for fired and unfired answers the grader-assessed wrong-fact and needless-refusal counts, next to the unguarded baseline. Small counts are reported as observed; no non-inferiority claim.
+2. **Ship criterion (fixed in the implementation PR before any run, and reviewed with it):** the thresholds for how often N2 and N3 must co-occur with graded unsupported or wrong-fact answers and how rarely with graded supported answers. This spec fixes no numbers: none can be chosen honestly before the first measurement, and choosing them after seeing results would defeat the criterion. If the notices do not separate unsupported from supported answers by that criterion, the proposal is dropped, not widened.
+3. If it passes: PR, review of the head, Nate's head-bound go, then one run on a fresh sealed fourth set authored blind to every earlier set. E1 counts do not substitute for it.
 
 ## Not in this spec
 
