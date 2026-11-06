@@ -261,15 +261,32 @@ class AskLexicalSectionTest {
     }
 
     @Test
-    void aTruncatedMappedSectionLeavesTheLexicalBudgetAtTheAllowanceNotBelowIt() {
-        // A budget smaller than the mapped section truncates it; the lexical section then gets only the allowance.
+    void aTruncatedMappedSectionLeavesTheLexicalBudgetAtTheAllowanceNotBelowIt() throws IOException {
+        // A long mapped section is cut to the budget and gains a marker line, so what it adds is larger than the
+        // budget it was given. Without a clamp the lexical budget would fall below the allowance and skip a
+        // section that fits it exactly.
+        String paragraph = "The long topic keeps its settings on the long settings page and nowhere else. ";
+        Files.writeString(docsRoot.resolve("ai-assistant/user-guide/long.md"),
+            "# Long guide\n\n## Long topic\n\n### Long settings\n\n"
+                + (paragraph.repeat(4) + "\n\n").repeat(3));
+        Path longFixtures = docsRoot.resolve("long-fixtures.json");
+        Files.writeString(longFixtures, """
+            {"categories": [
+              {"id": "long", "keywordPatterns": ["qzxlong"], "contextNodes": [],
+               "contextDocuments": [{"path": "ai-assistant/user-guide/long.md", "section": "long-settings",
+                                     "audience": "household"}]}
+            ]}
+            """);
         ReviewedDocumentSource source = new ReviewedDocumentSource(docsRoot.toString());
         int sprinklerLength = source.section(GUIDE, "reset-the-sprinkler-timer").orElseThrow().text().length();
+        AskContextBuilder builder = new AskContextBuilder(new NoNodes(), source, new DefaultResourceLoader(),
+            longFixtures.toUri().toString(), 400, 3, 3, sprinklerLength);
 
-        List<String> refs = refs(builder(3, 3, 100, sprinklerLength).buildContext(
-            "chime: how do I reset the sprinkler timer after the power cut?", HouseholdRole.ADMINISTRATOR));
+        List<KnowledgeNode> context = builder.buildContext(
+            "qzxlong: how do I reset the sprinkler timer after the power cut?", HouseholdRole.ADMINISTRATOR);
 
-        assertThat(refs).containsExactly(CHIME_REF, SPRINKLER_REF);
+        assertThat(refs(context)).containsExactly("doc:ai-assistant/user-guide/long.md#long-settings", SPRINKLER_REF);
+        assertThat(context.get(0).content()).contains("[section truncated");
     }
 
     @Test
