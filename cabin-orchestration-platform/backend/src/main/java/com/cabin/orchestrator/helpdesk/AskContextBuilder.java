@@ -121,7 +121,7 @@ public class AskContextBuilder {
 
     public List<KnowledgeNode> buildContext(String question, HouseholdRole role) {
         List<CompiledCategory> selected = select(question);
-        List<ContextDocumentRef> lexical = lexicalRefs(question);
+        List<ContextDocumentRef> lexical = lexicalRefs(question, role);
         if (selected.isEmpty() && lexical.isEmpty()) {
             return List.of();
         }
@@ -163,11 +163,16 @@ public class AskContextBuilder {
      * context map does not list as household has no audience of its own, so it is administrator-only
      * (fail closed, same as an unspecified map entry).
      */
-    private List<ContextDocumentRef> lexicalRefs(String question) {
+    private List<ContextDocumentRef> lexicalRefs(String question, HouseholdRole role) {
         if (lexicalSections <= 0 || question == null) {
             return List.of();
         }
-        return GuideSectionRanker.rank(question, documentSource.leafSections(), lexicalSections, lexicalMinTerms)
+        boolean administrator = role == HouseholdRole.ADMINISTRATOR;
+        // Rank only what this role may be given, so top slots are not spent on sections that would be dropped.
+        List<ReviewedDocumentSource.DocumentSection> visible = documentSource.leafSections().stream()
+            .filter(section -> administrator || householdSections.contains(section.path() + "#" + section.anchor()))
+            .toList();
+        return GuideSectionRanker.rank(question, visible, lexicalSections, lexicalMinTerms)
             .stream()
             .map(r -> {
                 String key = r.section().path() + "#" + r.section().anchor();
@@ -175,6 +180,11 @@ public class AskContextBuilder {
                     householdSections.contains(key) ? "household" : "administrator");
             })
             .toList();
+    }
+
+    /** True when the context map routes the question to at least one category (word-overlap sections alone do not count). */
+    public boolean routesToCategory(String question) {
+        return !select(question).isEmpty();
     }
 
     /** Which category a question routes to first (null if none) -- lets tests assert routing without fixture nodes. */

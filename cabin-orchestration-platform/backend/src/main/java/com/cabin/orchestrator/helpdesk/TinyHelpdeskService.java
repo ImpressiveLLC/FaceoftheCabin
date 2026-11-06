@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -68,7 +69,20 @@ public class TinyHelpdeskService {
      */
     public TinyHelpdeskAnswer ask(String question, HouseholdRole role) {
         List<KnowledgeNode> contextNodes = askContextBuilder.buildContext(question, role);
-        List<KnowledgeNode> candidates = contextNodes.isEmpty() ? retrieveRelevant(question) : contextNodes;
+        List<KnowledgeNode> candidates = contextNodes;
+        if (contextNodes.isEmpty()) {
+            candidates = retrieveRelevant(question);
+        } else if (!askContextBuilder.routesToCategory(question)) {
+            // Only word-overlap guide sections matched (no context-map category). Before those existed an
+            // unrouted question fell back to knowledge-node word overlap, so keep that fallback alongside them.
+            candidates = new ArrayList<>(contextNodes);
+            for (KnowledgeNode node : retrieveRelevant(question)) {
+                if (candidates.stream().noneMatch(c -> c.entityRef().equals(node.entityRef())
+                        && c.chunkType() == node.chunkType())) {
+                    candidates.add(node);
+                }
+            }
+        }
         List<KnowledgeNode> relevant = candidates.stream()
             .map(node -> CredentialPointerRedactor.redact(node, role))
             .toList();
