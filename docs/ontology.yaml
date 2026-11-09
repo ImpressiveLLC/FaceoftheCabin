@@ -11776,15 +11776,14 @@ elements:
     data_class: derived
     data_type: xsd:decimal
     ui_display_name: Dew Point
-    source: Box 2 ESPHome firmware (docs/hardware/esphome/box2.yaml, sht45_dew_point); W-84 slice; Cowork proposal 2026-11-09
+    source: Cowork proposal 2026-11-09; Codex supplemental review of PR 428; Box 2 implementation in docs/hardware/esphome/box2.yaml (sht45_dew_point); W-84 slice
     rendering:
       semantic: Dew Point
       systems: Dew Point (°C), derived
       technical: dew_point
-      compliance: Derived value; source inputs and observed timestamp required
-    definition: Temperature at which air at the SHT45's reading would saturate, computed on the node with the Magnus
-      formula from the SHT45 temperature and relative humidity. Derived, not measured; never computed from the SEN66
-      channels.
+      compliance: Derived value; input channels and observed timestamps required
+    definition: Temperature at which air at a given temperature and relative humidity would saturate. Derived from
+      those two inputs, not measured.
     relationships:
     - target: temperature_celsius
       type: derives_from
@@ -11795,12 +11794,16 @@ elements:
     - target: environmental_measurement_service
       type: consumed_by
       cardinality: N:1
-    notes: 'Unit: °C. Provenance: computed on-node, SHT45 only. Unavailable whenever either input is unavailable, so it
-      is never fresher than the older input. Candidate ontology definition only: the D13 measurement_type vocabulary
-      (D7MeasurementTypes) does not contain dew_point, and this entry registers nothing there; adding it is a D13
-      vocabulary addition that needs a Cowork ruling with the W-84 slice. The firmware currently tags this channel
-      device_class temperature, so a Home Assistant discovery that keys on device_class would file it as an ordinary
-      room temperature; the vocabulary addition must be settled before this channel is enrolled.'
+    notes: 'Unit: °C. This entry defines the generic quantity. Box 2 implementation provenance is separate: the node
+      computes it with the Magnus formula from the SHT45 temperature and relative humidity only, never from the SEN66
+      channels, and the value is unavailable whenever either input is. Candidate ontology definition only; it registers
+      nothing in the D13 measurement_type vocabulary (D7MeasurementTypes and the device-reporting-relationship schema),
+      and it does not reuse D13 ServiceEntity.derived_from, which names a parent device, to store the two input
+      channels. W-84 enrollment gates (not delivered here): schema and Java parity for the new type, an explicit
+      source and channel mapping in discovery, unit and source checks, a regression case proving dew point never becomes
+      ambient temperature or a heating or freezing input, and freshness proof that uses both input observation times
+      (the firmware recomputes every 10 seconds from cached inputs, which is not freshness proof). Removing the
+      temperature device_class in firmware alone would leave a generic entity, not a supported derived service.'
   - id: absolute_humidity
     entity_type: owl:DatatypeProperty
     layer: ontology
@@ -11811,14 +11814,14 @@ elements:
     data_class: derived
     data_type: xsd:decimal
     ui_display_name: Absolute Humidity
-    source: Box 2 ESPHome firmware (docs/hardware/esphome/box2.yaml, sht45_abs_humidity); W-84 slice; Cowork proposal 2026-11-09
+    source: Cowork proposal 2026-11-09; Codex supplemental review of PR 428; Box 2 implementation in docs/hardware/esphome/box2.yaml (sht45_abs_humidity); W-84 slice
     rendering:
       semantic: Absolute Humidity
       systems: Absolute Humidity (g/m³), derived
       technical: absolute_humidity
-      compliance: Derived value; source inputs and observed timestamp required
-    definition: Mass of water vapor per cubic meter of air at the SHT45's reading, computed on the node from the SHT45
-      temperature and relative humidity. Distinct from relative humidity (humidity_percent); derived, not measured.
+      compliance: Derived value; input channels and observed timestamps required
+    definition: Mass of water vapor per cubic meter of air at a given temperature and relative humidity. Distinct
+      from relative humidity (humidity_percent); derived from those two inputs, not measured.
     relationships:
     - target: temperature_celsius
       type: derives_from
@@ -11829,10 +11832,11 @@ elements:
     - target: environmental_measurement_service
       type: consumed_by
       cardinality: N:1
-    notes: 'Unit: g/m³. Provenance: computed on-node, SHT45 only. Unavailable whenever either input is unavailable.
-      Candidate ontology definition only: absolute_humidity is not in the D13 measurement_type vocabulary and this
-      entry registers nothing there; adding it is a D13 vocabulary addition that needs a Cowork ruling with the W-84
-      slice.'
+    notes: 'Unit: g/m³. This entry defines the generic quantity. Box 2 implementation provenance is separate: the node
+      computes it from the SHT45 temperature and relative humidity only, and the value is unavailable whenever either
+      input is. Candidate ontology definition only; it registers nothing in the D13 measurement_type vocabulary.
+      It does not reuse D13 ServiceEntity.derived_from to store the input channels. The W-84 enrollment gates listed
+      on dew_point apply here too.'
   - id: device_diagnostic_attribute
     entity_type: owl:Class
     layer: ontology
@@ -11855,12 +11859,14 @@ elements:
     - target: environmental_measurement_service
       type: distinct_from
       cardinality: N:N
-    notes: 'Box 2 members: uptime, Wi-Fi signal (the existing D13 rssi vocabulary entry; no new vocabulary), chip
-      temperature, free heap, reset reason, node status, SEN66 fault, SHT45 fault, ESPHome version. The firmware tags
-      each as entity_category diagnostic, which is the mechanical test. Identity values that carry the same tag (IP
-      address, Wi-Fi SSID, BSSID, MAC address) are not diagnostics for this purpose: they stay in the device registry
-      and are never surfaced in the knowledge base, Ask or the ontology (D28: hardware ids are not derived from names).
-      Candidate classification only; no runtime behavior is changed by this entry.'
+    notes: 'Box 2 members: uptime, Wi-Fi signal, chip temperature, free heap, reset reason, node status, SEN66 fault,
+      SHT45 fault, ESPHome version. Wi-Fi signal is the existing RSSI diagnostic field. It is outside the reportable
+      measurement_type vocabulary, which holds 14 types and does not include rssi (D7MeasurementTypes and the
+      device-reporting-relationship schema agree); no vocabulary is added to make that prose true. The firmware tags
+      each member entity_category diagnostic, which is the mechanical test. Identity values that carry the same tag
+      (IP address, Wi-Fi SSID, BSSID, MAC address) are not diagnostics for this purpose: they stay in the device
+      registry and are never surfaced in the knowledge base, Ask or the ontology (D28: hardware ids are not derived
+      from names). Candidate classification only; no runtime behavior is changed by this entry.'
 
   - id: exhaust_fan
     entity_type: owl:Class

@@ -848,7 +848,7 @@ A **Device Type Name** is a PascalCase, singular noun phrase describing what the
 | `SmartDehumidifier` | Midea Cube MAD50PS1QGR, WiFi | WiFi, HA local-LAN integration (W-77) |
 | `DuctFanSpeedController` | AC Infinity CLOUDLINE S6 6 in. inline fan (PWM EC motor) with its supplied 10-speed controller | Power metering and on/off via a `ZigbeeMiniRelay`; speed via the fan's UIS control port (W-78) |
 
-*CO₂ measurement from the SEN66 is informational only; `co2` is not in the platform's `measurement_type` vocabulary (D13) and must never be surfaced as a reportable service entity under that name.
+*CO₂ measurement from the SEN66 is informational only. `co2` is a valid `measurement_type` value (D13, revised 2026-09-04), distinct from `co` (carbon monoxide); the earlier statement here that it is not in the vocabulary was wrong and is corrected (DL-2026-11-09-01). The SEN66 channel stays informational: never an alarm, a safety or occupancy signal, or a carbon monoxide reading, and this correction does not enable enrollment, which remains a separate gated W-84 step.
 
 ### Naming derivation (mechanical, no per-unit invention; clarified by A1)
 
