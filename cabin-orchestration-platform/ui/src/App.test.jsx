@@ -141,19 +141,21 @@ describe("kpiTileFor", () => {
       expect(kpiTileFor(motion({ occupancy: true }), "F", {}, { signedIn: true }).value).toBe("Motion");
     });
 
-    it("shows a signed-out viewer only that the sensor is online and its battery -- never the reading", () => {
+    it("shows a signed-out viewer a sign-in prompt -- never the reading, and never battery as the headline", () => {
       for (const occupancy of [true, false]) {
         const tile = kpiTileFor(motion({ occupancy }), "F");
-        expect(tile.value).toBe("100% battery");
-        expect(JSON.stringify(tile)).not.toMatch(/motion"|clear/i);
+        expect(tile.value).toBe("Sign in for status");
+        expect(JSON.stringify(tile)).not.toMatch(/motion"|clear|battery/i);
       }
-      expect(kpiTileFor(motion({ battery: undefined }), "F").value).toBe("Online");
+      expect(kpiTileFor(motion({ battery: undefined }), "F").value).toBe("Sign in for status");
     });
 
     it("treats a door contact the same way: Open/Closed only when signed in, and the icon follows the state", () => {
       expect(kpiTileFor(contact({ contact: false }), "F", {}, { signedIn: true })).toMatchObject({ value: "Open" });
       expect(kpiTileFor(contact({ contact: true }), "F", {}, { signedIn: true })).toMatchObject({ value: "Closed" });
-      expect(kpiTileFor(contact(), "F").value).toBe("87% battery");
+      expect(kpiTileFor(contact(), "F").value).toBe("Sign in for status");
+      // the icon must not leak the reading to a signed-out viewer
+      expect(kpiTileFor(contact({ contact: false }), "F").icon).toBe(kpiTileFor(contact({ contact: true }), "F").icon);
     });
 
     it("shows a leak reading to everyone, and raises ALARM only when wet", () => {
@@ -828,7 +830,8 @@ describe("Monitoring reorder actually reaches the real grid (found 2026-08-25)",
     const out = renderWith({ signedIn: false });
     const gridOut = out.container.querySelector(".kpi-grid");
     expect(within(gridOut).getByText("motion_entry_movement_detect")).toBeTruthy();
-    expect(within(gridOut).getByText("100% battery")).toBeTruthy();
+    expect(within(gridOut).getByText("Sign in for status")).toBeTruthy();
+    expect(within(gridOut).queryByText(/battery/)).toBeNull();
     expect(within(gridOut).queryByText("Motion")).toBeNull();
     cleanup();
 
@@ -3586,6 +3589,64 @@ describe("DeviceManagerPanel — selection stickiness, shared order, Reset Filte
 
     expect(scrollIntoView).toHaveBeenCalled();
     delete Element.prototype.scrollIntoView;
+  });
+
+  // 2026-11-05 (user report): "nearest" parked the device a person was sent to on the very bottom edge of
+  // the list. Navigation now centres it; a click on a row that is already under the pointer does not scroll.
+  it("centres the selected row when navigating to it, but not when clicking a visible row", async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    try {
+      renderPanel({ devices: twoDevices });
+      await waitFor(() => expect(fetch).toHaveBeenCalled());
+      fireEvent.click(screen.getByText("Device One"));
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "Change" }));
+      expect(scrollIntoView).toHaveBeenCalledWith(expect.objectContaining({ block: "center" }));
+    } finally {
+      delete Element.prototype.scrollIntoView;
+    }
+  });
+
+  it("keeps the selected device and its detail visible after it is disabled out of the saved filters", async () => {
+    vi.stubGlobal("fetch", deviceManagerFetchMock());
+    const ctx = (devices) => ({ devices, workflows: [], activeLocation: "cabin", refreshDevices: vi.fn(), setActivePanel: vi.fn() });
+    const ui = (devices) => (
+      <AppContext.Provider value={ctx(devices)}><DeviceManagerPanel /></AppContext.Provider>
+    );
+    const view = render(ui(twoDevices));
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    fireEvent.click(screen.getByText("Device One"));
+    // The refresh after a disable: Device One is now "Saved for later", which the default State filter hides.
+    view.rerender(ui([
+      { ...twoDevices[0], attributes: { deviceLifecycle: "DEFERRED" } }, twoDevices[1],
+    ]));
+    expect(screen.getAllByText("Device One").length).toBeGreaterThan(0);
+    expect(document.querySelector(".dm-detail")).toBeTruthy();
+    // Selecting another device lets it leave the list, as the filter says.
+    fireEvent.click(screen.getByText("Device Two"));
+    expect(screen.queryByText("Device One")).toBeNull();
+  });
+
+  it("search reduces the list by any data element and looks past the saved lifecycle filter", async () => {
+    renderPanel({ devices: [
+      { deviceId: "d1", name: "Device One", type: "LOCK", state: "ONLINE", location: "cabin", attributes: { deviceLifecycle: "ASSIGNED", room: "Kitchen" } },
+      { deviceId: "d2", name: "Device Two", type: "LOCK", state: "ONLINE", location: "cabin", attributes: { deviceLifecycle: "ASSIGNED", room: "Garage" } },
+      { deviceId: "d3", name: "Old Sensor", type: "TEMPERATURE_SENSOR", state: "OFFLINE", location: "cabin", attributes: { deviceLifecycle: "IGNORED", room: "Garage" } },
+    ] });
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    expect(screen.queryByText("Old Sensor")).toBeNull(); // hidden by the default State filter
+    const box = screen.getByRole("searchbox", { name: /search devices/i });
+    fireEvent.change(box, { target: { value: "room:garage" } });
+    expect(screen.getByText("Device Two")).toBeTruthy();
+    expect(screen.getByText("Old Sensor")).toBeTruthy();
+    expect(screen.queryByText("Device One")).toBeNull();
+    expect(screen.getByRole("status").textContent).toMatch(/2 of 3 match/);
+    fireEvent.change(box, { target: { value: "room:garage -type:sensor" } });
+    expect(screen.queryByText("Old Sensor")).toBeNull();
+    fireEvent.keyDown(box, { key: "Escape" });
+    expect(screen.getByText("Device One")).toBeTruthy();
+    expect(screen.queryByText("Old Sensor")).toBeNull(); // filters resume once the search is cleared
   });
 
   it("clears the selection when switching to Add -- no device context makes sense there", async () => {

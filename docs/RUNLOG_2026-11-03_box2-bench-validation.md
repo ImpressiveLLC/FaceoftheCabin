@@ -87,7 +87,7 @@ Home temperature and humidity were missing because the Termux phone (`G3223`) wa
 - Tailscale is now set as the Android Always-on VPN on `G3223` (Settings, VPN, gear). Block-connections-without-VPN is left off so the phone keeps its own internet if the tunnel is down. Setting `always_on_vpn_app` with `adb shell settings put` did not register in the UI; the toggle had to be tapped.
 - Lesson: a quick-settings tap on the phone switched Wi-Fi off once. Check Wi-Fi after any UI tapping on the phone.
 - Only one Home SNZB-02P is joined; the five planned Home sensors (W-80) are not paired.
-- Alert gap logged as backlog W-151.
+- Alert gap logged as backlog W-156.
 
 ## Boxed check and diagnostics flash (2026-11-09)
 
@@ -98,7 +98,8 @@ Box 2 sits in its metal single-gang box, outside the cabin, still on the Home ne
 - **SHT45 offset:** a first read after rotation showed SHT45 27.7 C against SEN66 22.9 C; over 10 minutes it settled to 0.7 C. Treat the earlier 4.8 C as a transient from handling, not steady self-heating.
 - **Firmware (config hash 0x937367e5, OTA):** adds `internal_temperature` (Chip temperature), `debug` (Free heap, Reset reason), `wifi_info` (IP, SSID, BSSID, MAC), `status` (Node status) and template fault binary sensors for SEN66 and SHT45. 24 entities, up from 14. `docs/hardware/esphome/box2.yaml` matches.
 - **Chip temperature:** 76.4 C one minute after boot. Not yet trended; the module is rated to 85 C. Watch it over hours before closing the box for good. Candidate mitigations: `output_power` below 15 dB, `power_save_mode: light`.
-- **Open:** supply voltage at the SEN66 (multimeter); cabin LAN is 192.168.2.0/24 via Tailscale, so the static IP and .131 to .133 plan must move before the node goes there.
+- **Open:** supply voltage at the SEN66 (multimeter).
+- **Correction (2026-11-09):** an earlier line here said the cabin LAN is 192.168.2.0/24 and the static IP would not work there. That was wrong for Box 2. The cabin Starlink router hosts two subnets ([MAINTENANCE.md](MAINTENANCE.md), "What is true at this site"): 5 GHz is 192.168.2.0/24 (the M920q's Wi-Fi), 2.4 GHz is 192.168.1.0/24. Box 2 is 2.4 GHz only, so it lands on 192.168.1.0/24 at the cabin, as at Home, and 192.168.1.130 with gateway 192.168.1.1 stays valid. The hub reaches it through the cabled `eno2` port on 192.168.1.x; a scan of 192.168.2.x from the Wi-Fi side will not see it. The address plan (.130 to .133) therefore stands, but .130 to .135 were last checked quiet on 2026-11-04 and the Starlink DHCP reservation is still not set.
 
 ### Derived channels flashed (2026-11-09, OTA, build 03:12:44)
 

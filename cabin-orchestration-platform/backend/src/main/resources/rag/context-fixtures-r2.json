@@ -11,7 +11,7 @@
     "rootCause": "context-not-used (70/72); safety violations Q03/Q10/Q18; governance failures Q18/Q24/Q25",
     "runNote": "3 repeats × 24 executed questions (Q20 excluded); no-context word-overlap retrieval only"
   },
-  "description": "Deterministic context injection map for C1a, revision r2 (supersedes r1; r1 stays frozen as the 2026-09-07 baseline record). Per category: keywordPatterns select it, contextNodes are DB KnowledgeNodes (unchanged from r1), contextDocuments are reviewed repository Markdown sections supplied as in-memory, never-persisted context. Selection (AskContextBuilder): each pattern matches only as a whole word or phrase (an optional plural s/es is allowed); a category scores the summed word count of its distinct matched patterns plus its optional boost when anything matched; the highest score wins, ties go to declaration order, zero means no category (standard word-overlap retrieval). Documents: path is relative to the docs root and must sit under the AskContextBuilder allowlist; section is a GitHub-style heading anchor; audience is household (any authenticated role) or administrator (ADMINISTRATOR only; every other role, including no role, receives nothing from that entry). The default audience is administrator.",
+  "description": "Deterministic context injection map for C1a, revision r2 (supersedes r1; r1 stays frozen as the 2026-09-07 baseline record). Per category: keywordPatterns select it, contextNodes are DB KnowledgeNodes (unchanged from r1), contextDocuments are reviewed repository Markdown sections supplied as in-memory, never-persisted context. Selection (AskContextBuilder): each pattern matches only as a whole word or phrase (an optional ending is allowed: s, es, ed, d, ing, ings, ly, er, ers, ation, ations); a category scores the summed word count of its distinct matched patterns plus its optional boost when anything matched; the highest score wins, categories tied for it are all kept in declaration order (the first keeps the document budget; a later tied category adds only sections that fit whole in what is left, and a section already supplied is not repeated), zero means no category (standard word-overlap retrieval). Documents: path is relative to the docs root and must sit under the AskContextBuilder allowlist; section is a GitHub-style heading anchor; audience is household (any authenticated role) or administrator (ADMINISTRATOR only; every other role, including no role, receives nothing from that entry). The default audience is administrator.",
   "categories": [
     {
       "id": "user_auth_role",
@@ -167,7 +167,12 @@
         "candidate",
         "missing after restart",
         "import proposals",
-        "acceptance"
+        "acceptance",
+        "device onboarding",
+        "a platform import",
+        "import from an external platform",
+        "persisted candidate",
+        "import lifecycle"
       ],
       "questions": [
         "Q05",
@@ -757,7 +762,8 @@
         "disarming",
         "home is empty",
         "live reading",
-        "live data"
+        "live data",
+        "capability map"
       ],
       "questions": [
         "Q09",
@@ -981,7 +987,9 @@
         "installed",
         "independent",
         "standalone",
-        "overlay"
+        "overlay",
+        "independent installation",
+        "recreate on a clean host"
       ],
       "questions": [
         "Q15",
@@ -1143,7 +1151,11 @@
         "helpdesk",
         "paragraph",
         "stale source",
-        "retrieved document"
+        "retrieved document",
+        "knowledge node",
+        "how ask answers",
+        "cite a source",
+        "source citation"
       ],
       "questions": [
         "Q21",
@@ -1196,7 +1208,10 @@
         "claude found",
         "contribute",
         "contribution",
-        "shared record"
+        "shared record",
+        "pull request",
+        "ratification",
+        "documentation correction"
       ],
       "questions": [
         "Q24"
@@ -1796,6 +1811,7 @@
     "2026-10-27 K19: opportunity_status now supplies the Opportunities and Tech ID Service section (administrator) ahead of the capability map; new keywords tech id, finding(s), power draw, power_draw_anomaly, optimization, acknowledged.",
     "2026-10-27 K05: rules_workflows gains the rules-and-alerts trigger/action catalog section (administrator) and trigger/cooldown/retarget/vocabulary keywords.",
     "2026-10-27 C2 rewrite r1: answer-shaped leads under six guide headings plus a new live-values-and-ask section; presence-for-each-location moves from installation to the new installation_presence category; live_sensors gains live-values-and-ask first.",
-    "2026-10-29 C2 revert (HOLD per RUN-2 decision rule 3 and 4): Edits 3a and 3b (ask-and-helpdesk.md) and 4a with map change M2 (live-values-and-ask, first in live_sensors) removed; ask_helpdesk_behavior and live_sensors context restored to the RUN-1 text. RW-1, RW-2, RW-5, RW-6, K05 and K19 stay."
+    "2026-10-29 C2 revert (HOLD per RUN-2 decision rule 3 and 4): Edits 3a and 3b (ask-and-helpdesk.md) and 4a with map change M2 (live-values-and-ask, first in live_sensors) removed; ask_helpdesk_behavior and live_sensors context restored to the RUN-1 text. RW-1, RW-2, RW-5, RW-6, K05 and K19 stay.",
+    "2026-11-05 W-151 matcher: keyword endings widened (s, es, ed, d, ing, ings, ly, er, ers, ation, ations); categories tied for the top score are all kept in declaration order instead of the first winning (later tied categories add only sections that fit whole in the remaining document budget, duplicates dropped). Keywords and sections unchanged."
   ]
 }
