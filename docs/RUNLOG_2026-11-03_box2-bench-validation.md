@@ -99,3 +99,9 @@ Box 2 sits in its metal single-gang box, outside the cabin, still on the Home ne
 - **Firmware (config hash 0x937367e5, OTA):** adds `internal_temperature` (Chip temperature), `debug` (Free heap, Reset reason), `wifi_info` (IP, SSID, BSSID, MAC), `status` (Node status) and template fault binary sensors for SEN66 and SHT45. 24 entities, up from 14. `docs/hardware/esphome/box2.yaml` matches.
 - **Chip temperature:** 76.4 C one minute after boot. Not yet trended; the module is rated to 85 C. Watch it over hours before closing the box for good. Candidate mitigations: `output_power` below 15 dB, `power_save_mode: light`.
 - **Open:** supply voltage at the SEN66 (multimeter); cabin LAN is 192.168.2.0/24 via Tailscale, so the static IP and .131 to .133 plan must move before the node goes there.
+
+### Derived channels flashed (2026-11-09, OTA, build 03:12:44)
+
+`Dew point (derived, SHT45)` and `Absolute humidity (derived, SHT45)` added as on-node template sensors (Magnus formula, SHT45 only, 10 s). Checked against an independent calculation: SHT45 24.09 C / 43.6 % RH gave 10.90 C dew point and 9.5 g/m3, matching. Chip temperature read 77.4 C at one minute of uptime. Nate's condition: SHT45 stays stable for the next couple of days; the formulas can be changed later by OTA from the M920q once the node is on the cabin network.
+
+Not done: ontology entries for the two derived channels (D28 naming, `data_class: derived`, `derived_from` the SHT45 channels). Do this with W-84, not as a side edit to the 4000-line ontology.

@@ -212,6 +212,34 @@ sensor:
       name: "Free heap"
       entity_category: diagnostic
 
+  # Derived from the SHT45 only (Magnus formula; its accuracy is the better of the two sensors).
+  # Both go unavailable if the SHT45 has no valid reading.
+  - platform: template
+    name: "Dew point (derived, SHT45)"
+    id: sht45_dew_point
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: 10s
+    lambda: |-
+      float t = id(sht45_temp).state, rh = id(sht45_rh).state;
+      if (std::isnan(t) || std::isnan(rh) || rh <= 0.0f) return NAN;
+      const float a = 17.62f, b = 243.12f;
+      float g = logf(rh / 100.0f) + a * t / (b + t);
+      return b * g / (a - g);
+  - platform: template
+    name: "Absolute humidity (derived, SHT45)"
+    id: sht45_abs_humidity
+    unit_of_measurement: "g/m³"
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: 10s
+    lambda: |-
+      float t = id(sht45_temp).state, rh = id(sht45_rh).state;
+      if (std::isnan(t) || std::isnan(rh)) return NAN;
+      return 6.112f * expf(17.67f * t / (t + 243.5f)) * rh * 2.1674f / (273.15f + t);
+
 debug:
   update_interval: 60s
 
