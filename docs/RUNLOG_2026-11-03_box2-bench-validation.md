@@ -88,3 +88,14 @@ Home temperature and humidity were missing because the Termux phone (`G3223`) wa
 - Lesson: a quick-settings tap on the phone switched Wi-Fi off once. Check Wi-Fi after any UI tapping on the phone.
 - Only one Home SNZB-02P is joined; the five planned Home sensors (W-80) are not paired.
 - Alert gap logged as backlog W-151.
+
+## Boxed check and diagnostics flash (2026-11-09)
+
+Box 2 sits in its metal single-gang box, outside the cabin, still on the Home network (192.168.1.130).
+
+- **Wi-Fi in the box:** -86 dBm in the first orientation, -72 to -73 dBm (min -73, max -70, 10 min) after Nate rotated it. Orientation was worth 13 dB. Marginal against the -70 good line; re-measure after the cabin mounting.
+- **10-minute log (60 samples per channel, 9 to 10 s interval):** SEN66 22.95 C / 45.7 % RH, SHT45 23.61 C / 44.8 % RH (delta 0.7 C, 0.9 %RH), CO2 934 ppm mean (879 to 1072), PM2.5 1.1, PM10 1.7 ug/m3, VOC index 99, NOx 1. Dew point 10.5 to 10.9 C, absolute humidity 9.3 to 9.5 g/m3 (derived off-node).
+- **SHT45 offset:** a first read after rotation showed SHT45 27.7 C against SEN66 22.9 C; over 10 minutes it settled to 0.7 C. Treat the earlier 4.8 C as a transient from handling, not steady self-heating.
+- **Firmware (config hash 0x937367e5, OTA):** adds `internal_temperature` (Chip temperature), `debug` (Free heap, Reset reason), `wifi_info` (IP, SSID, BSSID, MAC), `status` (Node status) and template fault binary sensors for SEN66 and SHT45. 24 entities, up from 14. `docs/hardware/esphome/box2.yaml` matches.
+- **Chip temperature:** 76.4 C one minute after boot. Not yet trended; the module is rated to 85 C. Watch it over hours before closing the box for good. Candidate mitigations: `output_power` below 15 dB, `power_save_mode: light`.
+- **Open:** supply voltage at the SEN66 (multimeter); cabin LAN is 192.168.2.0/24 via Tailscale, so the static IP and .131 to .133 plan must move before the node goes there.

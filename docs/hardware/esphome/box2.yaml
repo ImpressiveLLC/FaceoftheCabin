@@ -201,6 +201,55 @@ sensor:
     update_interval: 30s
     entity_category: diagnostic
 
+  # Chip die temperature: shows whether the board is the heat source behind the SHT45 offset.
+  - platform: internal_temperature
+    name: "Chip temperature"
+    update_interval: 30s
+    entity_category: diagnostic
+
+  - platform: debug
+    free:
+      name: "Free heap"
+      entity_category: diagnostic
+
+debug:
+  update_interval: 60s
+
+binary_sensor:
+  - platform: status
+    name: "Node status"
+    entity_category: diagnostic
+  # Same fault rules as the status light, so a fault is visible in HA as well as on the LED.
+  - platform: template
+    name: "SEN66 fault"
+    device_class: problem
+    entity_category: diagnostic
+    lambda: |-
+      return id(sen66_hub).is_failed() || (millis() > 120000 && std::isnan(id(sen66_temp).state));
+  - platform: template
+    name: "SHT45 fault"
+    device_class: problem
+    entity_category: diagnostic
+    lambda: |-
+      return id(sht45_hub).is_failed() || (millis() > 120000 && std::isnan(id(sht45_temp).state));
+
 text_sensor:
   - platform: version
     name: "ESPHome version"
+  - platform: debug
+    reset_reason:
+      name: "Reset reason"
+      entity_category: diagnostic
+  - platform: wifi_info
+    ip_address:
+      name: "IP address"
+      entity_category: diagnostic
+    ssid:
+      name: "Wi-Fi SSID"
+      entity_category: diagnostic
+    bssid:
+      name: "Wi-Fi BSSID"
+      entity_category: diagnostic
+    mac_address:
+      name: "MAC address"
+      entity_category: diagnostic
