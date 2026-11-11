@@ -1,0 +1,22 @@
+name: Eval fixture tooling
+on:
+  pull_request:
+    paths:
+      - 'docs/ai-assistant/eval-fixture/**'
+      - '.github/workflows/eval-fixture-tooling.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/ai-assistant/eval-fixture/**'
+      - '.github/workflows/eval-fixture-tooling.yml'
+permissions:
+  contents: read
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Synthetic fixture and pinned analysis (offline, stdlib only)
+        run: |
+          cd docs/ai-assistant/eval-fixture
+          python3 -B -m unittest discover -s . -p 'test_*.py' -v
