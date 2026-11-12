@@ -34,7 +34,7 @@ import {
   Eye, Edit2, UserPlus, Minus, ExternalLink,
   Radio, Clock, Battery, MapPin, GripVertical, BarChart2,
   Lightbulb, ThumbsUp, ThumbsDown, ShoppingCart, Wrench, Send, Search, Bell,
-  Wind, MessageCircle, Link2, Info, Cloud, DoorOpen, DoorClosed, Download, Power, Car
+  Wind, MessageCircle, Link2, Info, Cloud, CloudSun, DoorOpen, DoorClosed, Download, Power, Car
 } from "lucide-react";
 import "./styles.css";
 import KioskControls from "./KioskControls.jsx";
@@ -5873,7 +5873,8 @@ export function kpiTileFor(device, tempUnit, reportingRelationships = {}, { sign
       const temp = device.attributes?.temperature;
       const hum  = device.attributes?.humidity;
       const val  = [fmtTemp(temp, tempUnit), hum != null && `${hum}%`].filter(Boolean).join(" · ") || "—";
-      return { icon: Thermometer, label: device.name, deviceId: device.deviceId, value: val, state: device.state };
+      const outdoor = isOutdoorDevice(device);
+      return { icon: outdoor ? CloudSun : Thermometer, label: device.name, deviceId: device.deviceId, value: val, state: device.state, outdoor };
     }
     // 2026-08-27: these four types didn't exist yet when this switch was
     // written, and fell through to the default (no tile at all) once
@@ -5887,7 +5888,8 @@ export function kpiTileFor(device, tempUnit, reportingRelationships = {}, { sign
     // sibling `temperature` attribute to pair it with.
     case "HUMIDITY_SENSOR":
       return { icon: Droplets, label: curatedLabel("humidity") || device.name, deviceId: device.deviceId,
-        value: device.attributes?.humidity != null ? `${device.attributes.humidity}%` : "—", state: device.state };
+        value: device.attributes?.humidity != null ? `${device.attributes.humidity}%` : "—", state: device.state,
+        outdoor: isOutdoorDevice(device) };
     case "CO2_SENSOR":
       return { icon: Wind, label: curatedLabel("co2") || device.name, deviceId: device.deviceId,
         value: device.attributes?.co2 != null ? `${device.attributes.co2} ppm` : "—", state: device.state };
@@ -5964,6 +5966,25 @@ export function kpiTileFor(device, tempUnit, reportingRelationships = {}, { sign
     default:
       return null;
   }
+}
+
+// 2026-11-11 (user report): the outside probe (temp_outside_lowest) was drawn and tiled exactly like
+// an indoor sensor, so a reading near freezing outside looked like the building was near freezing
+// ("scary" while the house was fine). A temperature or humidity device placed outside is now marked
+// as such everywhere it is shown: dashed line and "(outdoor)" label in Sensor History, an "Outdoor"
+// tag and its own icon on the Monitoring tile.
+//
+// How a device is known to be outside: an explicit `attributes.placement` ("outdoor" or "indoor")
+// always wins; until that attribute is set anywhere, the word outside/outdoor/exterior in its room
+// (`area`), name or id decides (z2m-temp_outside_lowest). The wording rule is the interim half: a
+// device whose name does not say so must be given `placement: "outdoor"`. Only used for temperature
+// and humidity readings, where the distinction changes how a number is read.
+const OUTDOOR_WORDS = /\b(outside|outdoors?|exterior)\b/i;
+export function isOutdoorDevice(device) {
+  const placement = device?.attributes?.placement;
+  if (typeof placement === "string" && placement) return placement.toLowerCase() === "outdoor";
+  return [device?.attributes?.area, device?.name, device?.deviceId]
+    .some(v => typeof v === "string" && OUTDOOR_WORDS.test(v.replace(/[_-]+/g, " ")));
 }
 
 // Same rule ActiveAlertService applies (lifecycleState().allowsActiveUse()):
@@ -6044,10 +6065,20 @@ const SENSOR_HISTORY_COLORS = ["#58a6ff", "#3fb950", "#f0883e", "#f85149", "#a37
 // temperature chart also gets it. Daily values come from GET /api/weather/outdoor-history (Celsius
 // and percent, UTC days keyed by the first 10 characters of `day`, same as the indoor points).
 export const OUTDOOR_BASELINE_FIELDS = new Set(["humidity", "temperature"]);
+// 2026-11-11 (user): a value pulled from a weather service is not a continuous record the way a
+// sensor in the building is, so it is drawn as single points, never joined into a line: three per
+// day, the daily high (up triangle), mean (circle) and low (down triangle). A line stays reserved
+// for readings this system measured itself. Each series carries min/max beside the mean
+// (`OutdoorDailyPoint` low/high); a day from an older backend without them shows the mean alone.
 const OUTDOOR_BASELINE_STYLE = {
-  rhPct: { color: "#8b949e", dash: "6 3" },
-  tempC: { color: "#8b949e", dash: "6 3" },
-  dewpointC: { color: "#b1bac4", dash: "2 3" },
+  rhPct: { color: "#8b949e" },
+  tempC: { color: "#8b949e" },
+  dewpointC: { color: "#b1bac4" },
+};
+const OUTDOOR_EXTREME_KEYS = {
+  rhPct: ["rhMinPct", "rhMaxPct"],
+  tempC: ["tempMinC", "tempMaxC"],
+  dewpointC: ["dewpointMinC", "dewpointMaxC"],
 };
 export function outdoorBaselineSeries(field, outdoor) {
   const pts = Array.isArray(outdoor?.points) ? outdoor.points : [];
@@ -6057,13 +6088,24 @@ export function outdoorBaselineSeries(field, outdoor) {
     : [];
   const stations = [...new Set(pts.map(p => p.station).filter(Boolean))];
   const suffix = stations.length ? ` (${stations.join("/")})` : "";
-  return specs.map(sp => ({
-    key: sp.key,
-    label: `${sp.label}${suffix}`,
-    ...OUTDOOR_BASELINE_STYLE[sp.key],
-    byDay: Object.fromEntries(pts.filter(p => p[sp.key] != null)
-      .map(p => [String(p.day).slice(0, 10), { value: p[sp.key], n: p.sampleCount, partial: !!p.partial }])),
-  }));
+  return specs.map(sp => {
+    const [minKey, maxKey] = OUTDOOR_EXTREME_KEYS[sp.key];
+    return {
+      key: sp.key,
+      label: `${sp.label}${suffix}`,
+      ...OUTDOOR_BASELINE_STYLE[sp.key],
+      byDay: Object.fromEntries(pts.filter(p => p[sp.key] != null)
+        .map(p => [String(p.day).slice(0, 10), {
+          value: p[sp.key], min: p[minKey] ?? null, max: p[maxKey] ?? null, n: p.sampleCount, partial: !!p.partial,
+        }])),
+    };
+  });
+}
+// "mean (low–high)" for a table cell; just the mean when the day has no extremes.
+export function outdoorCellText(o, toDisplay, unit) {
+  const f = v => `${toDisplay(v).toFixed(1)}${unit}`;
+  const spread = o.min != null && o.max != null ? ` (low ${f(o.min)}, high ${f(o.max)})` : "";
+  return `${f(o.value)}${spread} (n=${o.n})${o.partial ? " (partial)" : ""}`;
 }
 
 const SENSOR_HISTORY_KNOWN_FIELDS = new Set(SENSOR_FIELD_OPTIONS.map(o => o.value));
@@ -6721,10 +6763,16 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
     ids.includes(deviceId) ? ids.filter(id => id !== deviceId) : [...ids, deviceId]);
   const selectAll = () => setSelectedIds(fieldDevices.map(d => d.deviceId));
   const selectNone = () => setSelectedIds([]);
+  // A temperature/humidity sensor placed outside the building is dashed and labeled "(outdoor)"
+  // wherever it is shown (legend, table, CSV), so a cold outside reading is never mistaken for the
+  // inside. See isOutdoorDevice for how a device is known to be outside.
+  const isOutdoorId = (deviceId) => OUTDOOR_BASELINE_FIELDS.has(field)
+    && isOutdoorDevice(devices.find(d => d.deviceId === deviceId));
   const nameFor = (deviceId) => {
     const curated = (reportingRelationships[deviceId] || [])
       .find(r => r.semanticField === field)?.displayLabel;
-    return curated || devices.find(d => d.deviceId === deviceId)?.name || deviceId;
+    const base = curated || devices.find(d => d.deviceId === deviceId)?.name || deviceId;
+    return isOutdoorId(deviceId) ? `${base} (outdoor)` : base;
   };
 
   const unit = field === "temperature" ? `°${tempUnit}` : (SENSOR_FIELD_UNITS[field] ?? "");
@@ -6745,7 +6793,8 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
   const allDisplayValues = [
     ...selectedIds.flatMap(id =>
       (seriesByDevice[id] || []).filter(p => p.avg != null).map(p => toDisplay(p.avg))),
-    ...outdoorSeries.flatMap(sr => dateKeys.map(k => sr.byDay[k]).filter(Boolean).map(o => toDisplay(o.value))),
+    ...outdoorSeries.flatMap(sr => dateKeys.map(k => sr.byDay[k]).filter(Boolean)
+      .flatMap(o => [o.value, o.min, o.max]).filter(v => v != null).map(toDisplay)),
   ];
   const chartMin = allDisplayValues.length ? Math.min(...allDisplayValues) : 0;
   const chartMax = allDisplayValues.length ? Math.max(...allDisplayValues) : 1;
@@ -6760,19 +6809,21 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
       const y = toY(toDisplay(p.avg));
       return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(" ");
-    return { deviceId, name: nameFor(deviceId), color: SENSOR_HISTORY_COLORS[idx % SENSOR_HISTORY_COLORS.length], d, hasPoints: pts.length > 0 };
+    return { deviceId, name: nameFor(deviceId), color: SENSOR_HISTORY_COLORS[idx % SENSOR_HISTORY_COLORS.length], d, hasPoints: pts.length > 0, outdoor: isOutdoorId(deviceId) };
   });
-  // A gap in the outdoor series (a day the station did not report) breaks the line instead of
-  // being bridged, so the chart never draws a value that was not observed.
-  const outdoorPaths = outdoorSeries.map(sr => {
-    let d = "", pen = false;
+  // Service values are single points, never a line: one high, mean and low marker per day, so
+  // the chart never implies a continuous record, or a value between two days, that nobody measured.
+  const outdoorPoints = outdoorSeries.map(sr => {
+    const marks = [];
     dateKeys.forEach((k, i) => {
       const o = sr.byDay[k];
-      if (!o) { pen = false; return; }
-      d += `${pen ? "L" : "M"}${toX(i).toFixed(1)},${toY(toDisplay(o.value)).toFixed(1)} `;
-      pen = true;
+      if (!o) return;
+      const x = toX(i);
+      marks.push({ kind: "mean", x, y: toY(toDisplay(o.value)) });
+      if (o.max != null) marks.push({ kind: "high", x, y: toY(toDisplay(o.max)) });
+      if (o.min != null) marks.push({ kind: "low", x, y: toY(toDisplay(o.min)) });
     });
-    return { ...sr, d: d.trim(), hasPoints: d.length > 0 };
+    return { ...sr, marks, hasPoints: marks.length > 0 };
   });
 
   // 2026-08-27: long/tidy format (one row per date+device), not the wide
@@ -6893,7 +6944,12 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
             )}
             {outdoorWanted && outdoorSeries.length > 0 && (
               <p className="config-hint sensor-history-outdoor-note">
-                Dashed line: nearest airport weather station ({outdoor.stations.join(", ")}), daily average of its hourly reports. Days are UTC days, so a day can differ slightly from the local calendar day.
+                Single gray points (▲ high, ● mean, ▼ low per day): nearest airport weather station ({outdoor.stations.join(", ")}), summarized from its hourly reports. Days are UTC days, so a day can differ slightly from the local calendar day.
+              </p>
+            )}
+            {devicePaths.some(p => p.outdoor) && (
+              <p className="config-hint sensor-history-outdoor-note">
+                Dashed line, labeled (outdoor): a sensor of ours placed outside the building. It shows the outside air, not the inside.
               </p>
             )}
             {rangeInfo?.clamped && (
@@ -6910,6 +6966,7 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
                   onClick={() => toggleDevice(d.deviceId)}>
                   {d.attributes?.area && <span className="sensor-history-chip-area">{d.attributes.area} – </span>}
                   {d.name}
+                  {OUTDOOR_BASELINE_FIELDS.has(field) && isOutdoorDevice(d) && <span className="sensor-history-chip-outdoor"> · outdoor</span>}
                 </button>
               ))}
             </div>
@@ -6925,24 +6982,33 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
                 {allDates.length > 1 && (
                   <svg viewBox={`0 0 ${chartW} ${chartH}`} className="sensor-history-chart">
                     {devicePaths.filter(p => p.hasPoints).map(p => (
-                      <path key={p.deviceId} d={p.d} fill="none" stroke={p.color} strokeWidth="2"/>
+                      <path key={p.deviceId} d={p.d} fill="none" stroke={p.color} strokeWidth="2"
+                        strokeDasharray={p.outdoor ? "6 3" : undefined}
+                        data-testid={p.outdoor ? `outdoor-device-line-${p.deviceId}` : undefined}/>
                     ))}
-                    {outdoorPaths.filter(p => p.hasPoints).map(p => (
-                      <path key={p.key} d={p.d} fill="none" stroke={p.color} strokeWidth="1.5" strokeDasharray={p.dash} data-testid={`outdoor-line-${p.key}`}/>
+                    {outdoorPoints.filter(p => p.hasPoints).map(p => (
+                      <g key={p.key} fill={p.color} data-testid={`outdoor-points-${p.key}`}>
+                        {p.marks.map((m, i) => m.kind === "high"
+                          ? <polygon key={i} data-kind="high" points={`${m.x},${m.y - 3.5} ${m.x - 3.5},${m.y + 3} ${m.x + 3.5},${m.y + 3}`}/>
+                          : m.kind === "low"
+                            ? <polygon key={i} data-kind="low" points={`${m.x},${m.y + 3.5} ${m.x - 3.5},${m.y - 3} ${m.x + 3.5},${m.y - 3}`}/>
+                            : <circle key={i} data-kind="mean" cx={m.x} cy={m.y} r="3"/>)}
+                      </g>
                     ))}
                   </svg>
                 )}
-                {(selectedIds.length > 1 || outdoorPaths.length > 0) && (
+                {(selectedIds.length > 1 || outdoorPoints.length > 0 || devicePaths.some(p => p.outdoor)) && (
                   <div className="sensor-history-legend">
-                    {selectedIds.length > 1 && devicePaths.map(p => (
+                    {(selectedIds.length > 1 || devicePaths.some(p => p.outdoor)) && devicePaths.map(p => (
                       <span key={p.deviceId} className="sensor-history-legend-item">
-                        <span className="sensor-history-legend-swatch" style={{ background: p.color }} />
+                        <span className={`sensor-history-legend-swatch${p.outdoor ? " sensor-history-legend-swatch-dashed" : ""}`}
+                          style={p.outdoor ? { borderTopColor: p.color } : { background: p.color }} />
                         {p.name}
                       </span>
                     ))}
-                    {outdoorPaths.map(p => (
+                    {outdoorPoints.map(p => (
                       <span key={p.key} className="sensor-history-legend-item">
-                        <span className="sensor-history-legend-swatch" style={{ background: p.color }} />
+                        <span className="sensor-history-legend-points" style={{ color: p.color }} aria-hidden="true">▲●▼</span>
                         {p.label}
                       </span>
                     ))}
@@ -6970,7 +7036,7 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
                           })}
                           {outdoorSeries.map(sr => {
                             const o = sr.byDay[String(day).slice(0, 10)];
-                            return <td key={sr.key}>{o ? `${toDisplay(o.value).toFixed(1)}${unit} (n=${o.n})${o.partial ? " (partial)" : ""}` : "—"}</td>;
+                            return <td key={sr.key}>{o ? outdoorCellText(o, toDisplay, unit) : "—"}</td>;
                           })}
                         </tr>
                       ))}
@@ -7552,7 +7618,7 @@ function KpiValue({ value }) {
   );
 }
 
-function KpiTile({ icon: Icon, label, value, state, deviceId, reorderMode, isPinned, isOver,
+function KpiTile({ icon: Icon, label, value, state, deviceId, outdoor = false, reorderMode, isPinned, isOver,
     onDragStart, onDragOver, onDrop, onDragEnd }) {
   const { displayConfigs, devices = [], setActivePanel, setPendingDeviceFocus } = useApp();
   const canOpen = !reorderMode && deviceId && setActivePanel && setPendingDeviceFocus;
@@ -7570,7 +7636,7 @@ function KpiTile({ icon: Icon, label, value, state, deviceId, reorderMode, isPin
 
   return (
     <div
-      className={`kpi-tile kpi-${stCls} ${reorderMode ? "reorder-card" : ""} ${isOver ? "drag-over-card" : ""}`}
+      className={`kpi-tile kpi-${stCls} ${outdoor ? "kpi-outdoor" : ""} ${reorderMode ? "reorder-card" : ""} ${isOver ? "drag-over-card" : ""}`}
       role={canOpen ? "button" : undefined}
       tabIndex={canOpen ? 0 : undefined}
       aria-label={canOpen ? `Open ${effectiveLabel} in Devices` : undefined}
@@ -7588,7 +7654,10 @@ function KpiTile({ icon: Icon, label, value, state, deviceId, reorderMode, isPin
         ? <Lock size={13} className="auto-pin-icon" title="Auto-pinned: alarm active"/>
         : <GripVertical size={13} className="drag-handle"/>)}
       <Icon size={22} />
-      <div className="kpi-label">{effectiveLabel}</div>
+      <div className="kpi-label">
+        {effectiveLabel}
+        {outdoor && <span className="kpi-outdoor-tag" title="Measured outside the building, not a reading of the inside">Outdoor</span>}
+      </div>
       <KpiValue value={effectiveValue} />
       <span className={`state-badge ${stCls}`}>{badgeLabel}</span>
     </div>

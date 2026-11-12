@@ -2,7 +2,7 @@ import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import { dashboardCommandLimit } from "./App.jsx";
-import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, cameraBelongsToLocation, CameraHealthPanel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, outdoorBaselineSeries, OUTDOOR_BASELINE_FIELDS, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
+import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, cameraBelongsToLocation, CameraHealthPanel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, outdoorBaselineSeries, outdoorCellText, isOutdoorDevice, OUTDOOR_BASELINE_FIELDS, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
 StorageTrimWidget, trimPreview, formatTrimBytes, keepForFreeing, MonitoringPanel,
@@ -7270,6 +7270,107 @@ describe("ZigbeePairingFlow -- the pairing window must not pretend (2026-10-16)"
 });
 
 
+// 2026-11-11 (user report): the outside probe looked like an indoor reading, and the airport baseline
+// was drawn as a line. A sensor of ours placed outside is dashed and labeled "(outdoor)"; values pulled
+// from a weather service are single points (daily high, mean, low), never a line.
+describe("outdoor readings are marked and never mistaken for the inside", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  const probe = { deviceId: "z2m-temp_outside_lowest", name: "temp_outside_lowest", type: "TEMPERATURE_SENSOR",
+    state: "ONLINE", location: "cabin", attributes: { enabled: true, temperature: 1.5, humidity: 60 } };
+  const inside = { deviceId: "z2m-temp_kitchen", name: "Kitchen", type: "TEMPERATURE_SENSOR",
+    state: "ONLINE", location: "cabin", attributes: { enabled: true, temperature: 20, humidity: 40 } };
+
+  it("isOutdoorDevice: explicit placement wins, otherwise the wording in area, name or id decides", () => {
+    expect(isOutdoorDevice(probe)).toBe(true);
+    expect(isOutdoorDevice(inside)).toBe(false);
+    expect(isOutdoorDevice({ deviceId: "z2m-x", name: "Back deck", attributes: { placement: "outdoor" } })).toBe(true);
+    expect(isOutdoorDevice({ deviceId: "z2m-x", name: "Outside wall probe", attributes: { placement: "indoor" } })).toBe(false);
+    expect(isOutdoorDevice({ deviceId: "z2m-y", name: "Porch", attributes: { area: "Outdoors" } })).toBe(true);
+    expect(isOutdoorDevice({ deviceId: "z2m-z", name: "Outsider door", attributes: {} })).toBe(false);
+    expect(isOutdoorDevice(undefined)).toBe(false);
+  });
+
+  it("the Monitoring tile for an outdoor probe carries the outdoor flag and its own icon; an indoor one does not", () => {
+    const out = kpiTileFor(probe, "F");
+    const inn = kpiTileFor(inside, "F");
+    expect(out.outdoor).toBe(true);
+    expect(inn.outdoor).toBe(false);
+    expect(out.icon).not.toBe(inn.icon);
+  });
+
+  it("the tile says Outdoor in words", () => {
+    render(
+      <AppContext.Provider value={{ displayConfigs: {}, devices: [probe, inside] }}>
+        <MnSeeView devices={[probe, inside]} activeLocation="cabin" tempUnit="F" toggleTempUnit={() => {}} />
+      </AppContext.Provider>
+    );
+    expect(screen.getAllByText("Outdoor").length).toBe(1);
+  });
+
+  const outdoorDay = (day, over = {}) => ({ day, station: "UBE", tempC: 5, dewpointC: 2, rhPct: 77, sampleCount: 70, partial: false,
+    tempMinC: -2, tempMaxC: 9, dewpointMinC: -4, dewpointMaxC: 4, rhMinPct: 55, rhMaxPct: 95, ...over });
+
+  it("outdoorBaselineSeries carries the daily low and high beside the mean", () => {
+    const s = outdoorBaselineSeries("temperature", { points: [outdoorDay("2026-10-27T00:00:00Z")] });
+    expect(s.find(x => x.key === "tempC").byDay["2026-10-27"]).toMatchObject({ value: 5, min: -2, max: 9 });
+    expect(s.find(x => x.key === "dewpointC").byDay["2026-10-27"]).toMatchObject({ value: 2, min: -4, max: 4 });
+    const h = outdoorBaselineSeries("humidity", { points: [outdoorDay("2026-10-27T00:00:00Z")] });
+    expect(h[0].byDay["2026-10-27"]).toMatchObject({ value: 77, min: 55, max: 95 });
+  });
+
+  it("a day from a backend without low/high still yields the mean, with null extremes", () => {
+    const s = outdoorBaselineSeries("humidity", { points: [{ day: "2026-10-27T00:00:00Z", station: "UBE", rhPct: 77, sampleCount: 70, partial: false }] });
+    expect(s[0].byDay["2026-10-27"]).toMatchObject({ value: 77, min: null, max: null });
+  });
+
+  it("outdoorCellText shows mean with low and high, or the mean alone", () => {
+    const id = v => v;
+    expect(outdoorCellText({ value: 5, min: -2, max: 9, n: 70, partial: false }, id, "°")).toBe("5.0° (low -2.0°, high 9.0°) (n=70)");
+    expect(outdoorCellText({ value: 5, min: null, max: null, n: 3, partial: true }, id, "°")).toBe("5.0° (n=3) (partial)");
+  });
+
+  function chartFetch(points, outdoorBody) {
+    return vi.fn((url) => {
+      if (url.includes("/reported-fields")) return Promise.resolve({ ok: true, json: async () => ({ [probe.deviceId]: ["temperature"], [inside.deviceId]: ["temperature"] }) });
+      if (url.includes("/telemetry-history")) return Promise.resolve({ ok: true, json: async () => ({ requestedDays: 30, effectiveDays: 30, clamped: false, points }) });
+      if (url.includes("/api/weather/outdoor-history")) return Promise.resolve({ ok: true, json: async () => outdoorBody });
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+  }
+  const series = [
+    { day: "2026-10-25T00:00:00Z", avg: 1, min: -3, max: 4, sampleCount: 50 },
+    { day: "2026-10-26T00:00:00Z", avg: 2, min: -1, max: 5, sampleCount: 50 },
+  ];
+
+  it("charts an outdoor sensor of ours as a dashed line labeled (outdoor), and an indoor one solid", async () => {
+    vi.stubGlobal("fetch", chartFetch(series, { location: "cabin", stations: [], points: [] }));
+    render(<SensorHistoryPanel devices={[probe, inside]} apiBase="http://cabin" location="cabin" tempUnit="C" />);
+    // every device reporting the field is selected by default, so both are charted
+    const line = await screen.findByTestId("outdoor-device-line-z2m-temp_outside_lowest");
+    expect(line.getAttribute("stroke-dasharray")).toBeTruthy();
+    expect(screen.getAllByText(/temp_outside_lowest \(outdoor\)/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/It shows the outside air, not the inside/)).toBeTruthy();
+    await waitFor(() => expect(document.querySelectorAll(".sensor-history-chart path").length).toBe(2));
+    const dashed = [...document.querySelectorAll(".sensor-history-chart path")].filter(p => p.getAttribute("stroke-dasharray"));
+    expect(dashed.length).toBe(1);
+  });
+
+  it("draws weather-service values as a high, mean and low point per day, never a line", async () => {
+    vi.stubGlobal("fetch", chartFetch(series, { location: "cabin", stations: ["UBE"], requestedDays: 30, effectiveDays: 30, clamped: false,
+      points: [outdoorDay("2026-10-25T00:00:00Z"), outdoorDay("2026-10-26T00:00:00Z")] }));
+    render(<SensorHistoryPanel devices={[inside]} apiBase="http://cabin" location="cabin" tempUnit="C" />);
+    const g = await screen.findByTestId("outdoor-points-tempC");
+    expect(g.querySelectorAll("circle[data-kind=mean]").length).toBe(2);
+    expect(g.querySelectorAll("polygon[data-kind=high]").length).toBe(2);
+    expect(g.querySelectorAll("polygon[data-kind=low]").length).toBe(2);
+    expect(g.querySelector("path")).toBeNull();
+    expect(screen.getByText(/Single gray points/)).toBeTruthy();
+    // the table gives the same three numbers
+    expect(screen.getAllByText(/\(low -2\.0°C, high 9\.0°C\)/).length).toBeGreaterThan(0);
+  });
+});
+
 describe("SensorHistoryPanel outdoor baseline", () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -7317,17 +7418,19 @@ describe("SensorHistoryPanel outdoor baseline", () => {
     expect(outdoorBaselineSeries("humidity", { points: [] })).toEqual([]);
   });
 
-  it("draws the dashed outdoor line, labels it, and asks the weather route for this location", async () => {
+  it("draws the outdoor values as single points, labels them, and asks the weather route for this location", async () => {
     const calls = [];
     vi.stubGlobal("fetch", mockFetch(outdoorOk, calls));
     render(<SensorHistoryPanel devices={devs} apiBase="http://cabin" location="cabin" tempUnit="F" />);
-    expect(await screen.findByTestId("outdoor-line-rhPct")).toBeTruthy();
+    expect(await screen.findByTestId("outdoor-points-rhPct")).toBeTruthy();
     expect(calls.some(u => u.includes("/api/weather/outdoor-history?location=cabin&days=30"))).toBe(true);
     expect(screen.getAllByText(/Outdoor humidity \(UBE\/RPD\)/).length).toBeGreaterThan(0);
-    // the missing 10-26 day breaks the line into two separate points, never a bridge
-    const d = screen.getByTestId("outdoor-line-rhPct").getAttribute("d");
-    expect((d.match(/M/g) || []).length).toBe(2);
-    expect((d.match(/L/g) || []).length).toBe(0);
+    // service values are single points, never a line: one mean marker per reported day,
+    // and the missing 10-26 day has no marker at all (nothing bridges it)
+    const g = screen.getByTestId("outdoor-points-rhPct");
+    expect(g.querySelectorAll("circle[data-kind=mean]").length).toBe(2);
+    expect(g.querySelector("path")).toBeNull();
+    expect(document.querySelector("path[data-testid=outdoor-points-rhPct]")).toBeNull();
   });
 
   it("does not keep the previous location's line and station label while the next location loads", async () => {
@@ -7342,32 +7445,32 @@ describe("SensorHistoryPanel outdoor baseline", () => {
       return Promise.resolve({ ok: true, json: async () => ({}) });
     }));
     const { rerender } = render(<SensorHistoryPanel devices={devs} apiBase="http://cabin" location="cabin" tempUnit="F" />);
-    expect(await screen.findByTestId("outdoor-line-rhPct")).toBeTruthy();
+    expect(await screen.findByTestId("outdoor-points-rhPct")).toBeTruthy();
     expect(screen.getAllByText(/\(UBE\/RPD\)/).length).toBeGreaterThan(0);
 
     rerender(<SensorHistoryPanel devices={devs} apiBase="http://cabin" location="home" tempUnit="F" />);
     // Home's answer has not arrived: Cabin's line and station label must already be gone
-    await waitFor(() => expect(screen.queryByTestId("outdoor-line-rhPct")).toBeNull());
+    await waitFor(() => expect(screen.queryByTestId("outdoor-points-rhPct")).toBeNull());
     expect(screen.queryAllByText(/UBE/).length).toBe(0);
 
     releaseHome();
-    expect(await screen.findByTestId("outdoor-line-rhPct")).toBeTruthy();
+    expect(await screen.findByTestId("outdoor-points-rhPct")).toBeTruthy();
     expect(screen.getAllByText(/\(HOME1\)/).length).toBeGreaterThan(0);
   });
 
   it("turning the checkbox off removes the line", async () => {
     vi.stubGlobal("fetch", mockFetch(outdoorOk));
     render(<SensorHistoryPanel devices={devs} apiBase="http://cabin" location="cabin" tempUnit="F" />);
-    await screen.findByTestId("outdoor-line-rhPct");
+    await screen.findByTestId("outdoor-points-rhPct");
     fireEvent.click(screen.getByLabelText(/Outdoor baseline/));
-    await waitFor(() => expect(screen.queryByTestId("outdoor-line-rhPct")).toBeNull());
+    await waitFor(() => expect(screen.queryByTestId("outdoor-points-rhPct")).toBeNull());
   });
 
   it("says so when the location has no outdoor station, and draws no line", async () => {
     vi.stubGlobal("fetch", mockFetch({ location: "cabin", stations: [], requestedDays: 30, effectiveDays: 30, clamped: false, points: [] }));
     render(<SensorHistoryPanel devices={devs} apiBase="http://cabin" location="cabin" tempUnit="F" />);
     expect(await screen.findByText(/No outdoor weather station is set up/)).toBeTruthy();
-    expect(screen.queryByTestId("outdoor-line-rhPct")).toBeNull();
+    expect(screen.queryByTestId("outdoor-points-rhPct")).toBeNull();
   });
 
   it("does not ask for outdoor data without a location, and survives a failed weather call", async () => {
@@ -7384,7 +7487,7 @@ describe("SensorHistoryPanel outdoor baseline", () => {
     }));
     render(<SensorHistoryPanel devices={devs} apiBase="http://cabin" location="cabin" tempUnit="F" />);
     await screen.findByRole("button", { name: "Mech Room" });
-    expect(screen.queryByTestId("outdoor-line-rhPct")).toBeNull();
+    expect(screen.queryByTestId("outdoor-points-rhPct")).toBeNull();
   });
 });
 

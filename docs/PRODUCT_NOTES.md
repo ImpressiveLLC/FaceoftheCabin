@@ -1040,3 +1040,37 @@ same guidance as a section of the user guide in git, not a runtime KB write,
 because KB content must repopulate from a fresh clone.
 
 ---
+
+## 2026-11-11 — Outdoor readings: marked as outside, and service values are points, not lines
+
+Nate's report: the outside probe (`temp_outside_lowest`) was charted and tiled exactly like
+an indoor sensor, so a reading near the freeze warning outside made the building look near
+freezing while the house was fine. The airport baseline (values pulled from a weather
+service) was also drawn as a dashed line, which implies a continuous record nobody
+measured.
+
+Two rules came out of the discussion, and they are one idea: **how a mark is drawn says
+where the number came from.**
+
+- **A sensor of ours placed outside** is a **dashed line**, labeled "(outdoor)" in the legend,
+  table and CSV, with a note under the chart saying it shows the outside air. Its Monitoring
+  tile carries an "Outdoor" tag and its own icon. The tag is words and an icon, not a dashed
+  border: the card-attention framework (section 15.3) reserves dashed borders for unclassified
+  and last-known states, so using one here would have collided with it.
+- **A value pulled from a weather service** is a **single point, never a line**: three gray
+  points per day, the daily high (triangle up), mean (circle) and low (triangle down). The
+  table cell reads `mean (low, high)`. The API (`OutdoorDailyPoint`) gained the low and high of
+  each reading beside the mean; a day from an older backend still shows its mean.
+
+How a device is known to be outside: `attributes.placement` is `outdoor` (or `indoor`, which
+wins), otherwise the word outside, outdoor or exterior in its room, name or id. That wording
+rule is knowingly interim: it fits `temp_outside_lowest` today, and a device whose name does
+not say so needs `placement: "outdoor"`. A real placement field (ontology and Device Manager)
+is the durable fix and is not built here.
+
+Not changed: the freeze-risk alert logic itself (it lives in the HA automation, and an outside
+probe near freezing is exactly the input it should see), the shared chart scale (comparing
+inside against outside is the point of the chart), and the CSV export format (outdoor rows keep
+the mean only; high and low are on screen).
+
+---

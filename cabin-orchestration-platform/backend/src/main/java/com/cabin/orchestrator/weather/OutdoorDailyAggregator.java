@@ -46,9 +46,21 @@ public final class OutdoorDailyAggregator {
             List<OutdoorObservation> l = e.getValue().get(chosen);
             boolean partial = l.size() < minObsPerDay || !e.getKey().isBefore(today);
             points.add(new OutdoorDailyPoint(e.getKey(), chosen,
-                mean(l, 0), mean(l, 1), mean(l, 2), l.size(), partial));
+                mean(l, 0), mean(l, 1), mean(l, 2), l.size(), partial,
+                extreme(l, 0, true), extreme(l, 0, false),
+                extreme(l, 1, true), extreme(l, 1, false),
+                extreme(l, 2, true), extreme(l, 2, false)));
         }
         return points;
+    }
+
+    private static Double extreme(List<OutdoorObservation> l, int which, boolean min) {
+        Double best = null;
+        for (OutdoorObservation o : l) {
+            Double v = which == 0 ? o.tempC() : which == 1 ? o.dewpointC() : o.rhPct();
+            if (v != null && (best == null || (min ? v < best : v > best))) best = v;
+        }
+        return best;
     }
 
     private static Double mean(List<OutdoorObservation> l, int which) {
