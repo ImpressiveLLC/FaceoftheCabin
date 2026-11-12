@@ -1,28 +1,27 @@
 # Offline synthetic fixture and pinned analysis
 
-Scripts and tests for the paired two-arm Ask evaluation analysis, built before any real evidence exists so the analysis is pinned and tested first. Everything here is invented data. No sealed item, no frozen-suite question and no corpus text is read or reproduced, nothing here calls a model, and the analysis opens no network connection.
+Scripts and tests for the paired two-arm Ask evaluation analysis, built before any real evidence exists so the analysis is pinned and tested first. Everything here is invented data. No sealed item, no frozen-suite question and no corpus text is read or reproduced, nothing here calls a model, and the analysis does no network access.
 
 | File | Role |
 |---|---|
-| `analyze_run.py` | Verifies a run directory against its frozen manifest, then computes the paired answerable PASS-fraction difference, the 95% paired question-block percentile bootstrap (10,000 draws, seed 20261109) and a verdict: `GAIN_MET`, `GAIN_NOT_MET` or `HOLD`. |
+| `analyze_run.py` | Verifies a run directory against its frozen manifest behind an unmasking barrier, then computes the paired answerable PASS-fraction difference, the 95% paired question-block percentile bootstrap and a verdict: `GAIN_MET`, `GAIN_NOT_MET` or `HOLD`. |
 | `synthetic_fixture.py` | Builds synthetic runs: a hand-written sentinel set with a known answer, and random two-arm runs. |
-| `test_fixture_analysis.py` | 20 offline tests. |
+| `test_fixture_analysis.py` | 42 offline tests. |
+| `requirements.txt` | The one dependency, NumPy, pinned. The analysis is only reproducible with this version. |
 
-Run: `python3 -B -m unittest discover -s . -p 'test_*.py' -v` from this directory. CI: `.github/workflows/eval-fixture-tooling.yml`.
+Run from this directory: `python3 -m pip install -r requirements.txt`, then `python3 -B -m unittest discover -s . -p 'test_*.py' -v`. CI: `.github/workflows/eval-fixture-tooling.yml`.
 
-## What the tests pin
+## Contracts the tests pin (Codex HOLD 6804141788, issue 244)
 
-- **Sentinel set:** four answerable questions with control passes 0, 1, 2, 3 of 3 and treatment 3, 3, 3, 3, so the mean paired difference is exactly 0.5.
-- **Two fake arms:** a clearly better arm meets the gain; identical arms do not.
-- **Mapping and key isolation:** only `key.json` names an arm; the grader pack carries blinded fields only; a swapped mapping negates the difference when refrozen and is caught by the key hash when not; leak scan finds injected arm labels and the key canary.
-- **Missing trial:** `HOLD`, never a silent pass. **Duplicate id, altered grades, altered trial log, missing manifest:** evidence error.
-- **Technical error:** counts as non-PASS and the trial is retained. **Failed wrong-fact or latency gate:** `HOLD` even with a large gain.
-- **Deterministic bootstrap:** same seed, same interval; a different seed differs; the interval for the sentinel set is pinned.
-- **Network boundary and file access:** the analysis runs with sockets disabled and reads only inside the run directory.
-- **Two-copy key recovery:** either intact copy is enough; neither is an error.
+- **A1 gates, absolute and per arm.** Evaluated separately for control and treatment: flags = 0 over every retained trial; unsupported claims = 0 over probe-unsupported trials; wrong facts at most 10% of retained answerable trials; p95 latency strictly under 45 s over every retained trial. Equal counts in both arms do not rescue a failed gate. Boundary cases (exactly 45 s, 8.3% vs 16.7% wrong facts) are tested.
+- **Frozen bootstrap.** `numpy.random.Generator(PCG64(20261109))`, 10,000 draws of question indices, mean paired difference per draw, `numpy.quantile` with the default linear interpolation at 0.025 and 0.975. Checked against analytic cases that need no generator, an independent linear-interpolation reference, and pinned first draws for the pinned NumPy version.
+- **Unmasking barrier.** Two independent frozen grade files (`grades_a.json`, `grades_b.json`) and a frozen `adjudication.json` must all be present and match the manifest before the key is opened; a test spies on file reads to show the key is untouched when any is absent or changed. The final grade is the shared grade, or the adjudicated one for a disagreement; adjudication for an agreed trial is refused; an unadjudicated disagreement is `HOLD`.
+- **Grader pack contract.** Each record carries `blinded_id`, `question_id`, `question_text`, `answer_text` and the frozen gold (`expected_behavior`, `gold_facts`, `source_support`), and nothing that names an arm or a trial. The pack must be in exact one-to-one correspondence with the key and trials, and each record must match its trial and the frozen gold. An empty, short, duplicated, foreign or altered pack fails closed even when refrozen.
+- **Classes.** `answerable`, `partial` and `probe_unsupported`. Fallback answers are ordinary graded answers: non-PASS (not a wrong fact) on an answerable question, PASS on a probe.
+- **Also:** missing trial is `HOLD`; duplicate id, altered files and a missing manifest are errors; technical errors count as non-PASS and the trial is retained; swapped arm mapping is caught by the key hash or negates the result when refrozen; two-copy key recovery.
 
-## What this is not
+## What this does not establish
 
+- **Not host isolation.** Host and account isolation, external-egress, log, cache and exception sentinel scans, and unauthorized-reader checks are separate required evidence from the custody environment. The socket test here is a Python-level unit check only, and directory separation of the key is layout, not custody.
 - Not an execution go, a release decision or an acceptance of any sealed item.
-- The gate rules (wrong facts not up, unsupported claims not up, flags not up, p95 latency under a cap) are an **operational reading** with settings in `design.json`. The values frozen in the sealed-set kit replace them before any real run; the denominators in a real run (216 answerable, 72 probe-unsupported, 360 all trials per arm) come from the real design, not from the small synthetic sizes used here.
-- Offline analogues only: custody, hosted transit, key-holder split and who may author sealed items are protocol questions for the owner and Codex, not something this fixture decides.
+- Some inputs are Code's reading until kit r4 is available to Code: the pack field names, the p95 method (nearest rank), and the partial-class definition. The real denominators (216 answerable, 72 probe-unsupported, 360 all trials per arm) come from the real design, not the small synthetic sizes.

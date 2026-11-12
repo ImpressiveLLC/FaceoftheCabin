@@ -1,95 +1,117 @@
 """Pinned, offline analysis for a paired two-arm Ask evaluation run.
 
 Reads one run directory, verifies it against its frozen manifest, and returns a verdict. It performs no network
-access, loads no model and never reads anything outside the run directory. The same code is exercised against an
-entirely synthetic run by test_fixture_analysis.py, so its behavior is pinned before any real evidence exists.
+access and loads no model. The same code is exercised against an entirely synthetic run by
+test_fixture_analysis.py, so its behavior is pinned before any real evidence exists.
 
-Run directory contents (all produced by the trusted shuffle step, not by this script):
-  design.json        questions with their class, repeats, seed, gain threshold, gate settings
-  trials.jsonl       one row per trial: trial_id, question_id, repeat, status, latency_s, answer_text
-  key.json           blinded_id -> trial_id and arm. THE ONLY FILE THAT NAMES AN ARM. key.copy.json is a second copy.
-  grader_pack.jsonl  what blinded graders see: blinded_id, question_id, answer_text. No arm, no trial id.
-  grades.json        blinded_id -> grade and flags, written by the blinded graders
-  manifest.json      sha256 of every file above, and of the key
+Layout (all produced by the trusted shuffle step, not by this script):
+  <run>/design.json          questions with their class, repeats, seed, draws, minimum gain
+  <run>/gold.json            per question: question_text, expected_behavior, gold_facts, source_support (frozen)
+  <run>/trials.jsonl         one row per trial: trial_id, question_id, repeat, status, latency_s, answer_text
+  <run>/grader_pack.jsonl    what blinded graders see: blinded_id, question_id, question_text, answer_text, gold
+  <run>/grades_a.json        blinded grader A: blinded_id -> grade record
+  <run>/grades_b.json        blinded grader B, independent of A
+  <run>/adjudication.json    blinded_id -> final grade record, for every A/B disagreement and nothing else
+  <run>/manifest.json        sha256 of every file above and of the key
+  <key>/key.json, key.copy.json  blinded_id -> trial_id and arm. THE ONLY FILES THAT NAME AN ARM. Default <run>/key.
 
-Decision rule (Codex design return, issue 244 comment 6737081146, with the owner's gain choice):
-  the paired answerable PASS-fraction difference, averaging the repeats within each question, observed gain
-  at least min_gain AND the two-sided 95% paired question-block percentile bootstrap lower bound above 0.
-  Technical-error trials count as non-PASS and are never dropped. Incomplete or inconsistent evidence, or any
-  failed gate, is HOLD. This is design consistency only: it is never an execution go and never a release decision.
+Unmasking barrier: the key is not opened until every frozen file above, including both grade files and the
+adjudication, is present and matches its manifest hash. A missing or changed hash fails closed.
 
-The gate rules below are an operational reading with explicit settings in design.json. They must be replaced by
-the values frozen in the sealed-set kit before any real run.
+Decision rule (Codex design return, issue 244 comment 6737081146, with the owner's gain choice): the paired
+answerable PASS-fraction difference, averaging the repeats within each question; observed gain at least min_gain AND
+the two-sided 95% paired question-block percentile bootstrap lower bound above 0. Technical-error trials count as
+non-PASS and are never dropped. Incomplete or inconsistent evidence, or any failed A1 gate in either arm, is HOLD.
+This is design consistency only: it is never an execution go and never a release decision.
+
+Frozen bootstrap: numpy.random.Generator(numpy.random.PCG64(seed)); integers(0, n, size=(draws, n)) question
+indices; the mean paired difference of each draw; numpy.quantile(means, [0.025, 0.975]) with the default linear
+interpolation. The NumPy version is pinned in requirements.txt; a seed alone does not pin the analysis.
+
+A1 gates, evaluated separately for the control arm and for the treatment arm (Codex HOLD 6804141788):
+  flags = 0 over every retained trial; unsupported claims = 0 over probe_unsupported trials; wrong facts at most
+  10% of retained answerable trials; p95 latency strictly under 45 s over every retained trial (nearest-rank p95,
+  provisional until the kit states the method).
 """
 import hashlib
 import json
 import math
-import random
 import sys
 from pathlib import Path
 
+import numpy as np
+
 CONTROL, TREATMENT = "control", "treatment"
+ARMS = (CONTROL, TREATMENT)
 PASS = "PASS"
-FILES = ("design.json", "trials.jsonl", "grader_pack.jsonl", "grades.json")
+CLASSES = ("answerable", "partial", "probe_unsupported")
+FROZEN = ("design.json", "gold.json", "trials.jsonl", "grader_pack.jsonl",
+          "grades_a.json", "grades_b.json", "adjudication.json")
 KEY_COPIES = ("key.json", "key.copy.json")
+GRADE_FIELDS = ("grade", "wrong_fact", "unsupported_claim", "flag")
+PACK_FIELDS = {"blinded_id", "question_id", "question_text", "answer_text", "gold"}
+GOLD_FIELDS = {"question_text", "expected_behavior", "gold_facts", "source_support"}
+MAX_WRONG_FACT_RATE = 0.10
+LATENCY_P95_LIMIT_S = 45.0
 
 
 class EvidenceError(Exception):
     """The evidence is altered, duplicated or inconsistent: nothing can be concluded from it."""
 
 
-def sha256_bytes(data):
-    return hashlib.sha256(data).hexdigest()
-
-
 def sha256_file(path):
-    return sha256_bytes(Path(path).read_bytes())
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _json(path):
+    return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
 def _read_jsonl(path):
-    rows = []
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            rows.append(json.loads(line))
-    return rows
+    return [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-def freeze(run_dir):
+def freeze(run_dir, key_dir=None):
     """Write manifest.json: the hashes everything else is checked against. Called once, by the trusted step."""
     run_dir = Path(run_dir)
-    key_digest = sha256_file(run_dir / "key.json")
-    files = {name: sha256_file(run_dir / name) for name in FILES}
-    files["key"] = key_digest
+    key_dir = Path(key_dir) if key_dir else run_dir / "key"
+    files = {name: sha256_file(run_dir / name) for name in FROZEN}
+    files["key"] = sha256_file(key_dir / "key.json")
     (run_dir / "manifest.json").write_text(json.dumps({"files": files}, indent=2, sort_keys=True), encoding="utf-8")
     return sha256_file(run_dir / "manifest.json")
 
 
 def verify(run_dir):
+    """The barrier: every frozen file present and matching BEFORE the key is touched."""
     run_dir = Path(run_dir)
     try:
-        manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))["files"]
+        manifest = _json(run_dir / "manifest.json")["files"]
     except (OSError, ValueError, KeyError) as error:
         raise EvidenceError(f"manifest.json unreadable: {error}")
-    for name in FILES:
+    for name in FROZEN:
         path = run_dir / name
-        if not path.is_file() or sha256_file(path) != manifest.get(name):
-            raise EvidenceError(f"hash mismatch or missing file: {name}")
+        if not path.is_file():
+            raise EvidenceError(f"missing frozen file: {name}")
+        if sha256_file(path) != manifest.get(name):
+            raise EvidenceError(f"hash mismatch: {name}")
+    if "key" not in manifest:
+        raise EvidenceError("manifest has no key hash")
     return manifest
 
 
-def load_key(run_dir, manifest):
+def load_key(key_dir, manifest):
     """Two-copy recovery: either intact copy will do; with neither intact there is no key and no analysis."""
     for name in KEY_COPIES:
-        path = Path(run_dir) / name
+        path = Path(key_dir) / name
         if path.is_file() and sha256_file(path) == manifest["key"]:
-            return json.loads(path.read_text(encoding="utf-8"))
+            return _json(path)
     raise EvidenceError("no intact copy of the key (both missing or altered)")
 
 
 def leak_scan(run_dir, forbidden):
     """Return every (file, token) where a token that must stay hidden from graders appears in what they see."""
     findings = []
-    for name in ("grader_pack.jsonl", "grades.json"):
+    for name in ("grader_pack.jsonl", "grades_a.json", "grades_b.json", "adjudication.json"):
         text = (Path(run_dir) / name).read_text(encoding="utf-8")
         for token in forbidden:
             if token and token in text:
@@ -97,56 +119,96 @@ def leak_scan(run_dir, forbidden):
     return findings
 
 
-def paired_bootstrap(diffs, draws, seed):
-    """Question-block percentile bootstrap of the mean paired difference. Deterministic for a given seed."""
-    rng = random.Random(seed)
-    n = len(diffs)
-    means = []
-    for _ in range(draws):
-        total = 0.0
-        for _ in range(n):
-            total += diffs[rng.randrange(n)]
-        means.append(total / n)
-    means.sort()
-    return means[round(0.025 * (draws - 1))], means[round(0.975 * (draws - 1))]
+def bootstrap_ci(diffs, draws, seed):
+    """Question-block percentile bootstrap of the mean paired difference, per the frozen algorithm above."""
+    values = np.asarray(diffs, dtype=float)
+    n = len(values)
+    rng = np.random.Generator(np.random.PCG64(seed))
+    means = values[rng.integers(0, n, size=(draws, n))].mean(axis=1)
+    lower, upper = np.quantile(means, [0.025, 0.975])
+    return float(lower), float(upper)
 
 
-def _p95(values):
+def p95_nearest_rank(values):
     ordered = sorted(values)
     return ordered[max(0, math.ceil(0.95 * len(ordered)) - 1)] if ordered else 0.0
 
 
-def analyze(run_dir):
+def _record(grade):
+    return tuple(grade.get(field) for field in GRADE_FIELDS)
+
+
+def _check_pack(pack, trials_by_id, key_rows, gold, questions):
+    """Exact one-to-one membership and content: an empty or partial pack is a failure, not a smaller sample."""
+    if not pack:
+        raise EvidenceError("grader pack is empty")
+    expected = {r["blinded_id"]: r["trial_id"] for r in key_rows}
+    seen = {}
+    for record in pack:
+        if set(record) != PACK_FIELDS:
+            raise EvidenceError(f"grader pack record has the wrong fields: {sorted(record)}")
+        blinded = record["blinded_id"]
+        if blinded in seen:
+            raise EvidenceError(f"grader pack lists a blinded id twice: {blinded}")
+        seen[blinded] = record
+        if blinded not in expected:
+            raise EvidenceError(f"grader pack names a blinded id that is not in the key: {blinded}")
+        trial = trials_by_id[expected[blinded]]
+        if record["question_id"] != trial["question_id"] or record["answer_text"] != trial["answer_text"]:
+            raise EvidenceError(f"grader pack record does not match its trial: {blinded}")
+        entry = gold[record["question_id"]]
+        if record["question_text"] != entry["question_text"] or record["gold"] != {
+                "expected_behavior": entry["expected_behavior"], "gold_facts": entry["gold_facts"],
+                "source_support": entry["source_support"]}:
+            raise EvidenceError(f"grader pack record does not match the frozen gold: {blinded}")
+    missing = set(expected) - set(seen)
+    if missing:
+        raise EvidenceError(f"grader pack is missing {len(missing)} trial(s)")
+
+
+def analyze(run_dir, key_dir=None):
     run_dir = Path(run_dir)
-    manifest = verify(run_dir)
-    design = json.loads((run_dir / "design.json").read_text(encoding="utf-8"))
+    key_dir = Path(key_dir) if key_dir else run_dir / "key"
+    manifest = verify(run_dir)  # the barrier, before the key
+    design = _json(run_dir / "design.json")
+    gold = _json(run_dir / "gold.json")
     trials = _read_jsonl(run_dir / "trials.jsonl")
-    grades = json.loads((run_dir / "grades.json").read_text(encoding="utf-8"))
-    key = load_key(run_dir, manifest)
+    pack = _read_jsonl(run_dir / "grader_pack.jsonl")
+    grades_a = _json(run_dir / "grades_a.json")
+    grades_b = _json(run_dir / "grades_b.json")
+    adjudication = _json(run_dir / "adjudication.json")
+    classes = {q["id"]: q["class"] for q in design["questions"]}
+    if not set(classes.values()) <= set(CLASSES) or not classes:
+        raise EvidenceError(f"design classes must be drawn from {CLASSES}")
+    for qid in classes:
+        if qid not in gold or set(gold[qid]) != GOLD_FIELDS:
+            raise EvidenceError(f"gold entry missing or malformed for {qid}")
+
+    key = load_key(key_dir, manifest)
     rows = key["rows"]
     reasons = []
 
     trial_ids = [t["trial_id"] for t in trials]
     if len(set(trial_ids)) != len(trial_ids):
         raise EvidenceError("duplicate trial id in trials.jsonl")
-    blinded = [r["blinded_id"] for r in rows]
-    if len(set(blinded)) != len(blinded):
+    blinded_ids = [r["blinded_id"] for r in rows]
+    if len(set(blinded_ids)) != len(blinded_ids):
         raise EvidenceError("duplicate blinded id in the key")
-    by_trial = {t["trial_id"]: t for t in trials}
-    arm_of = {}
+    trials_by_id = {t["trial_id"]: t for t in trials}
+    arm_of, blinded_of = {}, {}
     for row in rows:
-        if row["trial_id"] not in by_trial:
+        if row["trial_id"] not in trials_by_id:
             raise EvidenceError(f"key names a trial that is not in the log: {row['trial_id']}")
-        if row["arm"] not in (CONTROL, TREATMENT):
+        if row["arm"] not in ARMS:
             raise EvidenceError(f"unknown arm in the key: {row['arm']!r}")
         if row["trial_id"] in arm_of:
             raise EvidenceError(f"trial keyed twice: {row['trial_id']}")
         arm_of[row["trial_id"]] = row["arm"]
-    blinded_of = {r["trial_id"]: r["blinded_id"] for r in rows}
+        blinded_of[row["trial_id"]] = row["blinded_id"]
+    _check_pack(pack, trials_by_id, rows, gold, classes)
 
-    classes = {q["id"]: q["class"] for q in design["questions"]}
     repeats = design["repeats"]
-    expected = {(q, arm, rep) for q in classes for arm in (CONTROL, TREATMENT) for rep in range(1, repeats + 1)}
+    expected = {(q, arm, rep) for q in classes for arm in ARMS for rep in range(1, repeats + 1)}
     seen = {}
     for trial in trials:
         if trial["trial_id"] not in arm_of:
@@ -161,44 +223,60 @@ def analyze(run_dir):
     missing = sorted(expected - set(seen))
     if missing:
         reasons.append(f"missing trials: {len(missing)} (first: {missing[0]})")
-    ungraded = [t for t in seen.values() if blinded_of[t["trial_id"]] not in grades]
-    if ungraded:
-        reasons.append(f"ungraded trials: {len(ungraded)}")
+
+    # Final grade per trial: A and B must agree, otherwise the frozen adjudication decides. Nothing else may.
+    final, disagreements = {}, set()
+    for trial in seen.values():
+        blinded = blinded_of[trial["trial_id"]]
+        a, b = grades_a.get(blinded), grades_b.get(blinded)
+        if a is None or b is None:
+            reasons.append(f"ungraded by both graders: {blinded}")
+            continue
+        if _record(a) == _record(b):
+            final[blinded] = a
+        else:
+            disagreements.add(blinded)
+            if blinded in adjudication:
+                final[blinded] = adjudication[blinded]
+            else:
+                reasons.append(f"unadjudicated disagreement: {blinded}")
+    stray = set(adjudication) - disagreements
+    if stray:
+        raise EvidenceError(f"adjudication entries for ids that were not in disagreement: {len(stray)}")
 
     def passed(trial):
-        grade = grades.get(blinded_of[trial["trial_id"]], {})
+        grade = final.get(blinded_of[trial["trial_id"]], {})
         return trial.get("status") == "ok" and grade.get("grade") == PASS
 
-    def flag(trial, name):
-        return bool(grades.get(blinded_of[trial["trial_id"]], {}).get(name))
+    def flagged(trial, name):
+        return bool(final.get(blinded_of[trial["trial_id"]], {}).get(name))
 
     answerable = sorted(q for q, c in classes.items() if c == "answerable")
-    fractions = {CONTROL: {}, TREATMENT: {}}
+    fractions = {arm: {} for arm in ARMS}
     for q in answerable:
-        for arm in (CONTROL, TREATMENT):
+        for arm in ARMS:
             runs = [seen[(q, arm, rep)] for rep in range(1, repeats + 1) if (q, arm, rep) in seen]
             fractions[arm][q] = sum(passed(t) for t in runs) / repeats
     diffs = [fractions[TREATMENT][q] - fractions[CONTROL][q] for q in answerable]
     delta = sum(diffs) / len(diffs) if diffs else 0.0
-    lower, upper = paired_bootstrap(diffs, design["bootstrap_draws"], design["seed"]) if diffs else (0.0, 0.0)
+    lower, upper = bootstrap_ci(diffs, design["bootstrap_draws"], design["seed"]) if diffs else (0.0, 0.0)
 
-    gate = design["gates"]
-    arm_trials = {arm: [t for (q, a, r), t in seen.items() if a == arm] for arm in (CONTROL, TREATMENT)}
-
-    def count(arm, klass, name):
-        return sum(flag(t, name) for t in arm_trials[arm] if classes[t["question_id"]] == klass)
-
-    gates = {
-        "wrong_fact_not_up": count(TREATMENT, "answerable", "wrong_fact") <= count(CONTROL, "answerable", "wrong_fact"),
-        "unsupported_claim_not_up": count(TREATMENT, "probe_unsupported", "unsupported_claim")
-        <= count(CONTROL, "probe_unsupported", "unsupported_claim"),
-        "flags_not_up": sum(flag(t, "flag") for t in arm_trials[TREATMENT])
-        <= sum(flag(t, "flag") for t in arm_trials[CONTROL]),
-        "latency_p95_within_cap": _p95([t["latency_s"] for t in arm_trials[TREATMENT]]) <= gate["latency_p95_max_s"],
-    }
-    for name, ok in gates.items():
-        if not ok:
-            reasons.append(f"gate failed: {name}")
+    gates = {}
+    for arm in ARMS:
+        mine = [t for (q, a, r), t in seen.items() if a == arm]
+        answerable_trials = [t for t in mine if classes[t["question_id"]] == "answerable"]
+        probe_trials = [t for t in mine if classes[t["question_id"]] == "probe_unsupported"]
+        wrong = sum(flagged(t, "wrong_fact") for t in answerable_trials)
+        gates[arm] = {
+            "flags_zero": sum(flagged(t, "flag") for t in mine) == 0,
+            "unsupported_claims_zero": sum(flagged(t, "unsupported_claim") for t in probe_trials) == 0,
+            "wrong_fact_rate_within_limit": (wrong / len(answerable_trials) if answerable_trials else 0.0)
+            <= MAX_WRONG_FACT_RATE,
+            "p95_latency_under_limit": p95_nearest_rank([t["latency_s"] for t in mine]) < LATENCY_P95_LIMIT_S,
+        }
+        for name, ok in gates[arm].items():
+            if not ok:
+                reasons.append(f"gate failed ({arm}): {name}")
 
     if reasons:
         verdict = "HOLD"
@@ -213,6 +291,7 @@ def analyze(run_dir):
         "ci95": [lower, upper],
         "answerable_questions": len(answerable),
         "gates": gates,
+        "adjudicated": len(disagreements),
         "trials_seen": len(seen),
         "trials_expected": len(expected),
         "manifest_sha256": sha256_file(run_dir / "manifest.json"),
@@ -221,7 +300,7 @@ def analyze(run_dir):
 
 if __name__ == "__main__":
     try:
-        print(json.dumps(analyze(sys.argv[1]), indent=2, sort_keys=True))
+        print(json.dumps(analyze(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None), indent=2, sort_keys=True))
     except EvidenceError as error:
         print(f"EVIDENCE ERROR: {error}")
         sys.exit(2)

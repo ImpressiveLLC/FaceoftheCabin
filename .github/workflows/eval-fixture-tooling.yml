@@ -16,7 +16,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Synthetic fixture and pinned analysis (offline, stdlib only)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Synthetic fixture and pinned analysis (offline; NumPy pinned in requirements.txt)
         run: |
           cd docs/ai-assistant/eval-fixture
-          python3 -B -m unittest discover -s . -p 'test_*.py' -v
+          python3 -m venv /tmp/eval-fixture-venv
+          /tmp/eval-fixture-venv/bin/python -m pip install -r requirements.txt
+          /tmp/eval-fixture-venv/bin/python -B -m unittest discover -s . -p 'test_*.py' -v
