@@ -278,14 +278,14 @@ class FixtureAnalysisTest(unittest.TestCase):
         build_sentinel(self.dir)
         self.assertTrue(self.key_paths_read(lambda: analyze(self.dir)))
 
-    def test_an_unadjudicated_disagreement_is_a_hold(self):
+    def test_an_unresolved_disagreement_fails_closed_and_the_key_is_never_opened(self):
         build_sentinel(self.dir)
         blinded = self.blinded_for("T-SENT-A4-t1")
         self.edit_grades("grades_b.json", lambda data: data[blinded].update(grade="FAIL"))
         freeze(self.dir)
-        result = analyze(self.dir)
-        self.assertEqual(result["verdict"], "HOLD")
-        self.assertIn(f"unadjudicated disagreement: {blinded}", result["reasons"])
+        with self.assertRaisesRegex(EvidenceError, "1 unresolved"):
+            analyze(self.dir)
+        self.assertEqual(self.key_paths_read(lambda: analyze(self.dir)), [])
 
     def test_adjudication_for_a_trial_the_graders_agreed_on_is_refused(self):
         build_sentinel(self.dir)
@@ -295,14 +295,72 @@ class FixtureAnalysisTest(unittest.TestCase):
         with self.assertRaisesRegex(EvidenceError, "not in disagreement"):
             analyze(self.dir)
 
-    def test_both_graders_must_have_graded_every_trial(self):
+    def test_both_graders_must_have_graded_every_trial_and_the_key_stays_closed(self):
         build_sentinel(self.dir)
         blinded = self.blinded_for("T-SENT-A1-t3")
         self.edit_grades("grades_a.json", lambda data: data.pop(blinded))
         freeze(self.dir)
-        result = analyze(self.dir)
-        self.assertEqual(result["verdict"], "HOLD")
-        self.assertIn(f"ungraded by both graders: {blinded}", result["reasons"])
+        with self.assertRaisesRegex(EvidenceError, "grades_a does not cover exactly the grader pack: 1 missing"):
+            analyze(self.dir)
+        self.assertEqual(self.key_paths_read(lambda: analyze(self.dir)), [])
+
+    def test_refrozen_empty_or_partial_grading_never_reaches_the_key(self):
+        for label, edit in (("empty", lambda d: {}), ("partial", lambda d: dict(list(d.items())[:-3]))):
+            for names in (("grades_a.json",), ("grades_b.json",), ("grades_a.json", "grades_b.json", "adjudication.json")):
+                with self.subTest(label=label, names=names), tempfile.TemporaryDirectory() as tmp:
+                    self.dir = Path(tmp)
+                    build_sentinel(self.dir)
+                    for name in names:
+                        write_json(self.dir / name, edit(read_json(self.dir / name)))
+                    freeze(self.dir)
+                    with self.assertRaises(EvidenceError):
+                        analyze(self.dir)
+                    self.assertEqual(self.key_paths_read(lambda: analyze(self.dir)), [])
+
+    # ---- grade records are validated: a missing measurement is never "false" ------------------
+
+    def refrozen_grades(self, edit):
+        for name in ("grades_a.json", "grades_b.json", "adjudication.json"):
+            data = read_json(self.dir / name)
+            edit(data)
+            write_json(self.dir / name, data)
+        freeze(self.dir)
+
+    def test_grade_records_without_the_gate_fields_fail_closed(self):
+        build_sentinel(self.dir)
+
+        def strip(data):
+            for record in data.values():
+                for field in ("wrong_fact", "unsupported_claim", "flag"):
+                    record.pop(field, None)
+
+        self.refrozen_grades(strip)  # Codex's reproduction: the intact sentinel, gate fields removed everywhere
+        with self.assertRaisesRegex(EvidenceError, "wrong fields"):
+            analyze(self.dir)
+        self.assertEqual(self.key_paths_read(lambda: analyze(self.dir)), [])
+
+    def test_null_non_boolean_and_unknown_grade_values_fail_closed(self):
+        cases = (("flag", None, "must be true or false"), ("wrong_fact", "yes", "must be true or false"),
+                 ("unsupported_claim", 0, "must be true or false"), ("grade", "MAYBE", "invalid grade value"),
+                 ("grade", None, "invalid grade value"))
+        for field, value, message in cases:
+            for name in ("grades_a.json", "grades_b.json", "adjudication.json"):
+                with self.subTest(field=field, value=value, name=name), tempfile.TemporaryDirectory() as tmp:
+                    self.dir = Path(tmp)
+                    build_sentinel(self.dir)
+                    data = read_json(self.dir / name)
+                    next(iter(data.values()))[field] = value
+                    write_json(self.dir / name, data)
+                    freeze(self.dir)
+                    with self.assertRaisesRegex(EvidenceError, message):
+                        analyze(self.dir)
+                    self.assertEqual(self.key_paths_read(lambda: analyze(self.dir)), [])
+
+    def test_an_extra_field_in_a_grade_record_fails_closed(self):
+        build_sentinel(self.dir)
+        self.refrozen_grades(lambda data: next(iter(data.values())).update(note="extra"))
+        with self.assertRaisesRegex(EvidenceError, "wrong fields"):
+            analyze(self.dir)
 
     # ---- the grader pack contract -------------------------------------------------------------
 
@@ -322,7 +380,7 @@ class FixtureAnalysisTest(unittest.TestCase):
     def test_a_pack_missing_a_record_fails_closed(self):
         build_sentinel(self.dir)
         self.refrozen_pack(lambda rows: rows[:-1])
-        with self.assertRaisesRegex(EvidenceError, "missing 1 trial"):
+        with self.assertRaisesRegex(EvidenceError, "35 records for 36 trials"):
             analyze(self.dir)
 
     def test_a_pack_with_a_duplicate_or_foreign_record_fails_closed(self):
@@ -330,12 +388,13 @@ class FixtureAnalysisTest(unittest.TestCase):
         self.refrozen_pack(lambda rows: rows + [rows[0]])
         with self.assertRaisesRegex(EvidenceError, "twice"):
             analyze(self.dir)
+        build_sentinel(self.dir)  # a fresh pack: the duplicate above was refrozen into the previous one
         self.refrozen_pack(lambda rows: rows[:-1] + [dict(rows[0], blinded_id="Bffffffffffff")])
-        with self.assertRaisesRegex(EvidenceError, "not in the key"):
+        with self.assertRaisesRegex(EvidenceError, "does not match the trial log"):
             analyze(self.dir)
 
     def test_a_pack_record_that_differs_from_its_trial_or_the_gold_fails_closed(self):
-        for field, value, message in (("answer_text", "tampered", "does not match its trial"),
+        for field, value, message in (("answer_text", "tampered", "does not match the trial log"),
                                       ("question_text", "tampered", "does not match the frozen gold"),
                                       ("gold", {"expected_behavior": "x", "gold_facts": [], "source_support": []},
                                        "does not match the frozen gold")):
@@ -345,6 +404,19 @@ class FixtureAnalysisTest(unittest.TestCase):
                 self.refrozen_pack(lambda rows: [dict(rows[0], **{field: value})] + rows[1:])
                 with self.assertRaisesRegex(EvidenceError, message):
                     analyze(self.dir)
+
+    def test_swapped_answers_between_two_pack_records_are_caught_once_the_key_is_open(self):
+        build_sentinel(self.dir)
+        rows = read_rows(self.dir / "grader_pack.jsonl")
+        # SENT-A1 has fallback answers in one arm and ordinary answers in the other: same question, different text
+        pair = [r for r in rows if r["question_id"] == "SENT-A1"]
+        first = pair[0]
+        second = next(r for r in pair if r["answer_text"] != first["answer_text"])
+        first["answer_text"], second["answer_text"] = second["answer_text"], first["answer_text"]
+        write_rows(self.dir / "grader_pack.jsonl", rows)
+        freeze(self.dir)
+        with self.assertRaisesRegex(EvidenceError, "does not match its trial"):
+            analyze(self.dir)
 
     def test_the_grader_pack_has_exactly_the_contract_fields_and_names_no_arm(self):
         build_sentinel(self.dir)

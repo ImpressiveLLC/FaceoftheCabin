@@ -138,6 +138,57 @@ def _record(grade):
     return tuple(grade.get(field) for field in GRADE_FIELDS)
 
 
+def _validate_grade(record, where):
+    """Exact fields, a closed grade vocabulary and real booleans. A missing or null measurement is never 'false'."""
+    if not isinstance(record, dict) or set(record) != set(GRADE_FIELDS):
+        raise EvidenceError(f"grade record has the wrong fields in {where}: "
+                            f"{sorted(record) if isinstance(record, dict) else type(record).__name__}")
+    if record["grade"] not in (PASS, "FAIL"):
+        raise EvidenceError(f"invalid grade value in {where}: {record['grade']!r}")
+    for name in GRADE_FIELDS[1:]:
+        if type(record[name]) is not bool:
+            raise EvidenceError(f"{name} must be true or false in {where}: {record[name]!r}")
+
+
+def _resolve_grades(pack, trials, gold, grades_a, grades_b, adjudication):
+    """Everything about grading that can be checked WITHOUT the key, so incomplete grading never reaches it.
+    The pack lists every blinded id; both graders must have graded exactly those; the adjudication must hold exactly
+    the disagreements. Returns the final grade per blinded id and the number of adjudicated disagreements."""
+    if not pack:
+        raise EvidenceError("grader pack is empty")
+    ids = []
+    for record in pack:
+        if set(record) != PACK_FIELDS:
+            raise EvidenceError(f"grader pack record has the wrong fields: {sorted(record)}")
+        ids.append(record["blinded_id"])
+        entry = gold.get(record["question_id"])
+        if entry is None or record["question_text"] != entry["question_text"] or record["gold"] != {
+                "expected_behavior": entry["expected_behavior"], "gold_facts": entry["gold_facts"],
+                "source_support": entry["source_support"]}:
+            raise EvidenceError(f"grader pack record does not match the frozen gold: {record['blinded_id']}")
+    if len(set(ids)) != len(ids):
+        raise EvidenceError("grader pack lists a blinded id twice")
+    if len(pack) != len(trials):
+        raise EvidenceError(f"grader pack has {len(pack)} records for {len(trials)} trials")
+    if sorted((r["question_id"], r["answer_text"]) for r in pack) != sorted(
+            (t["question_id"], t["answer_text"]) for t in trials):
+        raise EvidenceError("grader pack content does not match the trial log")
+    wanted = set(ids)
+    for label, grades in (("grades_a", grades_a), ("grades_b", grades_b)):
+        if set(grades) != wanted:
+            raise EvidenceError(f"{label} does not cover exactly the grader pack: "
+                                f"{len(wanted - set(grades))} missing, {len(set(grades) - wanted)} extra")
+        for blinded, record in grades.items():
+            _validate_grade(record, f"{label}[{blinded}]")
+    disagreements = {b for b in wanted if _record(grades_a[b]) != _record(grades_b[b])}
+    if set(adjudication) != disagreements:
+        raise EvidenceError(f"adjudication must hold exactly the disagreements: {len(disagreements - set(adjudication))} "
+                            f"unresolved, {len(set(adjudication) - disagreements)} not in disagreement")
+    for blinded, record in adjudication.items():
+        _validate_grade(record, f"adjudication[{blinded}]")
+    return {b: (adjudication[b] if b in disagreements else grades_a[b]) for b in wanted}, len(disagreements)
+
+
 def _check_pack(pack, trials_by_id, key_rows, gold, questions):
     """Exact one-to-one membership and content: an empty or partial pack is a failure, not a smaller sample."""
     if not pack:
@@ -184,13 +235,16 @@ def analyze(run_dir, key_dir=None):
         if qid not in gold or set(gold[qid]) != GOLD_FIELDS:
             raise EvidenceError(f"gold entry missing or malformed for {qid}")
 
+    trial_ids = [t["trial_id"] for t in trials]
+    if len(set(trial_ids)) != len(trial_ids):
+        raise EvidenceError("duplicate trial id in trials.jsonl")
+    # Grading must be complete and well-formed before the key is touched (Codex HOLD 6813304626).
+    final, adjudicated = _resolve_grades(pack, trials, gold, grades_a, grades_b, adjudication)
+
     key = load_key(key_dir, manifest)
     rows = key["rows"]
     reasons = []
 
-    trial_ids = [t["trial_id"] for t in trials]
-    if len(set(trial_ids)) != len(trial_ids):
-        raise EvidenceError("duplicate trial id in trials.jsonl")
     blinded_ids = [r["blinded_id"] for r in rows]
     if len(set(blinded_ids)) != len(blinded_ids):
         raise EvidenceError("duplicate blinded id in the key")
@@ -224,32 +278,18 @@ def analyze(run_dir, key_dir=None):
     if missing:
         reasons.append(f"missing trials: {len(missing)} (first: {missing[0]})")
 
-    # Final grade per trial: A and B must agree, otherwise the frozen adjudication decides. Nothing else may.
-    final, disagreements = {}, set()
-    for trial in seen.values():
-        blinded = blinded_of[trial["trial_id"]]
-        a, b = grades_a.get(blinded), grades_b.get(blinded)
-        if a is None or b is None:
-            reasons.append(f"ungraded by both graders: {blinded}")
-            continue
-        if _record(a) == _record(b):
-            final[blinded] = a
-        else:
-            disagreements.add(blinded)
-            if blinded in adjudication:
-                final[blinded] = adjudication[blinded]
-            else:
-                reasons.append(f"unadjudicated disagreement: {blinded}")
-    stray = set(adjudication) - disagreements
-    if stray:
-        raise EvidenceError(f"adjudication entries for ids that were not in disagreement: {len(stray)}")
+    # Final grades were resolved and validated before the key was opened; a trial without one is an error.
+    def final_of(trial):
+        try:
+            return final[blinded_of[trial["trial_id"]]]
+        except KeyError:
+            raise EvidenceError(f"no final grade for trial {trial['trial_id']}")
 
     def passed(trial):
-        grade = final.get(blinded_of[trial["trial_id"]], {})
-        return trial.get("status") == "ok" and grade.get("grade") == PASS
+        return trial.get("status") == "ok" and final_of(trial)["grade"] == PASS
 
     def flagged(trial, name):
-        return bool(final.get(blinded_of[trial["trial_id"]], {}).get(name))
+        return final_of(trial)[name]
 
     answerable = sorted(q for q, c in classes.items() if c == "answerable")
     fractions = {arm: {} for arm in ARMS}
@@ -291,7 +331,7 @@ def analyze(run_dir, key_dir=None):
         "ci95": [lower, upper],
         "answerable_questions": len(answerable),
         "gates": gates,
-        "adjudicated": len(disagreements),
+        "adjudicated": adjudicated,
         "trials_seen": len(seen),
         "trials_expected": len(expected),
         "manifest_sha256": sha256_file(run_dir / "manifest.json"),
