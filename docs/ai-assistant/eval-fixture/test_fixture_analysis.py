@@ -614,15 +614,28 @@ class FixtureAnalysisTest(unittest.TestCase):
                     "SENT-A1", "Q-clarify", "Q-partial-4"):
             with self.subTest(bad=bad):
                 self.assertTrue(opaque_id_problems([bad]), bad)
-        build_sentinel(self.dir)
-        for name in ("design.json", "gold.json", "trials.jsonl", "grader_pack.jsonl", "grades_a.json",
-                     "grades_b.json", "adjudication.json"):
-            path = self.dir / name
-            path.write_text(path.read_text(encoding="utf-8").replace(SENT["A1"], "SYN-answ-000"), encoding="utf-8")
-        freeze(self.dir)
-        with self.assertRaisesRegex(EvidenceError, "question ids are not opaque"):
-            analyze(self.dir)
-        self.assertEqual(self.key_paths_read(lambda: analyze(self.dir)), [])
+        for bad in ("SYN-answ-000", "Q-UNDERSPECIFIED-01", "Q-FALSE-PRESUPPOSITION-2", "Q-NONSENSICAL-3",
+                    "Q-modality-limited", "Q-live-data-1", "Q-SAFETY-CONCERNED-4", "Q-out-of-database-5",
+                    "Q-single-hop-6", "Q-multi-hop-abstract-7", "Q-specific-8", "Q-ragas-9", "Q-UAEval4RAG-10"):
+            with self.subTest(bad=bad), tempfile.TemporaryDirectory() as tmp:
+                self.dir = Path(tmp)
+                build_sentinel(self.dir)
+                for name in ("design.json", "gold.json", "trials.jsonl", "grader_pack.jsonl", "grades_a.json",
+                             "grades_b.json", "adjudication.json"):
+                    path = self.dir / name
+                    path.write_text(path.read_text(encoding="utf-8").replace(SENT["A1"], bad), encoding="utf-8")
+                freeze(self.dir)  # a consistent, refrozen run: only the id is revealing
+                with self.assertRaisesRegex(EvidenceError, "question ids are not opaque"):
+                    analyze(self.dir)
+                self.assertEqual(self.key_paths_read(lambda: analyze(self.dir)), [])
+
+    def test_the_denylist_covers_every_taxonomy_group_of_the_kit_and_no_hash_id_trips_it(self):
+        for label in ("underspecified", "false presupposition", "nonsensical", "unsupported modality",
+                      "unavailable live data", "safety-concerned", "out-of-database", "single-hop", "multi-hop",
+                      "abstract", "specific"):
+            self.assertTrue(opaque_id_problems([f"Q-{label}"]), label)
+        generated = [syn_id("answerable", i) for i in range(20000)]  # hex ids cannot spell a taxonomy word
+        self.assertEqual(opaque_id_problems(generated), [])
 
     def test_the_grader_pack_ids_are_opaque_and_carry_no_class_field(self):
         build_run(self.dir)

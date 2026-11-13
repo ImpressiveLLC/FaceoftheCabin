@@ -50,9 +50,14 @@ CLASSES = ("answerable", "partial", "probe")
 PROBE_BEHAVIORS = ("clarify", "correct_false_premise", "decline", "state_inability_to_observe")
 BEHAVIORS_BY_CLASS = {"answerable": ("answer",), "partial": ("answer_with_stated_limit",), "probe": PROBE_BEHAVIORS}
 # Question ids are opaque: they must not name the class, taxonomy, arm or expected behavior.
+# Taxonomy words are the kit r4 probe groups (underspecified, false presupposition, nonsensical, unsupported
+# modality, unavailable live data, safety-concerned, out-of-database) and the answerable families (single-hop,
+# multi-hop, abstract, specific), plus their public-source names.
 FORBIDDEN_ID_TOKENS = ("answerable", "answ", "partial", "part", "probe", "unsupported", "unsu", "control", "treatment",
                        "arm", "answer", "clarify", "decline", "false", "premise", "inability", "observe", "limit",
-                       "sent", "syn")
+                       "sent", "syn",
+                       "underspec", "presuppos", "nonsens", "modality", "live", "safety", "safe", "out-of",
+                       "outof", "database", "single", "multi", "hop", "abstract", "specific", "ragas", "uaeval")
 FROZEN = ("design.json", "gold.json", "trials.jsonl", "grader_pack.jsonl",
           "grades_a.json", "grades_b.json", "adjudication.json")
 KEY_COPIES = ("key.json", "key.copy.json")
