@@ -24,6 +24,10 @@ esp32:
 preferences:
   flash_write_interval: 10s
 
+# NTP flashed 2026-11-13 over Wi-Fi OTA; same package as box2.yaml.
+packages:
+  ntp: !include packages/ntp.yaml
+
 logger:
   level: INFO
 

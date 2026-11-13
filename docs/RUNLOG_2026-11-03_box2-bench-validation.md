@@ -115,3 +115,9 @@ Not done: ontology entries for the two derived channels (D28 naming, `data_class
 - **Finding: the static IP was not applied.** The node took DHCP `192.168.1.138`, not `.131`. In ESPHome 2026.10.2 `manual_ip` is attached to a configured network (`wifi_component.cpp`, per-`WiFiAP`), and credentials saved through the captive portal create a network without it. Fix is a DHCP reservation for the MAC on the router, or use the address the router hands out. Box 2's `.130` should be re-checked the same way.
 - 20-minute log (`read_box2.py log`, warm-up first 3 min dropped, 102 samples per 10 s channel): SEN66 22.01 °C, SHT45 21.99 °C (offset 0.02 °C), SEN66 47.4 % RH, SHT45 48.5 % RH, CO2 683 ppm, PM2.5 0.5 µg/m³, VOC index 98.6, NOx 1, dew point 10.6 °C, Wi-Fi -69 dBm, chip temperature a constant 62.2 °C, no faults, no reboot during the run.
 - Not done: Box 3 is not adopted anywhere (no Home Assistant at Home); the 15-minute no-client reboot applies until a logger or Home Assistant holds a connection.
+
+## NTP flash and Box 2 relocation (2026-11-13)
+
+- Box 2 moved closer to the Wi-Fi source. 15-minute log (`box2_log_1113_newspot.csv`, first 3 min dropped, 72 samples per channel, no reboot): Wi-Fi -57 dBm (was -74), SEN66 24.19 C, SHT45 26.86 C (offset 2.7 C, was 1.7 C in the earlier read, so location is not the cause; Box 3 offset 0.02 C), SEN66 39.9 % RH, SHT45 35.2 % RH, CO2 804 ppm, chip 74.4 C (Box 3 about 63 C).
+- NTP package (`packages/ntp.yaml`) flashed to Box 2 and Box 3 over Wi-Fi OTA (`esphome upload --device <ip>`, about 5 s each). OTA keeps the saved Wi-Fi credentials, which a USB `firmware.factory.bin` flash does not. Both nodes came back at `.130` and `.138`, "Time synced" True, no faults.
+- Not done: pressure package (no DPS310 fitted), Box 4 firmware, DHCP reservations for `.130` and `.131`.
