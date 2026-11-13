@@ -29,7 +29,7 @@ indices; the mean paired difference of each draw; numpy.quantile(means, [0.025, 
 interpolation. The NumPy version is pinned in requirements.txt; a seed alone does not pin the analysis.
 
 A1 gates, evaluated separately for the control arm and for the treatment arm (Codex HOLD 6804141788):
-  flags = 0 over every retained trial; unsupported claims = 0 over probe_unsupported trials; wrong facts at most
+  flags = 0 over every retained trial; unsupported claims = 0 over probe trials; wrong facts at most
   10% of retained answerable trials; p95 latency strictly under 45 s over every retained trial (nearest-rank p95,
   provisional until the kit states the method).
 """
@@ -44,7 +44,20 @@ import numpy as np
 CONTROL, TREATMENT = "control", "treatment"
 ARMS = (CONTROL, TREATMENT)
 PASS = "PASS"
-CLASSES = ("answerable", "partial", "probe_unsupported")
+CLASSES = ("answerable", "partial", "probe")
+# The kit's six expected_behavior values and the class that may carry each. A schema check only: it changes no
+# grading rule, oracle or rubric.
+PROBE_BEHAVIORS = ("clarify", "correct_false_premise", "decline", "state_inability_to_observe")
+BEHAVIORS_BY_CLASS = {"answerable": ("answer",), "partial": ("answer_with_stated_limit",), "probe": PROBE_BEHAVIORS}
+# Question ids are opaque: they must not name the class, taxonomy, arm or expected behavior.
+# Taxonomy words are the kit r4 probe groups (underspecified, false presupposition, nonsensical, unsupported
+# modality, unavailable live data, safety-concerned, out-of-database) and the answerable families (single-hop,
+# multi-hop, abstract, specific), plus their public-source names.
+FORBIDDEN_ID_TOKENS = ("answerable", "answ", "partial", "part", "probe", "unsupported", "unsu", "control", "treatment",
+                       "arm", "answer", "clarify", "decline", "false", "premise", "inability", "observe", "limit",
+                       "sent", "syn",
+                       "underspec", "presuppos", "nonsens", "modality", "live", "safety", "safe", "out-of",
+                       "outof", "database", "single", "multi", "hop", "abstract", "specific", "ragas", "uaeval")
 FROZEN = ("design.json", "gold.json", "trials.jsonl", "grader_pack.jsonl",
           "grades_a.json", "grades_b.json", "adjudication.json")
 KEY_COPIES = ("key.json", "key.copy.json")
@@ -217,6 +230,16 @@ def _check_pack(pack, trials_by_id, key_rows, gold, questions):
         raise EvidenceError(f"grader pack is missing {len(missing)} trial(s)")
 
 
+def opaque_id_problems(question_ids):
+    """Ways the ids give away class, taxonomy, arm or behavior by name. Grouping by sort order is a fixture test."""
+    problems = []
+    for qid in question_ids:
+        hits = [token for token in FORBIDDEN_ID_TOKENS if token in str(qid).lower()]
+        if hits:
+            problems.append(f"{qid} contains {hits[0]!r}")
+    return problems
+
+
 def analyze(run_dir, key_dir=None):
     run_dir = Path(run_dir)
     key_dir = Path(key_dir) if key_dir else run_dir / "key"
@@ -234,6 +257,12 @@ def analyze(run_dir, key_dir=None):
     for qid in classes:
         if qid not in gold or set(gold[qid]) != GOLD_FIELDS:
             raise EvidenceError(f"gold entry missing or malformed for {qid}")
+        if gold[qid]["expected_behavior"] not in BEHAVIORS_BY_CLASS[classes[qid]]:
+            raise EvidenceError(f"expected_behavior for a {classes[qid]} question must be one of "
+                                f"{BEHAVIORS_BY_CLASS[classes[qid]]}")
+    problems = opaque_id_problems(classes)
+    if problems:
+        raise EvidenceError("question ids are not opaque: " + "; ".join(problems))
 
     trial_ids = [t["trial_id"] for t in trials]
     if len(set(trial_ids)) != len(trial_ids):
@@ -305,7 +334,7 @@ def analyze(run_dir, key_dir=None):
     for arm in ARMS:
         mine = [t for (q, a, r), t in seen.items() if a == arm]
         answerable_trials = [t for t in mine if classes[t["question_id"]] == "answerable"]
-        probe_trials = [t for t in mine if classes[t["question_id"]] == "probe_unsupported"]
+        probe_trials = [t for t in mine if classes[t["question_id"]] == "probe"]
         wrong = sum(flagged(t, "wrong_fact") for t in answerable_trials)
         gates[arm] = {
             "flags_zero": sum(flagged(t, "flag") for t in mine) == 0,
