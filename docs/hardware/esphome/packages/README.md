@@ -4,7 +4,7 @@ Include from a box file with `packages:`. Paths are relative to the box's YAML.
 
 | Package | Hardware needed | Status |
 |---|---|---|
-| `ntp.yaml` | none | Included in `box2.yaml`. Validated with `esphome config`; **not flashed yet**. Adds wall-clock time and a "Time synced" diagnostic. |
+| `ntp.yaml` | none | Included in `box2.yaml` and `box3.yaml`. Flashed to Box 2 and Box 3 over Wi-Fi OTA on 2026-11-13; both report "Time synced" True. Adds wall-clock time and a "Time synced" diagnostic. |
 | `pressure_dps310.yaml` | Adafruit DPS310 (STEMMA QT, product 4494, about $7) chained on the Qwiic bus | **Do not include** until the sensor is fitted. Adds "Barometric pressure" in hPa. Address 0x77, no clash with SEN66 (0x6B) or SHT45 (0x44). |
 
 Boxes 3 and 4 have no firmware file yet (W-84). When they get one, start from `box2.yaml` and include the same packages.

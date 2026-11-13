@@ -23,7 +23,7 @@ esp32:
 preferences:
   flash_write_interval: 10s
 
-# Shared packages. NTP added 2026-11-12 (drafted and validated with `esphome config`, NOT flashed yet).
+# Shared packages. NTP added 2026-11-12 (flashed to Box 2 and Box 3 over Wi-Fi OTA on 2026-11-13; both report "Time synced" True).
 # Add `pressure: !include packages/pressure_dps310.yaml` only once a DPS310 is chained on.
 packages:
   ntp: !include packages/ntp.yaml
