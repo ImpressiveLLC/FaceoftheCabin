@@ -8,8 +8,9 @@ from unittest import mock
 
 import numpy as np
 
-from analyze_run import EvidenceError, analyze, bootstrap_ci, freeze, leak_scan, p95_nearest_rank
-from synthetic_fixture import FALLBACK, build_run, build_sentinel, grade
+from analyze_run import (BEHAVIORS_BY_CLASS, EvidenceError, analyze, bootstrap_ci, freeze, leak_scan, opaque_id_problems,
+                         p95_nearest_rank)
+from synthetic_fixture import FALLBACK, SENT, build_run, build_sentinel, grade, syn_id
 
 HERE = Path(__file__).parent
 
@@ -82,15 +83,15 @@ class FixtureAnalysisTest(unittest.TestCase):
     def test_fallbacks_are_ordinary_grades_not_wrong_facts(self):
         build_sentinel(self.dir)
         trials = read_rows(self.dir / "trials.jsonl")
-        self.assertTrue(any(t["answer_text"] == FALLBACK and t["question_id"] == "SENT-A1" for t in trials))
-        self.assertTrue(any(t["answer_text"] == FALLBACK and t["question_id"] == "SENT-P1" for t in trials))
+        self.assertTrue(any(t["answer_text"] == FALLBACK and t["question_id"] == SENT["A1"] for t in trials))
+        self.assertTrue(any(t["answer_text"] == FALLBACK and t["question_id"] == SENT["P1"] for t in trials))
         self.assertTrue(all(g["wrong_fact"] is False for g in read_json(self.dir / "grades_a.json").values()))
         self.assertEqual(analyze(self.dir)["verdict"], "GAIN_MET")
 
     def test_the_sentinel_has_all_three_classes(self):
         build_sentinel(self.dir)
         self.assertEqual({q["class"] for q in read_json(self.dir / "design.json")["questions"]},
-                         {"answerable", "partial", "probe_unsupported"})
+                         {"answerable", "partial", "probe"})
 
     # ---- the frozen bootstrap -----------------------------------------------------------------
 
@@ -144,7 +145,7 @@ class FixtureAnalysisTest(unittest.TestCase):
 
     def test_a_clearly_better_treatment_arm_meets_the_gain(self):
         build_run(self.dir, control_pass=0.2, treatment_pass=0.95,
-                  per_class={"answerable": 20, "partial": 4, "probe_unsupported": 4})
+                  per_class={"answerable": 20, "partial": 4, "probe": 4})
         result = analyze(self.dir)
         self.assertEqual(result["verdict"], "GAIN_MET")
         self.assertGreaterEqual(result["delta"], 0.10)
@@ -167,7 +168,7 @@ class FixtureAnalysisTest(unittest.TestCase):
 
     def test_a_single_flag_in_one_arm_holds(self):
         build_sentinel(self.dir)
-        self.set_final_grade("T-SENT-PA1-c2", flag=True)
+        self.set_final_grade(f"T-{SENT['PA1']}-c2", flag=True)
         result = analyze(self.dir)
         self.assertEqual(result["verdict"], "HOLD")
         self.assertEqual([r for r in result["reasons"] if r.startswith("gate failed")],
@@ -176,7 +177,7 @@ class FixtureAnalysisTest(unittest.TestCase):
     def test_unsupported_claims_in_both_arms_hold(self):
         build_sentinel(self.dir)
         for arm in "ct":
-            self.set_final_grade(f"T-SENT-P1-{arm}1", unsupported_claim=True)
+            self.set_final_grade(f"T-{SENT['P1']}-{arm}1", unsupported_claim=True)
         result = analyze(self.dir)
         self.assertEqual(result["verdict"], "HOLD")
         self.assertIn("gate failed (control): unsupported_claims_zero", result["reasons"])
@@ -184,9 +185,9 @@ class FixtureAnalysisTest(unittest.TestCase):
 
     def test_wrong_facts_are_limited_to_ten_percent_of_answerable_trials_in_each_arm(self):
         build_sentinel(self.dir)  # 12 answerable trials per arm: one wrong fact is 8.3%, two are 16.7%
-        self.set_final_grade("T-SENT-A1-c1", wrong_fact=True)
+        self.set_final_grade(f"T-{SENT['A1']}-c1", wrong_fact=True)
         self.assertEqual(analyze(self.dir)["verdict"], "GAIN_MET")
-        self.set_final_grade("T-SENT-A1-c2", wrong_fact=True)
+        self.set_final_grade(f"T-{SENT['A1']}-c2", wrong_fact=True)
         result = analyze(self.dir)
         self.assertEqual(result["verdict"], "HOLD")
         self.assertIn("gate failed (control): wrong_fact_rate_within_limit", result["reasons"])
@@ -196,7 +197,7 @@ class FixtureAnalysisTest(unittest.TestCase):
         build_sentinel(self.dir)
         for arm in "ct":
             for rep in (1, 2):
-                self.set_final_grade(f"T-SENT-A3-{arm}{rep}", wrong_fact=True)
+                self.set_final_grade(f"T-{SENT['A3']}-{arm}{rep}", wrong_fact=True)
         self.assertEqual(analyze(self.dir)["verdict"], "HOLD")
 
     def test_p95_latency_must_be_strictly_under_45_seconds_in_each_arm(self):
@@ -219,7 +220,7 @@ class FixtureAnalysisTest(unittest.TestCase):
 
     def test_a_technical_error_is_non_pass_and_the_trial_is_retained(self):
         build_sentinel(self.dir)
-        self.edit_trials(lambda rows: [r.update(status="technical_error") for r in rows if r["trial_id"] == "T-SENT-A1-t1"])
+        self.edit_trials(lambda rows: [r.update(status="technical_error") for r in rows if r["trial_id"] == f"T-{SENT['A1']}-t1"])
         freeze(self.dir)
         result = analyze(self.dir)
         self.assertEqual(result["trials_seen"], 36)
@@ -280,7 +281,7 @@ class FixtureAnalysisTest(unittest.TestCase):
 
     def test_an_unresolved_disagreement_fails_closed_and_the_key_is_never_opened(self):
         build_sentinel(self.dir)
-        blinded = self.blinded_for("T-SENT-A4-t1")
+        blinded = self.blinded_for(f"T-{SENT['A4']}-t1")
         self.edit_grades("grades_b.json", lambda data: data[blinded].update(grade="FAIL"))
         freeze(self.dir)
         with self.assertRaisesRegex(EvidenceError, "1 unresolved"):
@@ -289,7 +290,7 @@ class FixtureAnalysisTest(unittest.TestCase):
 
     def test_adjudication_for_a_trial_the_graders_agreed_on_is_refused(self):
         build_sentinel(self.dir)
-        blinded = self.blinded_for("T-SENT-A4-t2")
+        blinded = self.blinded_for(f"T-{SENT['A4']}-t2")
         self.edit_grades("adjudication.json", lambda data: data.update({blinded: grade(False)}))
         freeze(self.dir)
         with self.assertRaisesRegex(EvidenceError, "not in disagreement"):
@@ -297,7 +298,7 @@ class FixtureAnalysisTest(unittest.TestCase):
 
     def test_both_graders_must_have_graded_every_trial_and_the_key_stays_closed(self):
         build_sentinel(self.dir)
-        blinded = self.blinded_for("T-SENT-A1-t3")
+        blinded = self.blinded_for(f"T-{SENT['A1']}-t3")
         self.edit_grades("grades_a.json", lambda data: data.pop(blinded))
         freeze(self.dir)
         with self.assertRaisesRegex(EvidenceError, "grades_a does not cover exactly the grader pack: 1 missing"):
@@ -409,7 +410,7 @@ class FixtureAnalysisTest(unittest.TestCase):
         build_sentinel(self.dir)
         rows = read_rows(self.dir / "grader_pack.jsonl")
         # SENT-A1 has fallback answers in one arm and ordinary answers in the other: same question, different text
-        pair = [r for r in rows if r["question_id"] == "SENT-A1"]
+        pair = [r for r in rows if r["question_id"] == SENT["A1"]]
         first = pair[0]
         second = next(r for r in pair if r["answer_text"] != first["answer_text"])
         first["answer_text"], second["answer_text"] = second["answer_text"], first["answer_text"]
@@ -429,7 +430,7 @@ class FixtureAnalysisTest(unittest.TestCase):
 
     def test_a_gold_entry_missing_for_a_question_fails_closed(self):
         build_sentinel(self.dir)
-        self.edit_grades("gold.json", lambda data: data.pop("SENT-PA1"))
+        self.edit_grades("gold.json", lambda data: data.pop(SENT["PA1"]))
         freeze(self.dir)
         with self.assertRaisesRegex(EvidenceError, "gold entry missing"):
             analyze(self.dir)
@@ -482,14 +483,15 @@ class FixtureAnalysisTest(unittest.TestCase):
     # ---- missing, duplicated, altered ---------------------------------------------------------
 
     def test_a_missing_trial_is_a_hold_not_a_silent_pass(self):
-        build_run(self.dir, drop=("T-SYN-answ-000-t2",))
+        build_run(self.dir, drop=(f"T-{syn_id('answerable', 0)}-t2",))
         result = analyze(self.dir)
         self.assertEqual(result["verdict"], "HOLD")
         self.assertTrue(any(r.startswith("missing trials") for r in result["reasons"]))
         self.assertEqual(result["trials_seen"], result["trials_expected"] - 1)
 
     def test_a_duplicate_trial_id_is_an_evidence_error(self):
-        dup = {"trial_id": "T-SYN-answ-001-c1", "question_id": "SYN-answ-001", "repeat": 1, "status": "ok",
+        qid = syn_id("answerable", 1)
+        dup = {"trial_id": f"T-{qid}-c1", "question_id": qid, "repeat": 1, "status": "ok",
                "latency_s": 5.0, "answer_text": "synthetic answer duplicate"}
         build_run(self.dir, extra_trials=(dup,))
         with self.assertRaisesRegex(EvidenceError, "duplicate trial id"):
@@ -524,7 +526,110 @@ class FixtureAnalysisTest(unittest.TestCase):
 
     def test_everything_synthetic_is_labelled_synthetic(self):
         build_run(self.dir)
-        self.assertTrue(all(q["id"].startswith("SYN-") for q in read_json(self.dir / "design.json")["questions"]))
+        self.assertTrue(all(row["answer_text"].startswith("synthetic ") for row in read_rows(self.dir / "trials.jsonl")))
+        self.assertTrue(all(row["question_text"].startswith("Synthetic ")
+                            for row in read_rows(self.dir / "grader_pack.jsonl")))
+
+    # ---- schema alignment: class value, the kit's six behaviors, opaque question ids ------------------
+
+    def test_the_class_value_is_probe_and_the_old_label_is_rejected(self):
+        build_sentinel(self.dir)
+        self.assertEqual({q["class"] for q in read_json(self.dir / "design.json")["questions"]},
+                         {"answerable", "partial", "probe"})
+        for source in ("analyze_run.py", "synthetic_fixture.py"):
+            self.assertNotIn("probe_unsupported", (HERE / source).read_text(encoding="utf-8"), source)
+        for bad in ("probe_unsupported", "Probe", "unsupported", ""):
+            with self.subTest(bad=bad):
+                build_sentinel(self.dir)
+                design = read_json(self.dir / "design.json")
+                design["questions"][-1]["class"] = bad
+                write_json(self.dir / "design.json", design)
+                freeze(self.dir)
+                with self.assertRaisesRegex(EvidenceError, "design classes must be drawn from"):
+                    analyze(self.dir)
+                self.assertEqual(self.key_paths_read(lambda: analyze(self.dir)), [])
+
+    def test_the_unsupported_claim_gate_still_covers_exactly_the_probe_class(self):
+        build_sentinel(self.dir)
+        self.set_final_grade(f"T-{SENT['PA1']}-c1", unsupported_claim=True)  # a partial row is outside the denominator
+        self.assertEqual(analyze(self.dir)["verdict"], "GAIN_MET")
+        self.set_final_grade(f"T-{SENT['P1']}-c1", unsupported_claim=True)
+        result = analyze(self.dir)
+        self.assertEqual(result["verdict"], "HOLD")
+        self.assertFalse(result["gates"]["control"]["unsupported_claims_zero"])
+        self.assertTrue(result["gates"]["treatment"]["unsupported_claims_zero"])
+
+    def test_synthetic_expected_behaviors_are_the_kits_six_values_by_class(self):
+        build_run(self.dir, per_class={"answerable": 3, "partial": 3, "probe": 8})
+        design = {q["id"]: q["class"] for q in read_json(self.dir / "design.json")["questions"]}
+        gold = read_json(self.dir / "gold.json")
+        for qid, klass in design.items():
+            self.assertIn(gold[qid]["expected_behavior"], BEHAVIORS_BY_CLASS[klass])
+        self.assertEqual({gold[q]["expected_behavior"] for q, k in design.items() if k == "probe"},
+                         {"clarify", "correct_false_premise", "decline", "state_inability_to_observe"})
+        self.assertEqual({gold[q]["expected_behavior"] for q, k in design.items() if k == "partial"},
+                         {"answer_with_stated_limit"})
+        self.assertEqual({b for values in BEHAVIORS_BY_CLASS.values() for b in values},
+                         {"answer", "answer_with_stated_limit", "clarify", "correct_false_premise", "decline",
+                          "state_inability_to_observe"})
+
+    def test_an_expected_behavior_outside_the_six_or_wrong_for_its_class_fails_closed(self):
+        for qclass, bad in (("answerable", "decline"), ("partial", "answer"), ("probe", "answer_supported_part"),
+                            ("probe", "decline_or_no_context"), ("probe", "answer_with_stated_limit")):
+            with self.subTest(qclass=qclass, bad=bad), tempfile.TemporaryDirectory() as tmp:
+                self.dir = Path(tmp)
+                build_sentinel(self.dir)
+                design = {q["id"]: q["class"] for q in read_json(self.dir / "design.json")["questions"]}
+                target = next(q for q, k in design.items() if k == qclass)
+                gold = read_json(self.dir / "gold.json")
+                gold[target]["expected_behavior"] = bad
+                write_json(self.dir / "gold.json", gold)
+                rows = read_rows(self.dir / "grader_pack.jsonl")
+                for row in rows:
+                    if row["question_id"] == target:
+                        row["gold"]["expected_behavior"] = bad
+                write_rows(self.dir / "grader_pack.jsonl", rows)
+                freeze(self.dir)
+                with self.assertRaisesRegex(EvidenceError, "expected_behavior for a"):
+                    analyze(self.dir)
+                self.assertEqual(self.key_paths_read(lambda: analyze(self.dir)), [])
+
+    def test_synthetic_question_ids_are_opaque(self):
+        for builder in (build_sentinel, lambda d: build_run(d, per_class={"answerable": 12, "partial": 6, "probe": 6})):
+            with tempfile.TemporaryDirectory() as tmp:
+                builder(Path(tmp))
+                design = read_json(Path(tmp) / "design.json")["questions"]
+                ids = [q["id"] for q in design]
+                self.assertEqual(opaque_id_problems(ids), [])
+                self.assertTrue(all(re.fullmatch(r"Q-[0-9a-f]{8}", i) for i in ids))
+                self.assertEqual(len(set(ids)), len(ids))
+                classes = {q["id"]: q["class"] for q in design}
+                self.assertNotEqual([classes[i] for i in sorted(ids)], sorted(classes.values()),
+                                    "sorted ids must not be grouped by class")
+                self.assertNotEqual([q["class"] for q in design], sorted(q["class"] for q in design),
+                                    "design order must not follow the class")
+
+    def test_ids_that_name_the_class_taxonomy_arm_or_behavior_are_rejected_before_the_key(self):
+        for bad in ("SYN-answ-000", "Q-probe-01", "unsupported-3", "Q-control-1", "Q-treatment", "Q-decline-2",
+                    "SENT-A1", "Q-clarify", "Q-partial-4"):
+            with self.subTest(bad=bad):
+                self.assertTrue(opaque_id_problems([bad]), bad)
+        build_sentinel(self.dir)
+        for name in ("design.json", "gold.json", "trials.jsonl", "grader_pack.jsonl", "grades_a.json",
+                     "grades_b.json", "adjudication.json"):
+            path = self.dir / name
+            path.write_text(path.read_text(encoding="utf-8").replace(SENT["A1"], "SYN-answ-000"), encoding="utf-8")
+        freeze(self.dir)
+        with self.assertRaisesRegex(EvidenceError, "question ids are not opaque"):
+            analyze(self.dir)
+        self.assertEqual(self.key_paths_read(lambda: analyze(self.dir)), [])
+
+    def test_the_grader_pack_ids_are_opaque_and_carry_no_class_field(self):
+        build_run(self.dir)
+        for row in read_rows(self.dir / "grader_pack.jsonl"):
+            self.assertEqual(opaque_id_problems([row["question_id"]]), [])
+            self.assertNotIn("class", row)
+            self.assertNotIn("class", row["gold"])
 
 
 if __name__ == "__main__":

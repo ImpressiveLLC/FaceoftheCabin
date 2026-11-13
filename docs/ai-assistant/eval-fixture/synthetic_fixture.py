@@ -4,16 +4,38 @@ Every question, answer, gold fact, grade and latency here is invented. Nothing i
 sealed set, the frozen suite or any corpus document. Arm labels appear only under <run>/key/. The grader pack
 carries blinded ids, the question text and the frozen gold, and nothing that names an arm or a trial.
 """
+import hashlib
 import json
 import random
 from pathlib import Path
 
-from analyze_run import CONTROL, PASS, TREATMENT, freeze
+from analyze_run import CONTROL, PASS, PROBE_BEHAVIORS, TREATMENT, freeze
 
-CLASSES = ("answerable", "partial", "probe_unsupported")
-TAG = {"answerable": "answ", "partial": "part", "probe_unsupported": "unsu"}
-BEHAVIOR = {"answerable": "answer", "partial": "answer_supported_part_and_flag_the_rest",
-            "probe_unsupported": "decline_or_no_context"}
+CLASSES = ("answerable", "partial", "probe")
+
+
+def opaque_id(label):
+    """An opaque question id: a hash of a label that never appears in the run, so the id names no class, taxonomy,
+    arm or behavior and sorts independently of them."""
+    return "Q-" + hashlib.sha256(label.encode("utf-8")).hexdigest()[:8]
+
+
+SENT = {name: opaque_id("sentinel/" + name) for name in ("A1", "A2", "A3", "A4", "PA1", "P1")}
+
+
+def syn_id(klass, index):
+    return opaque_id(f"random/{klass}/{index}")
+
+
+def behavior_for(question):
+    """Synthetic expected_behavior drawn from the kit's six values; probes cycle through the four probe behaviors."""
+    if question["class"] == "answerable":
+        return "answer"
+    if question["class"] == "partial":
+        return "answer_with_stated_limit"
+    return PROBE_BEHAVIORS[question.get("n", 0) % len(PROBE_BEHAVIORS)]
+
+
 FALLBACK = "I do not have any information about that yet."
 FAIL = "FAIL"
 
@@ -25,7 +47,7 @@ def grade(ok, wrong_fact=False, unsupported_claim=False, flag=False):
 
 def gold_for(questions):
     return {q["id"]: {"question_text": f"Synthetic question {q['id']}?",
-                      "expected_behavior": BEHAVIOR[q["class"]],
+                      "expected_behavior": behavior_for(q),
                       "gold_facts": [f"synthetic fact {q['id']}-1", f"synthetic fact {q['id']}-2"],
                       "source_support": [f"synthetic-source-{q['id']}"]} for q in questions}
 
@@ -70,10 +92,11 @@ def write_run(run_dir, design, trials, arm_of, grades_a, grades_b, adjudication,
 def build_run(run_dir, *, seed=7, per_class=None, repeats=3, control_pass=0.45, treatment_pass=0.80,
               min_gain=0.10, draws=10000, drop=(), extra_trials=(), disagree=0.1):
     """A random synthetic run. Class sizes default to a small set; real sizes are the real design's business."""
-    per_class = per_class or {"answerable": 12, "partial": 4, "probe_unsupported": 4}
+    per_class = per_class or {"answerable": 12, "partial": 4, "probe": 4}
     rng = random.Random(seed)
-    questions = [{"id": f"SYN-{TAG[klass]}-{i:03d}", "class": klass}
+    questions = [{"id": syn_id(klass, i), "class": klass, "n": i}
                  for klass in CLASSES for i in range(per_class.get(klass, 0))]
+    random.Random(seed + 1).shuffle(questions)  # the design order does not follow the class either
     design = {"questions": questions, "repeats": repeats, "seed": 20261109, "bootstrap_draws": draws,
               "min_gain": min_gain}
     trials, arm_of, grades_a, grades_b, adjudication = [], {}, {}, {}, {}
@@ -103,10 +126,11 @@ def build_sentinel(run_dir):
     exactly 0.5. One partial and one unsupported-probe question, no flags in either arm, every latency 10 s.
     Includes: fallback answers on answerable trials (graded FAIL, not wrong facts), valid no-context fallbacks on
     the probe (graded PASS), and one grader disagreement resolved by the adjudication."""
-    questions = ([{"id": f"SENT-A{i}", "class": "answerable"} for i in range(1, 5)]
-                 + [{"id": "SENT-PA1", "class": "partial"}, {"id": "SENT-P1", "class": "probe_unsupported"}])
+    by_name = {**{f"A{i}": {"id": SENT[f"A{i}"], "class": "answerable"} for i in range(1, 5)},
+               "PA1": {"id": SENT["PA1"], "class": "partial"}, "P1": {"id": SENT["P1"], "class": "probe", "n": 2}}
+    questions = [by_name[name] for name in ("A2", "P1", "A1", "PA1", "A3", "A4")]  # not grouped by class
     design = {"questions": questions, "repeats": 3, "seed": 20261109, "bootstrap_draws": 10000, "min_gain": 0.10}
-    control_passes = {"SENT-A1": 0, "SENT-A2": 1, "SENT-A3": 2, "SENT-A4": 3}
+    control_passes = {SENT["A1"]: 0, SENT["A2"]: 1, SENT["A3"]: 2, SENT["A4"]: 3}
     trials, arm_of, grades_a, grades_b, adjudication = [], {}, {}, {}, {}
     for q in questions:
         for arm in (CONTROL, TREATMENT):
@@ -115,11 +139,11 @@ def build_sentinel(run_dir):
                 answer = f"synthetic sentinel answer {q['id']} {rep}"
                 if q["class"] == "answerable":
                     ok = True if arm == TREATMENT else rep <= control_passes[q["id"]]
-                    if not ok and q["id"] == "SENT-A1":
+                    if not ok and q["id"] == SENT["A1"]:
                         answer = FALLBACK  # a fallback on an answerable question: non-PASS, not a wrong fact
                 else:
                     ok = True
-                    if q["class"] == "probe_unsupported":
+                    if q["class"] == "probe":
                         answer = FALLBACK  # a valid no-context response to a probe
                 trials.append({"trial_id": tid, "question_id": q["id"], "repeat": rep, "status": "ok",
                                "latency_s": 10.0, "answer_text": answer})
@@ -127,7 +151,7 @@ def build_sentinel(run_dir):
                 grades_a[tid] = grade(ok)
                 grades_b[tid] = grade(ok)
     # one disagreement: grader A says PASS, grader B says FAIL; the adjudication's PASS is the final grade
-    disputed = "T-SENT-A2-c1"
+    disputed = f"T-{SENT['A2']}-c1"
     assert grades_a[disputed]["grade"] == PASS
     grades_b[disputed] = grade(False)
     adjudication[disputed] = grade(True)
