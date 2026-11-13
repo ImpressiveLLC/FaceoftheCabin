@@ -106,3 +106,12 @@ Box 2 sits in its metal single-gang box, outside the cabin, still on the Home ne
 `Dew point (derived, SHT45)` and `Absolute humidity (derived, SHT45)` added as on-node template sensors (Magnus formula, SHT45 only, 10 s). Checked against an independent calculation: SHT45 24.09 C / 43.6 % RH gave 10.90 C dew point and 9.5 g/m3, matching. Chip temperature read 77.4 C at one minute of uptime. Nate's condition: SHT45 stays stable for the next couple of days; the formulas can be changed later by OTA from the M920q once the node is on the cabin network.
 
 Not done: ontology entries for the two derived channels (D28 naming, `data_class: derived`, `derived_from` the SHT45 channels). Do this with W-84, not as a side edit to the 4000-line ontology.
+
+## Box 3 bring-up (2026-11-12)
+
+- Board `90:DA:72:71:51:5C` (ESP32-S3, 8 MB flash, no PSRAM), identical parts to Box 2. Config `docs/hardware/esphome/box3.yaml` = the flashed Box 2 config with name `fotc-qtpy-box3`, address slot `.131`, setup AP `fotc-box3-setup`, and its own `box3_api_key` and `box3_ota_password` (in the local `secrets.yaml`, not in the repo). Built with ESPHome 2026.10.2, flashed over USB at 0x0, hash verified.
+- Bootloader entry as for Box 2: unplug, hold BOOT, plug in, release after about 2 s. It appeared as VID 303A on COM11.
+- The captive portal at `http://192.168.4.1` on `fotc-box3-setup` saved the Home Wi-Fi. Status light: yellow slow blink (no Wi-Fi), then red/cyan briefly, then purple (Wi-Fi up, no API client).
+- **Finding: the static IP was not applied.** The node took DHCP `192.168.1.138`, not `.131`. In ESPHome 2026.10.2 `manual_ip` is attached to a configured network (`wifi_component.cpp`, per-`WiFiAP`), and credentials saved through the captive portal create a network without it. Fix is a DHCP reservation for the MAC on the router, or use the address the router hands out. Box 2's `.130` should be re-checked the same way.
+- 20-minute log (`read_box2.py log`, warm-up first 3 min dropped, 102 samples per 10 s channel): SEN66 22.01 °C, SHT45 21.99 °C (offset 0.02 °C), SEN66 47.4 % RH, SHT45 48.5 % RH, CO2 683 ppm, PM2.5 0.5 µg/m³, VOC index 98.6, NOx 1, dew point 10.6 °C, Wi-Fi -69 dBm, chip temperature a constant 62.2 °C, no faults, no reboot during the run.
+- Not done: Box 3 is not adopted anywhere (no Home Assistant at Home); the 15-minute no-client reboot applies until a logger or Home Assistant holds a connection.
