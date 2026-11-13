@@ -1,0 +1,15 @@
+# OPTIONAL: include only on a box that has an Adafruit DPS310 (STEMMA QT, product 4494) chained
+# onto the Qwiic bus. Do not include it on a box without the sensor: the node would log an I2C
+# error every update.
+# Default address 0x77 (0x76 if the board's address jumper is closed); neither collides with
+# the SEN66 (0x6B) or the SHT45 (0x44). Pressure only: temperature is left out because the
+# SEN66 and SHT45 already cover it.
+sensor:
+  - platform: dps310
+    address: 0x77
+    update_interval: 60s
+    pressure:
+      id: baro_pressure
+      name: "Barometric pressure"
+      state_class: measurement
+      accuracy_decimals: 1

@@ -23,6 +23,11 @@ esp32:
 preferences:
   flash_write_interval: 10s
 
+# Shared packages. NTP added 2026-11-12 (drafted and validated with `esphome config`, NOT flashed yet).
+# Add `pressure: !include packages/pressure_dps310.yaml` only once a DPS310 is chained on.
+packages:
+  ntp: !include packages/ntp.yaml
+
 logger:
   level: INFO
 

@@ -11868,6 +11868,125 @@ elements:
       registry and are never surfaced in the knowledge base, Ask or the ontology (D28: hardware ids are not derived
       from names). Candidate classification only; no runtime behavior is changed by this entry.'
 
+  - id: device_mobility
+    entity_type: owl:DatatypeProperty
+    layer: ontology
+    primitive: true
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: raw
+    data_type: xsd:string
+    constraint:
+      enum: [fixed, relocatable]
+      description: fixed is the default; relocatable is set per device by the owner
+    ui_display_name: Movable Device
+    source: Nate 2026-11-12 (Box 2 moving between the Home and cabin Home Assistants); proposal docs/governance/proposals/2026-11-12-relocatable-devices.md; W-157
+    rendering:
+      semantic: Movable device
+      systems: Device mobility (fixed | relocatable)
+      technical: device_mobility
+      compliance: Whether the device is expected to change sites during its life
+    definition: Whether a device stays at one site (fixed) or is expected to be carried between sites (relocatable)
+      and to be recognized again by its hardware identity wherever it appears.
+    relationships:
+    - target: device_hardware_address
+      type: depends_on
+      cardinality: 1:1
+    - target: device_sighting
+      type: consumed_by
+      cardinality: 1:N
+    notes: 'Candidate definition only; no runtime behavior changes. Names considered and rejected: mobile (reads as
+      a phone or tablet), portable (implies battery or handheld), roaming (a network term), transient (already used
+      for data quality). This is about changing site, not live position tracking. A relocatable device with no
+      hardware address cannot be recognized across sites and must be registered as fixed.'
+  - id: device_hardware_address
+    entity_type: owl:DatatypeProperty
+    layer: hardware
+    primitive: true
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: raw
+    data_type: xsd:string
+    constraint:
+      description: network hardware address burned in at manufacture; stable across Wi-Fi networks and sites
+      format: "aa:bb:cc:dd:ee:ff, lower case (e.g. the form Home Assistant stores in a device's connections)"
+    ui_display_name: (not shown)
+    source: Home Assistant device registry connections (mac); ESPHome native API device info
+    rendering:
+      semantic: (not shown)
+      systems: Hardware address
+      technical: device_hardware_address
+      compliance: Device Hardware ID
+    definition: The Wi-Fi or Ethernet hardware address of a network-attached device. It plays the same role for
+      ESPHome and other IP devices that zigbee_ieee_address plays for Zigbee devices.
+    relationships:
+    - target: zigbee_ieee_address
+      type: complements
+      cardinality: 1:1
+    - target: device_mobility
+      type: consumed_by
+      cardinality: 1:1
+    notes: 'The element is defined here; individual address values are never written into the ontology, the knowledge
+      base or Ask (same rule as the Box 2 diagnostics note: hardware ids stay in the device registry). Randomized
+      or per-network addresses are not stable identities and must not be used. If a device reports more than one
+      address, the Wi-Fi one is the identity.'
+  - id: device_sighting
+    entity_type: owl:Class
+    layer: ontology
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Device Sighting
+    source: proposal docs/governance/proposals/2026-11-12-relocatable-devices.md; W-157
+    rendering:
+      semantic: Where the device was last seen
+      systems: Device Sighting (hub, hardware address, last seen)
+      technical: device_sighting
+      compliance: Observation record, not identity
+    definition: One hub's observation of a device at one time. A relocatable device has one identity and many
+      sightings; its current location is the hub whose sighting is newest and still fresh.
+    relationships:
+    - target: hub_location
+      type: located_in
+      cardinality: N:1
+    - target: device_hardware_address
+      type: depends_on
+      cardinality: N:1
+    - target: device_mobility
+      type: depends_on
+      cardinality: N:1
+    notes: 'Candidate only. Per-hub entity rows keep their existing ids (ha-<location>-...), so no history is
+      renamed (D1). A sighting links such rows to the device identity. Freshness window and manual override are open
+      questions in the proposal.'
+  - id: barometric_pressure
+    entity_type: owl:DatatypeProperty
+    layer: ontology
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: raw
+    data_type: xsd:decimal
+    ui_display_name: Barometric Pressure
+    source: Adafruit DPS310 on the QT Py boxes (docs/hardware/esphome/packages/pressure_dps310.yaml); W-158
+    rendering:
+      semantic: Barometric Pressure
+      systems: Barometric Pressure (hPa)
+      technical: barometric_pressure
+      compliance: Measured value; station pressure, not sea-level adjusted
+    definition: Atmospheric pressure at the sensor, reported in hectopascals.
+    relationships:
+    - target: environmental_measurement_service
+      type: consumed_by
+      cardinality: N:1
+    notes: 'Unit: hPa. Candidate ontology definition only; it registers nothing in the D13 measurement_type vocabulary
+      (14 types), so enrolling it as a reportable measurement is a separate W-84 slice. Station pressure is not
+      adjusted to sea level.'
   - id: exhaust_fan
     entity_type: owl:Class
     layer: hardware

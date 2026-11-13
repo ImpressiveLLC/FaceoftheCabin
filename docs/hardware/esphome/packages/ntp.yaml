@@ -1,0 +1,20 @@
+# Shared by Boxes 2, 3 and 4 (the QT Py sensor package). Gives the node real wall-clock time.
+# Why: without it a node has no timestamps of its own, so any gap while no client is
+# connected is lost and cannot be reconstructed. Both sites are in the US Central zone.
+# Needs internet reach to the NTP pool; if the node boots with none it keeps running and
+# "Time synced" stays off until the first successful sync.
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: America/Chicago
+    servers:
+      - 0.pool.ntp.org
+      - 1.pool.ntp.org
+      - 2.pool.ntp.org
+
+binary_sensor:
+  - platform: template
+    name: "Time synced"
+    entity_category: diagnostic
+    lambda: |-
+      return id(sntp_time).now().is_valid();
