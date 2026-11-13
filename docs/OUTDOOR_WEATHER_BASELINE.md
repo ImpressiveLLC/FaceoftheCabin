@@ -2,8 +2,9 @@
 
 Indoor humidity and temperature only mean something next to what the air outside was doing.
 Once a day the backend pulls hourly airport observations (temperature, dew point, relative
-humidity) for each configured location and the Sensor History chart draws them as a dashed
-baseline under the indoor lines.
+humidity) for each configured location and the Sensor History chart draws them as single
+points (a daily high, mean and low), next to the indoor lines. Values from a weather service
+are never joined into a line: a line is reserved for readings this system measured itself.
 
 ## How it works
 
@@ -24,11 +25,22 @@ baseline under the indoor lines.
   **Create the folder on the host before the first start:** `mkdir -p /storage/archives/weather`.
   If the write fails the data is still in Postgres and the job logs a warning.
 - **API:** `GET /api/weather/outdoor-history?location=cabin&days=30` returns daily points
-  (`tempC`, `dewpointC`, `rhPct`, `sampleCount`, `station`, `partial`). Open like
+  (`tempC`, `dewpointC`, `rhPct` as the daily means, plus the daily low and high of each:
+  `tempMinC`/`tempMaxC`, `dewpointMinC`/`dewpointMaxC`, `rhMinPct`/`rhMaxPct`, each null when
+  no report that day carried it; `sampleCount`, `station`, `partial`). Open like
   `telemetry-history`; capped at `cabin.history.max-days`. Demo policy: ALLOW.
 - **Chart:** an "Outdoor baseline" checkbox (on by default) on the humidity and temperature
-  charts. Humidity shows outdoor RH; temperature shows outdoor temperature and dew point. A
-  missing day breaks the line. The table and CSV export get the outdoor columns.
+  charts. Humidity shows outdoor RH; temperature shows outdoor temperature and dew point. Each
+  day is three gray points: a triangle up for the high, a circle for the mean, a triangle down
+  for the low. A missing day has no points (nothing bridges it). The table shows
+  `mean (low, high)`; the CSV export keeps one row per day with the mean.
+- **Our own outdoor sensors** (for example `temp_outside_lowest`) are not a weather-service
+  value: they are charted as a **dashed line labeled "(outdoor)"** in their own color, and their
+  Monitoring tile carries an "Outdoor" tag and its own icon, so a reading near freezing outside
+  is never read as the inside of the building. A device is outdoor when
+  `attributes.placement` is `outdoor` (`indoor` forces the opposite), or, until a placement is set
+  anywhere, when its room, name or id says outside, outdoor or exterior (`isOutdoorDevice`,
+  `App.jsx`). A device whose name does not say so needs `placement: "outdoor"`.
 
 ## Reading it
 

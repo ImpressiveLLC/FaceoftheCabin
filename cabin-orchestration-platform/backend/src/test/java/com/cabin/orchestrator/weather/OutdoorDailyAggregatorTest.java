@@ -37,6 +37,36 @@ class OutdoorDailyAggregatorTest {
     }
 
     @Test
+    void carriesTheDailyLowAndHighNextToTheMean() {
+        List<OutdoorObservation> day = new ArrayList<>();
+        double[] temps = {-4.0, 2.0, 6.0};
+        for (int i = 0; i < temps.length; i++) {
+            day.add(new OutdoorObservation("cabin", "UBE", Instant.parse("2026-10-23T00:00:00Z").plusSeconds(i * 3600L),
+                temps[i], temps[i] - 3, 50.0 + i * 10));
+        }
+        OutdoorDailyPoint p = OutdoorDailyAggregator.aggregate(day, List.of("UBE"), 1, NOW).get(0);
+        assertEquals(1.333333, p.tempC(), 1e-5);
+        assertEquals(-4.0, p.tempMinC(), 1e-9);
+        assertEquals(6.0, p.tempMaxC(), 1e-9);
+        assertEquals(-7.0, p.dewpointMinC(), 1e-9);
+        assertEquals(3.0, p.dewpointMaxC(), 1e-9);
+        assertEquals(50.0, p.rhMinPct(), 1e-9);
+        assertEquals(70.0, p.rhMaxPct(), 1e-9);
+    }
+
+    @Test
+    void aReadingNoObservationCarriedHasNoLowOrHigh() {
+        List<OutdoorObservation> day = List.of(new OutdoorObservation("cabin", "UBE",
+            Instant.parse("2026-10-23T00:00:00Z"), 3.0, null, null));
+        OutdoorDailyPoint p = OutdoorDailyAggregator.aggregate(day, List.of("UBE"), 1, NOW).get(0);
+        assertNull(p.rhPct());
+        assertNull(p.rhMinPct());
+        assertNull(p.rhMaxPct());
+        assertEquals(3.0, p.tempMinC(), 1e-9);
+        assertEquals(3.0, p.tempMaxC(), 1e-9);
+    }
+
+    @Test
     void fallsBackWhenPrimaryHasTooFewObservationsThatDay() {
         List<OutdoorObservation> all = new ArrayList<>();
         all.addAll(obs("UBE", "2026-10-21", 3, 10, 70));

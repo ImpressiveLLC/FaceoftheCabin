@@ -226,6 +226,9 @@ body {
 .kpi-state-ok    { border-color: color-mix(in srgb, var(--success) 40%, var(--border)); }
 .kpi-state-alarm { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
 .kpi-state-warn  { border-color: color-mix(in srgb, var(--warning) 40%, var(--border)); }
+/* 2026-11-11: a tile measured outside the building says so in words and a different icon -- shape and
+   wording, not a border style (the attention framework keeps dashed borders for unclassified states). */
+.kpi-outdoor-tag { margin-left: 6px; padding: 0 6px; border: 1px solid var(--border); border-radius: 999px; font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
 .kpi-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .kpi-value { font-size: 22px; font-weight: 700; color: var(--text); }
 /* Wording inside a value (unavailable, unknown) is no larger than the card's smallest text: the label and badge are 11px. */
@@ -801,6 +804,10 @@ body {
 .sensor-history-legend { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; font-size: 11px; color: var(--text-dim); }
 .sensor-history-legend-item { display: inline-flex; align-items: center; gap: 4px; }
 .sensor-history-legend-swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+/* An outdoor sensor of ours is a dashed line, so its legend swatch is a dash, not a block. */
+.sensor-history-legend-swatch-dashed { width: 14px; height: 0; border-radius: 0; border-top: 2px dashed; }
+.sensor-history-legend-points { font-size: 8px; letter-spacing: 1px; }
+.sensor-history-chip-outdoor { color: var(--text-dim); font-size: 10px; }
 
 /* D16 Topic tab-strip (added 2026-09-05) -- the picker's only navigation
    layer, replacing what would otherwise be a raw dropdown of 15+
