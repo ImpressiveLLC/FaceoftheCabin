@@ -31,19 +31,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential git \
     && rm -rf /var/lib/apt/lists/*
 
-# CPU wheel of torch from PyTorch's own CPU index, pinned to a known
-# real version (confirmed working on a real CPU training run).
-RUN pip install --no-cache-dir torch==2.7.0 --index-url https://download.pytorch.org/whl/cpu
+# Dependencies come from requirements.lock (resolved with `uv pip compile --generate-hashes` for Python 3.11,
+# linux x86_64, from requirements.in; regenerate that way, never hand-edit). The CPU wheel of torch comes from
+# PyTorch's own CPU index, so that index is added; every file is hash-checked. NOT_RUN: this layer has not been
+# built against the lock yet (P3, #244). Network timeouts on large wheels were seen on the M920q, hence the long timeout.
+COPY requirements.lock ./
+RUN pip install --no-cache-dir --default-timeout=300 --require-hashes -r requirements.lock     --extra-index-url https://download.pytorch.org/whl/cpu
 
-# Split into separate RUN layers with a longer pip timeout: found on the
-# M920q that a combined install can hit real network timeouts on large
-# wheels, and splitting means a retry doesn't re-fetch what already
-# succeeded. gguf is for convert_hf_to_gguf.py (export_to_ollama.sh).
-RUN pip install --no-cache-dir --default-timeout=300 transformers datasets accelerate peft
-RUN pip install --no-cache-dir --default-timeout=300 trl
-RUN pip install --no-cache-dir --default-timeout=300 gguf sentencepiece protobuf
-
-COPY export_grades_to_sft.py train_sft.py merge_and_convert.py ./
+COPY export_grades_to_sft.py train_sft.py sft_tokenize.py merge_and_convert.py ./
 
 # No ENTRYPOINT/CMD -- every stage of the pipeline is an explicit,
 # manually-invoked command (see README.md), not a long-running service.

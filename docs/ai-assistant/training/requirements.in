@@ -1,0 +1,10 @@
+torch==2.7.0
+transformers
+peft
+accelerate
+tokenizers
+huggingface_hub
+gguf
+sentencepiece
+protobuf
+pytest
