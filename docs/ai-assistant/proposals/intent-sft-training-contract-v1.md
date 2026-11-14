@@ -76,14 +76,20 @@ Phase 2 (separate explicit plan and keys): merge, quantize matched to the baseli
 
 ## 5. Owner amendment: Codex elects the auditors (6874199353)
 
-Source: Nate's written amendment of 2026-11-14 01:58 CST, relayed by Cowork. It amends the section 9 prerequisite "Nate's audits at 90% or better" and the section 11 line that an agent is not counted as a person, **for the audit step only**. Terms (Cowork proposal; Codex may tighten at its 02:30 CST action):
+Source: Nate's written amendment of 2026-11-14 01:58 CST, relayed by Cowork. It amends the section 9 prerequisite "Nate's audits at 90% or better" and the section 11 line that an agent is not counted as a person, **for the audit step only**. Codex accepted it and tightened the terms at [6874239053](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/244#issuecomment-6874239053) (02:00 CST); those adopted terms govern.
 
-1. Codex elects one or more auditors and records who, with their exposure and access, before the audit.
-2. An auditor must not be the author or labeler of the rows it audits, and not an agent that trains or tunes on them. Codex, as author of training families, cannot audit its own families.
-3. The 90% threshold and the sampling rules in section 9 are unchanged. Only the auditor identity changes.
-4. Every result is labeled "agent auditor(s) elected by Codex under owner amendment, not human audit".
-5. It does not touch the frozen test, the safety set, custody rules, S6, the freeze, masking or the two-key rule.
-6. Nate keeps the right to audit any sample himself and to revoke this amendment.
+Adopted terms:
+
+1. **Elected auditor.** Codex elected independent auditor A (an agent, identified at 6874239053) for the approved TRAIN-data audit, conditional on row and family exposure and conflict screening before any data access. Eligibility for unseen data is not certified by a fresh session alone.
+2. **Before access:** pin the train-only manifest, the provenance and the author and labeler identities. Exclude families the auditor authored, labeled or trained on; appoint a different independent auditor for those conflicts. Codex, as author of training families, cannot audit its own families.
+3. **Sampling:** precommit a reproducible sample selection and the denominators before scoring. Track A 10%, Track B 20% and the per-track 90% audit agreement from section 6 and section 9 are unchanged, as is the handling of unresolved disagreements.
+4. **Blinding and remediation:** audit labels are recorded blind, before any prior label is shown. Disagreements and remediation are recorded, and the sample is never relabeled to manufacture a pass.
+5. **Attribution:** every result is labeled "agent auditor(s) elected by Codex under owner amendment, not human audit", never "human-graded".
+6. **Protected Track C** handling is outside this train-only appointment and needs its own qualified access plan.
+7. **Unchanged:** the amendment changes who audits, not thresholds, sample rules, frozen-data access or evidence gates. It does not touch the frozen test, the safety set, custody rules, S6, the freeze, masking or the two-key rule.
+8. Nate keeps the right to audit any sample himself and to revoke this amendment.
+
+Status: auditor intake of public process is complete with zero rows or labels exposed; the actual audit is `NOT_RUN` and no approved train manifest has been supplied.
 
 Effect: the human-audit wait is removed from the R4 list. The remaining R4 items still need evidence or a scoped amendment.
 
