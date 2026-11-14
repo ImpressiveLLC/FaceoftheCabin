@@ -13,6 +13,8 @@ Nothing here reads data, trains, or touches a model.
 """
 from __future__ import annotations
 
+import re
+
 IGNORE_INDEX = -100
 BOS = "<|begin_of_text|>"
 EOT = "<|eot_id|>"
@@ -20,6 +22,20 @@ EOT = "<|eot_id|>"
 # sha256:966de95ca8a62200913e3f8bfbf84c8494536f1b94b49166851e76644e966396 (no tools, no date line).
 OLLAMA_TEMPLATE_SHA256 = "966de95ca8a62200913e3f8bfbf84c8494536f1b94b49166851e76644e966396"
 SYSTEM_PREFIX = "Cutting Knowledge Date: December 2023\n\n"
+
+
+# Any <|...|> spelling is a control token in the llama3 vocabulary (begin/end of text, header ids, eot, eom,
+# python_tag, reserved_special_token_N, finetune_right_pad, step_id). Message content may never contain one,
+# or it could close its own turn and open another role while keeping trainable labels.
+_CONTROL = re.compile(r"<\|[^<>|]*\|>")
+
+
+def _content(role: str, value) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{role} content must be a string")
+    if _CONTROL.search(value):
+        raise ValueError(f"{role} content contains a reserved control token spelling; refusing")
+    return value
 
 
 def _header(role: str) -> str:
@@ -39,9 +55,7 @@ def render_segments(messages: list[dict]) -> list[tuple[str, bool]]:
     items = list(messages)
     system = ""
     if items[0].get("role") == "system":
-        system = items.pop(0).get("content")
-        if not isinstance(system, str):
-            raise ValueError("system content must be a string")
+        system = _content("system", items.pop(0).get("content"))
     if not items:
         raise ValueError("conversation has no user or assistant turn")
     segments: list[tuple[str, bool]] = [(_header("system") + SYSTEM_PREFIX + system + EOT, False)]
@@ -50,8 +64,7 @@ def render_segments(messages: list[dict]) -> list[tuple[str, bool]]:
         role, content = message.get("role"), message.get("content")
         if role != expected:
             raise ValueError(f"expected role {expected!r}, got {role!r}")
-        if not isinstance(content, str):
-            raise ValueError(f"{role} content must be a string")
+        content = _content(role, content)
         if role == "user":
             segments.append((_header("user") + content + EOT, False))
             expected = "assistant"
