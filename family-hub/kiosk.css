@@ -15,5 +15,4 @@
   max-width:calc(100vw - 24px); opacity:.45; transition:opacity .2s;
 }
 .kiosk-mode #kiosk-controls:hover, .kiosk-mode #kiosk-controls:focus-within { opacity:1; }
-.kiosk-mode #settings-btn { display:none; }
 @media print { #kiosk-controls { display:none !important; } }

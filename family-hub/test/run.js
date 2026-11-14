@@ -47,7 +47,7 @@ function check(label, actual, expected) {
   page.on('pageerror', e => jsErrors.push(e.message));
   page.on('console', msg => { if (msg.type() === 'error') jsErrors.push(msg.text()); });
 
-  await page.goto(`http://localhost:${PORT}/family-hub.html`, { waitUntil: 'load' });
+  await page.goto(`http://localhost:${PORT}/family-hub.html?layout=classic`, { waitUntil: 'load' });
   await page.waitForTimeout(400);
   // The remaining journey exercises the signed-in hub surface; auth itself is
   // covered separately in the mobile layering check below.
@@ -616,7 +616,7 @@ function check(label, actual, expected) {
   // vertical space, the notepad keeps its protected minimum height, chores
   // shrink first, and the settings panel edge matches the card layer tokens.
   const short = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-  await short.goto('http://localhost:' + PORT + '/family-hub.html?kiosk=1');
+  await short.goto('http://localhost:' + PORT + '/family-hub.html?kiosk=1&layout=classic');
   await short.waitForTimeout(400);
   await short.evaluate(() => document.getElementById('auth-overlay').classList.add('hidden'));
   await short.evaluate(() => computeNotepadTop());
@@ -643,6 +643,7 @@ function check(label, actual, expected) {
   await short.close();
 
   await require('./touch-refinements.js')({ browser, check, base: `http://localhost:${PORT}` });
+  await require('./activity-layout.js')({ browser, check, base: `http://localhost:${PORT}` });
   await browser.close();
   await new Promise(r => server.close(r));
 

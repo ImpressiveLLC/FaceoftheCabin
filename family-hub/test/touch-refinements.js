@@ -2,7 +2,7 @@ module.exports = async function ({ browser, check, base }) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, hasTouch: true });
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
-  await page.goto(base + '/family-hub.html?kiosk=1');
+  await page.goto(base + '/family-hub.html?kiosk=1&layout=classic');
   await page.evaluate(() => {
     document.getElementById('auth-overlay').classList.add('hidden');
     profiles = Array.from({ length: 9 }, (_, i) => ({ id: 'p' + i, name: i === 8 ? 'Grandparent' : 'Child ' + i, role: i === 8 ? 'family' : 'kid', age: 10, avatar: '🙂' }));
