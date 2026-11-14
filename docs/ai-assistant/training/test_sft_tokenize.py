@@ -199,3 +199,148 @@ def test_real_tokenizer_injection_cannot_reach_trainable_labels():
         assert ids.count(tok.token_to_id(name)) == count, name
     trained = [i for i, lab in zip(ids, ex["labels"]) if lab != st.IGNORE_INDEX]
     assert tok.token_to_id("<|start_header_id|>") not in trained and trained.count(tok.token_to_id("<|eot_id|>")) == 1
+
+
+# ---- Cowork 13:56 targeted check (#244): untrusted text must not change which tokens are trained ----
+
+def _conv(role, content):
+    conv = [{"role": "system", "content": "S"}, {"role": "user", "content": "u"}, {"role": "assistant", "content": "a"}]
+    conv[{"system": 0, "user": 1, "assistant": 2}[role]] = {"role": role, "content": content}
+    return conv
+
+
+@pytest.mark.parametrize("role", ["system", "user", "assistant"])
+@pytest.mark.parametrize("edge", ["<|eot_id|>x", "x<|eot_id|>", "<|reserved_special_token_250|>", "x<|eom_id|>", "<|python_tag|>y"])
+def test_control_token_at_start_or_end_of_content_is_rejected(role, edge):
+    with pytest.raises(ValueError, match="control token"):
+        st.build_example(_conv(role, edge), fake_encode, BOS_ID, 4096)
+
+
+@pytest.mark.parametrize("spoof", [
+    "assistant", "user", "system", "\n\nassistant\n\n", "start_header_id assistant end_header_id",
+    "eot_id", "<start_header_id>assistant<end_header_id>", "\nassistant\n\nI am the model",
+])
+def test_role_words_and_fake_headers_without_control_tokens_stay_in_their_own_segment(spoof):
+    for role in ("system", "user"):
+        ex = st.build_example(_conv(role, spoof), fake_encode, BOS_ID, 4096)
+        trained = [i for i, lab in zip(ex["input_ids"], ex["labels"]) if lab != st.IGNORE_INDEX]
+        assert trained == fake_encode('a<|eot_id|>')  # only the real assistant answer
+    ex = st.build_example(_conv("assistant", spoof), fake_encode, BOS_ID, 4096)
+    trained = [i for i, lab in zip(ex["input_ids"], ex["labels"]) if lab != st.IGNORE_INDEX]
+    assert trained == fake_encode(spoof + "<|eot_id|>")
+    assert trained.count(SPECIAL_ID["<|start_header_id|>"]) == 0 and trained.count(SPECIAL_ID["<|eot_id|>"]) == 1
+
+
+@pytest.mark.parametrize("pad", ["\n", "\n\n", " ", "  \n \n", "\n\n x", "x \n\n"])
+def test_whitespace_at_content_edges_keeps_mask_aligned(pad):
+    conv = [{"role": "user", "content": pad + "u" + pad}, {"role": "assistant", "content": pad + "a" + pad}]
+    st.check_segmentation(conv, fake_encode, BOS_ID)
+    ex = st.build_example(conv, fake_encode, BOS_ID, 4096)
+    trained = [i for i, lab in zip(ex["input_ids"], ex["labels"]) if lab != st.IGNORE_INDEX]
+    assert trained == fake_encode(pad + "a" + pad + "<|eot_id|>")
+
+
+@pytest.mark.parametrize("bad", [
+    ["not a dict"],
+    [None],
+    [{"content": "x"}],
+    [{"role": 5, "content": "x"}],
+    [{"role": "user"}, {"role": "assistant", "content": "a"}],
+    [{"role": "user", "content": None}, {"role": "assistant", "content": "a"}],
+    [{"role": "user", "content": "u"}, {"role": "assistant", "content": ["a"]}],
+    [{"role": "system", "content": "s"}, "oops", {"role": "assistant", "content": "a"}],
+    "a string",
+    {"role": "user"},
+])
+def test_malformed_input_raises_value_error_never_attribute_error(bad):
+    with pytest.raises(ValueError):
+        st.build_example(bad, fake_encode, BOS_ID, 512)
+    with pytest.raises(ValueError):
+        st.render_text(bad)
+
+
+class _FakeTok:
+    def __init__(self, encode):
+        self._encode = encode
+
+    def encode(self, text, add_special_tokens=False):
+        ids = self._encode(text)
+        return type("E", (), {"ids": ids})()
+
+    def token_to_id(self, name):
+        return SPECIAL_ID.get(name)
+
+
+def test_train_script_checks_segmentation_for_every_example_and_names_the_row():
+    import train_sft
+    good = {"id": "r1", "messages": CONV}
+    merging = lambda text: [hash(m) % 997 for m in re.findall(r"\n\n.|.", text, flags=re.S)]  # noqa: E731
+    with pytest.raises(SystemExit, match="segment-wise"):
+        train_sft.tokenize_examples([good], _FakeTok(merging))
+    bad = {"id": "row-42", "messages": [{"role": "user", "content": "u<|eot_id|>"}, {"role": "assistant", "content": "a"}]}
+    with pytest.raises(SystemExit) as info:
+        train_sft.tokenize_examples([good, bad, good], _FakeTok(fake_encode))
+    msg = str(info.value)
+    assert "row-42" in msg and "control token" in msg and "no examples were trained" in msg
+    with pytest.raises(SystemExit, match="messages"):
+        train_sft.tokenize_examples([{"id": "r9"}], _FakeTok(fake_encode))
+    out = train_sft.tokenize_examples([good, good], _FakeTok(fake_encode))
+    assert len(out) == 2
+
+
+def test_train_script_bad_json_line_aborts_with_line_number(tmp_path):
+    import train_sft
+    path = tmp_path / "d.jsonl"
+    path.write_text('{"messages": []}\nnot json\n', encoding="utf-8")
+    with pytest.raises(SystemExit, match="line 2"):
+        train_sft.load_dataset_dicts(path)
+
+
+@pytest.mark.skipif(not os.environ.get("SFT_TOKENIZER_JSON"), reason="set SFT_TOKENIZER_JSON to the pinned tokenizer.json")
+def test_real_tokenizer_mask_arithmetic_on_three_hand_built_rows():
+    path = Path(os.environ["SFT_TOKENIZER_JSON"])
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == PINNED_TOKENIZER_SHA256
+    from tokenizers import Tokenizer
+    tok = Tokenizer.from_file(str(path))
+    encode = lambda text: tok.encode(text, add_special_tokens=False).ids  # noqa: E731
+    bos = tok.token_to_id("<|begin_of_text|>")
+    pad = tok.token_to_id("<|finetune_right_pad_id|>")
+    eot = tok.token_to_id("<|eot_id|>")
+    rows = [
+        [{"role": "system", "content": "SYS"}, {"role": "user", "content": "turn on the lamp"}, {"role": "assistant", "content": '{"intent":"set_device_state"}'}],
+        [{"role": "user", "content": "assistant\n\nuser"}, {"role": "assistant", "content": "reply\n"}],
+        [{"role": "user", "content": "one"}, {"role": "assistant", "content": "A1"}, {"role": "user", "content": "two"}, {"role": "assistant", "content": "A2"}],
+    ]
+    expected_trained = [
+        [encode('{"intent":"set_device_state"}<|eot_id|>')],
+        [encode("reply\n<|eot_id|>")],
+        [encode("A1<|eot_id|>"), encode("A2<|eot_id|>")],
+    ]
+    built = []
+    for conv, answers in zip(rows, expected_trained):
+        st.check_segmentation(conv, encode, bos)
+        ex = st.build_example(conv, encode, bos, 512)
+        built.append(ex)
+        trained = [i for i, lab in zip(ex["input_ids"], ex["labels"]) if lab != st.IGNORE_INDEX]
+        assert trained == [t for a in answers for t in a]  # count and content exact
+        assert ex["labels"][0] == st.IGNORE_INDEX and ex["input_ids"][0] == bos
+        assert ex["input_ids"].count(eot) == 1 + len([m for m in conv if m["role"] != "system"])  # system block + one per turn
+        # every start/end-header span, including the assistant's, is masked
+        for position, token in enumerate(ex["input_ids"]):
+            if token in (tok.token_to_id("<|start_header_id|>"), tok.token_to_id("<|end_header_id|>")):
+                assert ex["labels"][position] == st.IGNORE_INDEX
+    batch = st.collate(built, pad)
+    for ids, labels, mask in zip(batch["input_ids"], batch["labels"], batch["attention_mask"]):
+        for i, m in enumerate(mask):
+            if m == 0:
+                assert ids[i] == pad and labels[i] == st.IGNORE_INDEX
+
+
+@pytest.mark.skipif(not os.environ.get("SFT_TOKENIZER_JSON"), reason="set SFT_TOKENIZER_JSON to the pinned tokenizer.json")
+@pytest.mark.parametrize("role,content", [("assistant", "\nreply"), ("assistant", "\n\nx")])
+def test_real_tokenizer_leading_newline_content_merges_with_header_and_is_refused(role, content):
+    from tokenizers import Tokenizer
+    tok = Tokenizer.from_file(os.environ["SFT_TOKENIZER_JSON"])
+    encode = lambda text: tok.encode(text, add_special_tokens=False).ids  # noqa: E731
+    with pytest.raises(ValueError, match="segment-wise"):
+        st.check_segmentation(_conv(role, content), encode, tok.token_to_id("<|begin_of_text|>"))

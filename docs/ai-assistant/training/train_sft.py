@@ -47,7 +47,14 @@ def load_dataset_dicts(path: Path = DATA_PATH) -> list[dict]:
         raise SystemExit(
             f"{path} does not exist -- run export_grades_to_sft.py first."
         )
-    examples = [json.loads(line) for line in path.open() if line.strip()]
+    examples = []
+    for number, line in enumerate(path.open(encoding="utf-8"), start=1):
+        if not line.strip():
+            continue
+        try:
+            examples.append(json.loads(line))
+        except ValueError as exc:
+            raise SystemExit(f"{path} line {number} is not valid JSON ({exc}); no examples were trained")
     if not examples:
         raise SystemExit(f"{path} is empty -- nothing to train on.")
     print(f"Loaded {len(examples)} training example(s) from {path}")
@@ -81,11 +88,14 @@ def tokenize_examples(examples: list[dict], tokenizer, max_length: int = MAX_LEN
         raise SystemExit("pinned tokenizer has no <|begin_of_text|> token")
     out = []
     for index, example in enumerate(examples):
+        row = example.get("id", index) if isinstance(example, dict) else index
         try:
+            if not isinstance(example, dict) or "messages" not in example:
+                raise ValueError("row has no 'messages' field")
             st.check_segmentation(example["messages"], encode, bos_id)
             out.append(st.build_example(example["messages"], encode, bos_id, max_length))
         except ValueError as exc:
-            raise SystemExit(f"example {index} refused: {exc}")
+            raise SystemExit(f"row {row!r} (line index {index}) refused: {exc}; no examples were trained")
     return out
 
 

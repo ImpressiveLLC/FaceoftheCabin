@@ -53,6 +53,11 @@ def render_segments(messages: list[dict]) -> list[tuple[str, bool]]:
     if not isinstance(messages, list) or not messages:
         raise ValueError("messages must be a non-empty list")
     items = list(messages)
+    for position, message in enumerate(items):
+        if not isinstance(message, dict):
+            raise ValueError(f"message {position} is not an object")
+        if not isinstance(message.get("role"), str):
+            raise ValueError(f"message {position} has no string role")
     system = ""
     if items[0].get("role") == "system":
         system = _content("system", items.pop(0).get("content"))
@@ -101,7 +106,7 @@ def build_example(messages: list[dict], encode, bos_id: int, max_length: int) ->
 def check_segmentation(messages: list[dict], encode, bos_id: int) -> None:
     """Segment-wise ids must equal encoding the whole rendered text, or the mask is aligned to the wrong tokens."""
     whole = [bos_id] + list(encode("".join(text for text, _ in render_segments(messages))))
-    parts = build_example(messages, encode, bos_id, max_length=len(whole) + 1)["input_ids"]
+    parts = build_example(messages, encode, bos_id, max_length=10**9)["input_ids"]
     if whole != parts:
         raise ValueError("segment-wise tokenization differs from whole-text tokenization")
 
