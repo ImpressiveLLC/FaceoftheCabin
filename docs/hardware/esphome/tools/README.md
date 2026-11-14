@@ -14,7 +14,7 @@ BOX2_API_KEY=<key>
 --secrets C:\path\outside\repo\secrets.yaml
 ```
 
-A session that does not have the key cannot read the node. Ask Nate for it through the usual secret path (vault); do not look for it in the repo.
+A session that does not have the key cannot read the node. Ask Nate for it through the usual secret path (password-manager entry `esphome/fotc-qtpy-boxN`); do not look for it in the repo. See `../README.md` for adoption and lost-key recovery.
 
 ## Setup
 

@@ -22,3 +22,7 @@ cabin-orchestration-platform/locations/*/.env
 # identifies a device). Only the .example template is tracked; see
 # cabin-orchestration-platform/infra/cabin-security/homeassistant/PRESENCE.md.
 cabin-orchestration-platform/infra/cabin-security/homeassistant/authorized_user_phones.conf
+
+# ESPHome node secrets (API keys, OTA and setup-AP passwords). Live in the vault and on the build machine only.
+docs/hardware/esphome/secrets.yaml
+docs/hardware/esphome/.esphome/
