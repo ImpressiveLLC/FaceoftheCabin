@@ -205,6 +205,32 @@ class PackageTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             split_rows(generate(ROOT / "synthesis-templates.json"), self.gold)
 
+    def agent_row(self, rate=0.95, sample_n=10, audited_by="agent-auditor-a"):
+        import hashlib
+        row = {"id": "a-1", "text": "turn on the lamp", "group": "g-a", "target": proposal("answer_question")}
+        bound = hashlib.sha256(json.dumps([row["id"], row["text"], row["target"]], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        row["provenance"] = {"review_status": "approved", "reviewer": "agent-labeler", "reviewer_kind": "agent",
+                             "reviewed_at": "2026-10-14", "source": "test", "revision": "test", "sha256": "test",
+                             "license": "test", "track": "A", "agreed_row_sha256": bound,
+                             "audit_result": {"audited_by": audited_by, "cohort_sha256": "a" * 64, "audit_ids_sha256": "b" * 64,
+                                              "cohort_n": 100, "sample_n": sample_n, "rate": rate, "track": "A"}}
+        return row
+
+    def test_agent_audit_checks_are_unchanged_and_wording_is_not_human_only(self):
+        from prepare_sft import check_agent_audit
+        good = self.agent_row()
+        check_agent_audit(good, good["provenance"])  # an elected agent auditor is accepted: attribution only
+        for kwargs in ({"rate": 0.89}, {"sample_n": 9}, {"audited_by": ""}):
+            row = self.agent_row(**kwargs)
+            with self.assertRaises(ValueError) as caught:
+                check_agent_audit(row, row["provenance"])
+            self.assertIn("elected auditor", str(caught.exception))
+            self.assertNotIn("human audit", str(caught.exception))
+        edited = self.agent_row()
+        edited["text"] = "turn off the lamp"  # row changed after its audit
+        with self.assertRaises(ValueError):
+            check_agent_audit(edited, edited["provenance"])
+
     def reviewed(self):
         rows = []
         for i in range(100):
