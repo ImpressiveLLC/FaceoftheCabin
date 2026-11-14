@@ -12,3 +12,5 @@ Boxes 3 and 4 have no firmware file yet (W-84). When they get one, start from `b
 **Gas slot: held.** DFRobot Gravity CO (SEN0466) is about $67 and O2 (SEN0465) about $85 per node (Mouser, tariff may apply). CO is already covered by the Kidde units. Buy none until a use is named. Check the part's I2C address against the bus before choosing a slot.
 
 To check a change without flashing, copy the box file and `packages/` to a folder with a throwaway `secrets.yaml` (use a random base64 `api_key`; the all-zeros key is rejected) and run `esphome config box2.yaml`. On Windows keep the build path short; ESPHome's compile fails on paths near 250 characters.
+
+Secrets (`api_key`, OTA and setup-AP passwords) are never part of a package. They come from `secrets.yaml` (gitignored; see `../secrets.yaml.example` and `../README.md`).

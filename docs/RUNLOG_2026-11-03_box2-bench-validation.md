@@ -121,3 +121,10 @@ Not done: ontology entries for the two derived channels (D28 naming, `data_class
 - Box 2 moved closer to the Wi-Fi source. 15-minute log (`box2_log_1113_newspot.csv`, first 3 min dropped, 72 samples per channel, no reboot): Wi-Fi -57 dBm (was -74), SEN66 24.19 C, SHT45 26.86 C (offset 2.7 C, was 1.7 C in the earlier read, so location is not the cause; Box 3 offset 0.02 C), SEN66 39.9 % RH, SHT45 35.2 % RH, CO2 804 ppm, chip 74.4 C (Box 3 about 63 C).
 - NTP package (`packages/ntp.yaml`) flashed to Box 2 and Box 3 over Wi-Fi OTA (`esphome upload --device <ip>`, about 5 s each). OTA keeps the saved Wi-Fi credentials, which a USB `firmware.factory.bin` flash does not. Both nodes came back at `.130` and `.138`, "Time synced" True, no faults.
 - Not done: pressure package (no DPS310 fitted), Box 4 firmware, DHCP reservations for `.130` and `.131`.
+
+## Box 3 at the cabin: key not available (2026-11-13)
+
+- Box 3 moved to the cabin and powered. Status light purple, medium blink, for hours (Wi-Fi up, waiting for Home Assistant). It took DHCP `192.168.1.138`.
+- Cabin Home Assistant (`100.77.44.113:8123`) discovered it and prompted for the API encryption key. The key was not in the repo (by design) and not on the cabin machines searched; it lives in the vault or on the build PC's local `secrets.yaml`. Adoption pending.
+- Recovery options, in order: vault entry, build PC `secrets.yaml`, else reflash over USB with a new key (README in `docs/hardware/esphome/`). Box 3 left powered meanwhile; nothing is lost by waiting.
+- Process fix: save each node's key to the vault before its first flash. Documented in `docs/hardware/esphome/README.md`, `MAINTENANCE.md`, `REPLICATION.md`, build instructions, and ontology element `esphome_node_secret`.

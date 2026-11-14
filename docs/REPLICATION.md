@@ -25,6 +25,15 @@ by these documents. Preserve hub-location identities and approved secret provisi
 > Docker Compose overrides per host, a self-hosted CI runner pulling
 > instead of a push-based deploy — still applies.
 
+## ESPHome sensor nodes: secrets for a new instance
+
+Cloning or replicating this system does not carry ESPHome node secrets (they are
+gitignored by design). For each node you build: copy
+`docs/hardware/esphome/secrets.yaml.example` to `secrets.yaml` in the same
+folder, generate a fresh key per node (`openssl rand -base64 32`), store it in
+your vault first, then flash. Adopt the node in Home Assistant with that key
+(`docs/hardware/esphome/README.md`). Never reuse another instance's keys.
+
 ---
 
 ## 1. What's already agnostic (no changes needed)
