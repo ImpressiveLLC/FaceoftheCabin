@@ -46,6 +46,46 @@ module.exports = async function ({ browser, check, base }) {
     await page.close();
   }
 
+  // Entering kiosk mode (fresh load, and toggled at runtime, twice) keeps Settings in the viewport and clickable.
+  const clickable = (page, sel) => page.evaluate(s => {
+    const el = document.querySelector(s);
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return r.width > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight && !!hit && (hit === el || el.contains(hit));
+  }, sel);
+  for (const [w, h] of [[1024, 600], [1280, 720], [1920, 1080]]) {
+    const tag = `${w}x${h}`;
+    const page = await open(w, h, '?kiosk=0');
+    await page.locator('#kiosk-controls [data-kiosk-toggle]').click();
+    await page.waitForTimeout(500);
+    check(`toggling into kiosk keeps Settings clickable in the viewport at ${tag}`, [await page.evaluate(() => document.documentElement.classList.contains('kiosk-mode')), await clickable(page, '#settings-btn')], [true, true]);
+    await page.click('#settings-btn');
+    await page.waitForTimeout(600);
+    check(`Settings opens from kiosk at ${tag}`, await page.locator('#settings-panel').isVisible(), true);
+    await page.locator('#cal-card').click();
+    await page.waitForTimeout(500);
+    await page.locator('#kiosk-controls [data-kiosk-toggle]').click();
+    await page.locator('#kiosk-controls [data-kiosk-toggle]').click();
+    await page.waitForTimeout(500);
+    check(`Settings still clickable after kiosk off/on at ${tag}`, await clickable(page, '#settings-btn'), true);
+    await page.close();
+    const fresh = await open(w, h, '?kiosk=1');
+    check(`fresh kiosk load keeps Settings clickable in the viewport at ${tag}`, await clickable(fresh, '#settings-btn'), true);
+    await fresh.close();
+  }
+  // A kiosk that still holds the pre-fix cached kiosk.css (which hid Settings) must not lose it.
+  const stale = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  await stale.route(/kiosk\.css/, route => route.fulfill({ contentType: 'text/css', body: '.kiosk-mode #settings-btn { display:none; }' }));
+  await stale.goto(`${base}/family-hub.html?kiosk=1`);
+  await stale.evaluate(() => document.getElementById('auth-overlay').classList.add('hidden'));
+  await stale.waitForTimeout(1600);
+  check('stale cached kiosk.css cannot hide Settings', await clickable(stale, '#settings-btn'), true);
+  await stale.close();
+  // At phone/small-panel widths the action dock owns Settings, also in kiosk.
+  const small = await open(800, 480, '?kiosk=1');
+  check('Settings is clickable in kiosk at 800x480 (dock)', await clickable(small, '#mobile-action-dock .mobile-action:last-child'), true);
+  await small.close();
+
   // Compressed default, focus geometry, off-click and close paths.
   for (const [w, h, q] of [[1024, 600, '?kiosk=1'], [1280, 720, '?kiosk=1'], [1920, 1080, '?kiosk=0']]) {
     const tag = `${w}x${h}`;
