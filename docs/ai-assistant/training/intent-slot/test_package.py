@@ -11,7 +11,7 @@ from contract import ROOT, SCHEMA, proposal, read_jsonl, validate, request_conte
 from evaluate import score, query
 from generate_synthetic import generate
 from import_sources import adapt
-from prepare_sft import split_rows
+from prepare_sft import rows_refused_by_training, split_rows
 from vocabulary import CONCEPT_IDS
 
 
@@ -205,6 +205,32 @@ class PackageTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             split_rows(generate(ROOT / "synthesis-templates.json"), self.gold)
 
+    def agent_row(self, rate=0.95, sample_n=10, audited_by="agent-auditor-a"):
+        import hashlib
+        row = {"id": "a-1", "text": "turn on the lamp", "group": "g-a", "target": proposal("answer_question")}
+        bound = hashlib.sha256(json.dumps([row["id"], row["text"], row["target"]], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        row["provenance"] = {"review_status": "approved", "reviewer": "agent-labeler", "reviewer_kind": "agent",
+                             "reviewed_at": "2026-10-14", "source": "test", "revision": "test", "sha256": "test",
+                             "license": "test", "track": "A", "agreed_row_sha256": bound,
+                             "audit_result": {"audited_by": audited_by, "cohort_sha256": "a" * 64, "audit_ids_sha256": "b" * 64,
+                                              "cohort_n": 100, "sample_n": sample_n, "rate": rate, "track": "A"}}
+        return row
+
+    def test_agent_audit_checks_are_unchanged_and_wording_is_not_human_only(self):
+        from prepare_sft import check_agent_audit
+        good = self.agent_row()
+        check_agent_audit(good, good["provenance"])  # an elected agent auditor is accepted: attribution only
+        for kwargs in ({"rate": 0.89}, {"sample_n": 9}, {"audited_by": ""}):
+            row = self.agent_row(**kwargs)
+            with self.assertRaises(ValueError) as caught:
+                check_agent_audit(row, row["provenance"])
+            self.assertIn("elected auditor", str(caught.exception))
+            self.assertNotIn("human audit", str(caught.exception))
+        edited = self.agent_row()
+        edited["text"] = "turn off the lamp"  # row changed after its audit
+        with self.assertRaises(ValueError):
+            check_agent_audit(edited, edited["provenance"])
+
     def reviewed(self):
         rows = []
         for i in range(100):
@@ -227,6 +253,20 @@ class PackageTests(unittest.TestCase):
         rows[0]["text"] = self.gold[0]["text"]
         with self.assertRaises(ValueError):
             split_rows(rows, self.gold)
+
+
+class RefusedByTrainingTests(unittest.TestCase):
+    def row(self, rid, assistant):
+        return {"id": rid, "messages": [{"role": "system", "content": "s"}, {"role": "user", "content": "u"},
+                                        {"role": "assistant", "content": assistant}]}
+
+    def test_assistant_content_starting_with_a_newline_is_reported_with_id_and_split(self):
+        splits = {"train": [self.row("a", "{}"), self.row("b", "\n{}")], "validation": [self.row("c", "\r\n{}")], "test": []}
+        found = rows_refused_by_training(splits)
+        self.assertEqual([(r["id"], r["split"]) for r in found], [("b", "train"), ("c", "validation")])
+
+    def test_json_dumps_targets_are_never_reported(self):
+        self.assertEqual(rows_refused_by_training({"train": [self.row("a", json.dumps({"intent": "x"}))], "validation": [], "test": []}), [])
 
 
 if __name__ == "__main__":

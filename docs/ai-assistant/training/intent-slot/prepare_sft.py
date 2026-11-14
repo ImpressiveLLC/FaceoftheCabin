@@ -1,4 +1,4 @@
-"""Require per-record human review; keep paraphrase groups and gold out of training."""
+"""Require per-record review and, for agent labels, a passed audit by the elected auditor; keep paraphrase groups and gold out of training."""
 import argparse
 import hashlib
 import json
@@ -12,7 +12,7 @@ def normalize(text):
 
 
 def check_agent_audit(row, provenance):
-    """An agent label counts only after a human audit of its exact cohort passed at 90 percent or better and is linked to the row.
+    """An agent label counts only after an audit of its exact cohort by the elected auditor (agent attribution under the owner amendment, #244 comment 6874199353, not a human audit) passed at 90 percent or better and is linked to the row.
 
     The link is the cohort hash and audit-sample hash recorded at promotion, the sample size the 10 percent rule requires, and the
     row's own hash of id, text and target at agreement time (so a row edited after the audit is refused). `audited_by` is attribution.
@@ -24,10 +24,24 @@ def check_agent_audit(row, provenance):
     ok = (audit.get("audited_by") and hexes and audit.get("rate", 0) >= 0.9 and audit.get("track") == provenance.get("track")
           and cohort_n > 0 and audit.get("sample_n", 0) >= required)
     if not ok:
-        raise ValueError(f"Agent label without a passed, linked human audit: {row['id']}")
+        raise ValueError(f"Agent label without a passed, linked audit by the elected auditor (owner amendment 6874199353): {row['id']}")
     bound = hashlib.sha256(json.dumps([row["id"], row["text"], row["target"]], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     if provenance.get("agreed_row_sha256") != bound:
         raise ValueError(f"Agent row changed after its audit: {row['id']}")
+
+
+def rows_refused_by_training(splits):
+    """Rows the training tokenizer (training/sft_tokenize.py, #444) will refuse: assistant content that starts with a
+    newline merges with the "\n\n" that ends the assistant header, so segment-wise and whole-text tokenization differ
+    and the trainer aborts the job. Reported here so a row is fixed or dropped before training, not found in the middle of it.
+    json.dumps output starts with "{", so this is empty today; it guards a future change to the target format."""
+    refused = []
+    for split, rows in splits.items():
+        for row in rows:
+            for message in row["messages"]:
+                if message["role"] == "assistant" and message["content"][:1] in ("\n", "\r"):
+                    refused.append({"id": row["id"], "split": split, "reason": "assistant content starts with a newline; the training tokenizer refuses it"})
+    return refused
 
 
 def split_rows(rows, gold):
@@ -77,3 +91,7 @@ if __name__ == "__main__":
     for split, rows in splits.items():
         write_jsonl(args.output_dir / f"{split}.jsonl", rows)
     print(json.dumps({k: len(v) for k, v in splits.items()}))
+    refused = rows_refused_by_training(splits)
+    print(json.dumps({"refused_by_training_leading_newline": len(refused), "rows": refused}))
+    if refused:
+        raise SystemExit(f"{len(refused)} row(s) would be refused by the training tokenizer; fix or drop them: " + ", ".join(r["id"] for r in refused))
