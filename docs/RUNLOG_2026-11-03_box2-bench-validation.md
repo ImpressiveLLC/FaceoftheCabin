@@ -125,6 +125,6 @@ Not done: ontology entries for the two derived channels (D28 naming, `data_class
 ## Box 3 at the cabin: key not available (2026-11-13)
 
 - Box 3 moved to the cabin and powered. Status light purple, medium blink, for hours (Wi-Fi up, waiting for Home Assistant). It took DHCP `192.168.1.138`.
-- Cabin Home Assistant (`100.77.44.113:8123`) discovered it and prompted for the API encryption key. The key was not in the repo (by design) and not on the cabin machines searched; it lives in the vault or on the build PC's local `secrets.yaml`. Adoption pending.
-- Recovery options, in order: vault entry, build PC `secrets.yaml`, else reflash over USB with a new key (README in `docs/hardware/esphome/`). Box 3 left powered meanwhile; nothing is lost by waiting.
-- Process fix: save each node's key to the vault before its first flash. Documented in `docs/hardware/esphome/README.md`, `MAINTENANCE.md`, `REPLICATION.md`, build instructions, and ontology element `esphome_node_secret`.
+- Cabin Home Assistant (`100.77.44.113:8123`) discovered it and prompted for the API encryption key. The key was not in the repo (by design) and not on the cabin machines searched; it lives in the password manager or on the build PC's local `secrets.yaml`. Adoption pending.
+- Recovery options, in order: password-manager entry, build PC `secrets.yaml`, else reflash over USB with a new key (README in `docs/hardware/esphome/`). Box 3 left powered meanwhile; nothing is lost by waiting.
+- Process fix: save each node's key to the password manager before its first flash. Documented in `docs/hardware/esphome/README.md`, `MAINTENANCE.md`, `REPLICATION.md`, build instructions, and ontology element `esphome_node_secret`.

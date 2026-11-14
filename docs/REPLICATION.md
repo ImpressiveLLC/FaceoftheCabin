@@ -30,8 +30,8 @@ by these documents. Preserve hub-location identities and approved secret provisi
 Cloning or replicating this system does not carry ESPHome node secrets (they are
 gitignored by design). For each node you build: copy
 `docs/hardware/esphome/secrets.yaml.example` to `secrets.yaml` in the same
-folder, generate a fresh key per node (`openssl rand -base64 32`), store it in
-your vault first, then flash. Adopt the node in Home Assistant with that key
+folder (only if none exists; never overwrite a working file), generate a fresh key per node (`openssl rand -base64 32`), store it in
+your password manager first, then flash. Adopt the node in Home Assistant with that key
 (`docs/hardware/esphome/README.md`). Never reuse another instance's keys.
 
 ---

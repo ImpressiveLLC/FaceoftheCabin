@@ -288,8 +288,9 @@ not deliberately avoiding it.
 
 Each ESPHome node (Box 2, Box 3, later Box 4 and the S6 node) holds an API
 encryption key, an OTA password and a setup-AP password. They are not in
-Ansible Vault and not in git: system of record is the Vaultwarden entries
-`esphome/fotc-qtpy-boxN` and `esphome/ap_password`; the build machine keeps a
+Ansible Vault and not in git: system of record is Nate's password manager (Vaultwarden is not deployed yet, see the
+cabin-monitor Backup note below; entry names `esphome/fotc-qtpy-boxN` and
+`esphome/ap_password` are a convention until populated); the build machine keeps a
 working copy in `docs/hardware/esphome/secrets.yaml` (gitignored; template
 `secrets.yaml.example`). Without the API key a node cannot be adopted into
 Home Assistant or read. Back the vault entry up before the first flash of a

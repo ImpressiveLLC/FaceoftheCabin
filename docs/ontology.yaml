@@ -10933,8 +10933,9 @@ elements:
     first_verified_live: "2026-11-13: Home Assistant (cabin) discovered fotc-qtpy-box3 and prompted for its API encryption key before adopting it"
     constraint:
       description: >
-        Values never committed, pasted into chat or printed. Live in the vault
-        (Vaultwarden entries esphome/fotc-qtpy-boxN and esphome/ap_password)
+        Values never committed, pasted into chat or printed. Live in Nate's
+        password manager (entry names esphome/fotc-qtpy-boxN and
+        esphome/ap_password are a convention; Vaultwarden not yet deployed)
         and in the build machine's gitignored docs/hardware/esphome/secrets.yaml.
         docs/hardware/esphome/secrets.yaml.example carries names only.
     ui_display_name: "(not shown - operator-only concept)"
@@ -10949,15 +10950,17 @@ elements:
       separate data element from the node itself: the native API encryption
       key (per node, needed by Home Assistant and read_box2.py to connect),
       the OTA password (per node, needed for esphome upload over Wi-Fi), and
-      the setup access-point password (shared by all nodes). Specialises
-      platform_secret. Lost API key means the node cannot be adopted or read
+      the setup access-point password (shared by all nodes). Related to
+      platform_secret (same credential concept) but NOT stored or rotated the
+      same way: no Ansible Vault, no infra/.env. Ansible rotation does not
+      control these. Lost API key means the node cannot be adopted or read
       until it is reflashed with a new key (README.md, "If the key is lost").
     notes: >
       Added 2026-11-13 after Box 3 was discovered by Home Assistant with no
       retrievable key. Nodes carry inherits_secret pointing here.
     relationships:
     - target: platform_secret
-      type: extends
+      type: related_to
       cardinality: N:1
   - id: sensor_collection_box
     entity_type: owl:Class
@@ -10981,7 +10984,7 @@ elements:
       human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
       and doc27-schematics.md. No first_verified_live claim.
     inherits_secret: [esphome_node_secret]
-    secret_storage: "vault esphome/fotc-qtpy-boxN; build machine docs/hardware/esphome/secrets.yaml (gitignored)"
+    secret_storage: "password manager esphome/fotc-qtpy-boxN (convention); build machine docs/hardware/esphome/secrets.yaml (gitignored)"
     relationships:
     - target: esphome_node_secret
       type: requires_secret
@@ -11013,7 +11016,7 @@ elements:
       human purpose. Relation edges are proposed D27 semantics; W-68 owns runtime reconciliation. See docs/hardware/doc27-device-inventory.json
       and doc27-schematics.md. No first_verified_live claim.
     inherits_secret: [esphome_node_secret]
-    secret_storage: "vault esphome/fotc-qtpy-boxN; build machine docs/hardware/esphome/secrets.yaml (gitignored)"
+    secret_storage: "password manager esphome/fotc-qtpy-boxN (convention); build machine docs/hardware/esphome/secrets.yaml (gitignored)"
     relationships:
     - target: esphome_node_secret
       type: requires_secret

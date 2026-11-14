@@ -14,12 +14,12 @@ Each node's firmware is built with three values from `secrets.yaml`. They are se
 
 Rules:
 - Values are never committed, pasted into chat or tickets, or printed in logs. `secrets.yaml` is gitignored. `secrets.yaml.example` shows the names with placeholders.
-- **System of record: the vault (Vaultwarden, `docs/MAINTENANCE.md` "Vaultwarden").** One entry per node named `esphome/fotc-qtpy-boxN` holding the API key and OTA password, plus one entry `esphome/ap_password`. The build machine's `secrets.yaml` is a working copy, not the record.
+- **System of record: Nate's password manager.** Vaultwarden is the planned home but is not deployed yet (`docs/MAINTENANCE.md`, cabin-monitor Backup note), so use the password manager he already uses until it is. Entry names are a convention, not yet populated: `esphome/fotc-qtpy-boxN` holding the API key and OTA password, plus `esphome/ap_password`. The build machine's `secrets.yaml` is a working copy, not the record.
 - A node without its key cannot be adopted into Home Assistant or read by any client. The key is also baked into the firmware, so it cannot be read back from the node.
 
 ## Adopting a node into Home Assistant
 
-Prerequisites: node powered and on the cabin Wi-Fi (LED purple, medium blink, no cyan or red), and its key from the vault.
+Prerequisites: node powered and on the cabin Wi-Fi (LED purple, medium blink, no cyan or red), and the key that node was built with (from wherever it is stored; adoption needs the matching key, not a particular vault).
 
 1. Open Home Assistant (cabin M920q: `http://100.77.44.113:8123` over Tailscale, or `http://192.168.2.46:8123` on the LAN). Settings, Devices & services.
 2. Use the **Discovered** ESPHome card for `fotc-qtpy-boxN` (Configure), or Add integration, ESPHome, and enter the node's IP and port 6053. Discovery uses mDNS and does not cross subnets, so enter the IP by hand if there is no card.
@@ -37,11 +37,15 @@ Blue solid starting; yellow slow blink Wi-Fi down; purple medium blink Wi-Fi up,
 
 ## If the key is lost
 
-Check in this order: the vault entry, the build machine's `secrets.yaml` (next to the box YAML, never in git), any machine that ran `esphome upload` for that node (they all need the file). If none has it:
-1. Generate a new key (`openssl rand -base64 32`), save it to the vault first, then to `secrets.yaml`.
-2. Reflash over USB (bootloader entry per the runlog: unplug, hold BOOT, plug in, release after about 2 s). A USB flash of `firmware.factory.bin` erases the saved Wi-Fi, so the node returns to the setup network `fotc-boxN-setup` at `http://192.168.4.1`. Enter the cabin Wi-Fi there.
-3. Adopt with the new key as above.
-Over-the-air reflash is only possible if the OTA password is still known.
+Check in this order: the password manager, the build machine's `secrets.yaml` (next to the box YAML, never in git), any machine that ran `esphome upload` for that node. If none has it, the node must be rebuilt and reflashed with a new key. Reflashing the old `firmware.factory.bin` does NOT help: it still carries the old key.
+1. Inputs: a complete `secrets.yaml` with every name the box YAML reads (`api_key` or `boxN_api_key`, the matching OTA password, `ap_password`). Keep the known OTA and setup-AP passwords unchanged; only the API key for the affected node is new. Generate it with `openssl rand -base64 32`, save it to the password manager first, then to `secrets.yaml`.
+2. Validate: `esphome config boxN.yaml` passes.
+3. Compile a fresh image: `esphome compile boxN.yaml`. Use the new `firmware.factory.bin` for USB flashing.
+4. Flash over USB (bootloader entry per the runlog: unplug, hold BOOT, plug in, release after about 2 s). USB flashing erases saved Wi-Fi, so the node returns to `fotc-boxN-setup` at `http://192.168.4.1`; enter the cabin Wi-Fi there.
+5. Verify: adopt in Home Assistant with the new key, or run `tools/read_box2.py` with it, and confirm authenticated readings and the rainbow LED.
+Over-the-air reflash is only possible if the OTA password is still known; it keeps saved Wi-Fi.
+
+Governance: no work-item or decision ID is allocated for this change; linkage to the W-84 firmware thread is pending the PMO.
 
 ## Status
 
