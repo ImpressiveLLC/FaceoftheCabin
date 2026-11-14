@@ -1082,6 +1082,8 @@ themselves, they just never had anything to trip on before:
 - No Python beyond `watchdog.py`, the `docs/ai-assistant/` corpus/
   eval tooling (`scripts/build-corpus-inventory.py`,
   `rag/scripts/{eval_pipeline,grade_pipeline}.py`, `scripts/ask_eval.py`,
+  `scripts/ask_notice_rules.py` (offline reference for the Ask source notice rules, with its test
+  `scripts/test_ask_notice_rules.py`),
   and, since 2026-10-17, `taxonomy-eval/`, the standard-library harness that tests where data
   elements live under a human-centered topic, W-89),
   **and** the Home Assistant side of `infra/cabin-security/homeassistant/`:
