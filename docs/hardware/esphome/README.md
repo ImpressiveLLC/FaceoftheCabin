@@ -4,12 +4,12 @@ Master page for the QT Py ESP32-S3 nodes (Box 2 sensor, Box 3 and Box 4 sensor h
 
 ## The three secrets every node holds
 
-Each node's firmware is built with three values from `secrets.yaml`. They are separate data elements in the ontology (`esphome_node_secret`, which extends `platform_secret`), not part of the device record.
+Each node's firmware is built with three values from `secrets.yaml`. They are separate data elements in the ontology (`esphome_node_secret`, which is related to `platform_secret` but stored differently: no Ansible Vault, no `infra/.env`), not part of the device record.
 
 | Secret | `secrets.yaml` name | Used for | Scope |
 |---|---|---|---|
-| API encryption key | `boxN_api_key` | Home Assistant, `read_box2.py` and any other client connecting to the node's native API (port 6053) | One per node |
-| OTA password | `boxN_ota_password` | `esphome upload` over Wi-Fi | One per node |
+| API encryption key | Box 2: `api_key` (also what `read_box2.py` reads); Box 3: `box3_api_key` | Home Assistant, `read_box2.py` and any other client connecting to the node's native API (port 6053) | One per node |
+| OTA password | Box 2: `ota_password`; Box 3: `box3_ota_password` | `esphome upload` over Wi-Fi | One per node |
 | Setup access-point password | `ap_password` | Joining the node's own `fotc-boxN-setup` network when it has no Wi-Fi | Shared by all nodes |
 
 Rules:
@@ -38,7 +38,9 @@ Blue solid starting; yellow slow blink Wi-Fi down; purple medium blink Wi-Fi up,
 ## If the key is lost
 
 Check in this order: the password manager, the build machine's `secrets.yaml` (next to the box YAML, never in git), any machine that ran `esphome upload` for that node. If none has it, the node must be rebuilt and reflashed with a new key. Reflashing the old `firmware.factory.bin` does NOT help: it still carries the old key.
-1. Inputs: a complete `secrets.yaml` with every name the box YAML reads (`api_key` or `boxN_api_key`, the matching OTA password, `ap_password`). Keep the known OTA and setup-AP passwords unchanged; only the API key for the affected node is new. Generate it with `openssl rand -base64 32`, save it to the password manager first, then to `secrets.yaml`.
+1. Inputs: a complete `secrets.yaml` with every name the box YAML reads (Box 2: `api_key`, `ota_password`; Box 3: `box3_api_key`, `box3_ota_password`; both: `ap_password`).
+   - **Known-password case:** the node's OTA password and the shared `ap_password` are both available. Keep them unchanged; only the API key for the affected node is new. Generate it with `openssl rand -base64 32`, save it to the password manager first, then to `secrets.yaml`.
+   - **Unknown-password case:** if either the OTA password or `ap_password` is unavailable, STOP. Replacing one is Nate's decision, not an operator's. Changing `ap_password` affects every node's setup network, and a new OTA password only takes effect on the reflashed node. Do not build or flash until Nate has chosen and authorized the replacement.
 2. Validate: `esphome config boxN.yaml` passes.
 3. Compile a fresh image: `esphome compile boxN.yaml`. Use the new `firmware.factory.bin` for USB flashing.
 4. Flash over USB (bootloader entry per the runlog: unplug, hold BOOT, plug in, release after about 2 s). USB flashing erases saved Wi-Fi, so the node returns to `fotc-boxN-setup` at `http://192.168.4.1`; enter the cabin Wi-Fi there.
