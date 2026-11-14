@@ -11,7 +11,7 @@ from contract import ROOT, SCHEMA, proposal, read_jsonl, validate, request_conte
 from evaluate import score, query
 from generate_synthetic import generate
 from import_sources import adapt
-from prepare_sft import split_rows
+from prepare_sft import rows_refused_by_training, split_rows
 from vocabulary import CONCEPT_IDS
 
 
@@ -253,6 +253,20 @@ class PackageTests(unittest.TestCase):
         rows[0]["text"] = self.gold[0]["text"]
         with self.assertRaises(ValueError):
             split_rows(rows, self.gold)
+
+
+class RefusedByTrainingTests(unittest.TestCase):
+    def row(self, rid, assistant):
+        return {"id": rid, "messages": [{"role": "system", "content": "s"}, {"role": "user", "content": "u"},
+                                        {"role": "assistant", "content": assistant}]}
+
+    def test_assistant_content_starting_with_a_newline_is_reported_with_id_and_split(self):
+        splits = {"train": [self.row("a", "{}"), self.row("b", "\n{}")], "validation": [self.row("c", "\r\n{}")], "test": []}
+        found = rows_refused_by_training(splits)
+        self.assertEqual([(r["id"], r["split"]) for r in found], [("b", "train"), ("c", "validation")])
+
+    def test_json_dumps_targets_are_never_reported(self):
+        self.assertEqual(rows_refused_by_training({"train": [self.row("a", json.dumps({"intent": "x"}))], "validation": [], "test": []}), [])
 
 
 if __name__ == "__main__":

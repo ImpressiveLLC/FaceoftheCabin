@@ -30,6 +30,20 @@ def check_agent_audit(row, provenance):
         raise ValueError(f"Agent row changed after its audit: {row['id']}")
 
 
+def rows_refused_by_training(splits):
+    """Rows the training tokenizer (training/sft_tokenize.py, #444) will refuse: assistant content that starts with a
+    newline merges with the "\n\n" that ends the assistant header, so segment-wise and whole-text tokenization differ
+    and the trainer aborts the job. Reported here so a row is fixed or dropped before training, not found in the middle of it.
+    json.dumps output starts with "{", so this is empty today; it guards a future change to the target format."""
+    refused = []
+    for split, rows in splits.items():
+        for row in rows:
+            for message in row["messages"]:
+                if message["role"] == "assistant" and message["content"][:1] in ("\n", "\r"):
+                    refused.append({"id": row["id"], "split": split, "reason": "assistant content starts with a newline; the training tokenizer refuses it"})
+    return refused
+
+
 def split_rows(rows, gold):
     if not rows:
         raise ValueError("Empty dataset")
@@ -77,3 +91,7 @@ if __name__ == "__main__":
     for split, rows in splits.items():
         write_jsonl(args.output_dir / f"{split}.jsonl", rows)
     print(json.dumps({k: len(v) for k, v in splits.items()}))
+    refused = rows_refused_by_training(splits)
+    print(json.dumps({"refused_by_training_leading_newline": len(refused), "rows": refused}))
+    if refused:
+        raise SystemExit(f"{len(refused)} row(s) would be refused by the training tokenizer; fix or drop them: " + ", ".join(r["id"] for r in refused))
