@@ -5,6 +5,20 @@ also in Settings > Display. The adjacent app link opens FaceoftheCabin in the sa
 tab, preserving only kiosk and theme. Fullscreen can require a fresh tap on the
 fullscreen icon after navigation. Navigation controls reserve no top banner space.
 
+## Compressed layout and focused activities (non-mobile)
+
+Above 900px (kiosk and normal desktop) the hub loads compressed: photos and the
+calendar column, plus a right-hand rail of four activities (Chores, Notes,
+Dashboard, Settings). Picking one opens it in focus: a layer-1 box that slides
+out and up over most of the screen but never over the reserved left column
+(calendar, kiosk controls) or the rail. Off-click, Close, the rail button or
+Escape returns to the compressed layout (Escape closes the activity before it
+exits kiosk). A new note flags the Notes tab instead of opening it. Settings is
+`position:fixed` bottom-right in every non-mobile layout, including kiosk, so
+nothing can push it off screen. The presence status ("Someone's home") is a small
+pill. `?layout=classic` restores the previous docked layout. Mobile is unchanged.
+Code: `hub-activities.css`, `hub-activities.js`; tests: `test/activity-layout.js`.
+
 These touch improvements apply in normal browser presentation and fullscreen too:
 
 - Scrollbars are visible in scrollable content, including nested widgets and

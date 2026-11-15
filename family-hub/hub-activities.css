@@ -1,0 +1,143 @@
+/* Family Hub activity layout (non-mobile). Loaded after touch-display.css.
+
+   1. Presence badge ("Someone's home" / "Away") is a small pill in every layout.
+   2. #settings-btn is pinned: position:fixed against the viewport, bottom-right,
+      above every other fixed object, in kiosk and normal display alike. Nothing
+      in the grid, the notepad or the dashboard FAB can push it off screen.
+   3. Default (compressed) layout above 900px: the right column collapses to an
+      activity rail (Chores, Notes, Dashboard, Settings). Photos get the space.
+   4. Picking an activity opens it in focus: a layer-1 box that slides out and up
+      over most of the screen, but never over the reserved left column (calendar
+      and kiosk controls) or the rail. Off-click, Close or Escape returns to the
+      compressed layout. hub-activities.js owns that state (html[data-activity]).
+   `?layout=classic` (html.hub-classic) restores the previous docked layout.
+   Mobile (<=900px) is untouched: the action dock still owns Settings there. */
+
+:root {
+  --hub-rail-w: 88px;
+  --hub-rail-btn-h: 64px;
+  --hub-rail-gap: 8px;
+  --hub-rail-edge: 30px;                       /* matches #app right padding */
+  --hub-reserved-left: 356px;                  /* 30px pad + 310px column + 16px gap */
+  --hub-focus-gap: 24px;
+  --hub-focus-right: calc(var(--hub-rail-edge) + var(--hub-rail-w) + 16px);
+}
+
+/* 1. Small presence pill (all layouts) */
+#presence-badge {
+  min-width:0; max-width:none; align-self:flex-end;
+  padding:3px 10px; gap:0; border-radius:999px; flex-direction:row;
+}
+#presence-badge .card-label { gap:5px; font-size:8.5px; letter-spacing:1.5px; white-space:nowrap; }
+#presence-badge .card-label-icon { width:12px; height:12px; border-radius:50%; font-size:7px; }
+
+#activity-rail, .chores-close { display:none; }
+
+@media (min-width: 901px) {
+  /* 2. Settings is pinned, always. */
+  #settings-btn {
+    display:flex; position:fixed; right:var(--hub-rail-edge); bottom:max(16px, env(safe-area-inset-bottom));
+    max-width:calc(100vw - 2 * var(--hub-rail-edge)); z-index:10002;
+    background:var(--layer-1-fill, var(--glass));
+    border:var(--layer-1-border-width, 2px) solid var(--layer-1-edge, var(--ui-outline));
+    border-radius:var(--layer-1-radius, var(--radius));
+    box-shadow:var(--layer-1-shadow, none), var(--shadow), inset 0 1px 0 rgba(255,255,255,.07);
+  }
+  .kiosk-mode #settings-btn { display:flex; }
+
+  /* 3. Compressed layout */
+  /* appFadeIn's `both` fill keeps transform:translateY(0) on #app forever, which makes
+     #app the containing block (and clip) for position:fixed descendants like #chores-card. */
+  :root:not(.hub-classic) #app { grid-template-columns:310px 1fr var(--hub-rail-w); animation-fill-mode:backwards; }
+  :root:not(.hub-classic) #bottom-bar { padding-right:0; }
+
+  :root:not(.hub-classic) #activity-rail {
+    display:flex; flex-direction:column; gap:var(--hub-rail-gap);
+    position:fixed; right:var(--hub-rail-edge); z-index:10001; width:var(--hub-rail-w);
+    bottom:calc(max(16px, env(safe-area-inset-bottom)) + 2 * (var(--hub-rail-btn-h) + var(--hub-rail-gap)));
+  }
+  :root:not(.hub-classic) #dashboard-fab {
+    bottom:calc(max(16px, env(safe-area-inset-bottom)) + var(--hub-rail-btn-h) + var(--hub-rail-gap));
+  }
+  :root:not(.hub-classic) :is(.rail-btn, #dashboard-fab, #settings-btn) {
+    width:var(--hub-rail-w); height:var(--hub-rail-btn-h); box-sizing:border-box;
+    flex-direction:column; justify-content:center; align-items:center; gap:2px; padding:6px 4px;
+    background:var(--layer-1-fill, var(--glass));
+    border:var(--layer-1-border-width, 2px) solid var(--layer-1-edge, var(--ui-outline));
+    border-radius:var(--layer-1-radius, var(--radius));
+    box-shadow:var(--layer-1-shadow, none), var(--shadow), inset 0 1px 0 rgba(255,255,255,.07);
+    color:var(--cream); font-family:var(--font-ui); cursor:pointer; text-align:center;
+  }
+  :root:not(.hub-classic) .rail-btn { position:relative; display:flex; }
+  :root:not(.hub-classic) :is(.rail-btn, #dashboard-fab, #settings-btn):hover { border-color:var(--layer-hover-edge, var(--gold)); transform:none; }
+  :root:not(.hub-classic) :is(.rail-btn, #dashboard-fab, #settings-btn):focus-visible { outline:3px solid var(--control-outline, var(--gold)); outline-offset:2px; }
+  :root:not(.hub-classic) :is(.rail-btn, #dashboard-fab, #settings-btn)[aria-expanded="true"] {
+    border-color:var(--layer-selected-edge, var(--gold)); box-shadow:var(--layer-selected-shadow, none), var(--shadow);
+  }
+  :root:not(.hub-classic) :is(.rail-btn, #dashboard-fab, #settings-btn) .fab-label,
+  :root:not(.hub-classic) .rail-btn .rail-label { font-size:11px; font-weight:600; line-height:1.1; color:var(--cream); }
+  :root:not(.hub-classic) #dashboard-fab .fab-sub { display:none; }
+  :root:not(.hub-classic) #dashboard-fab > div { display:contents; }
+  :root:not(.hub-classic) #dashboard-fab::before { content:'✨'; font-size:18px; line-height:1; }
+  :root:not(.hub-classic) :is(.rail-btn .rail-icon, #settings-btn .fab-icon) { font-size:18px; line-height:1; }
+  :root:not(.hub-classic) .rail-btn[data-unread="true"]::after {
+    content:''; position:absolute; top:6px; right:8px; width:9px; height:9px; border-radius:50%;
+    background:var(--gold); box-shadow:0 0 8px var(--gold);
+  }
+
+  /* Chores leaves the grid and becomes an activity panel. */
+  :root:not(.hub-classic) #chores-card .chores-close {
+    display:inline-flex; align-items:center; margin-left:auto; min-height:44px; padding:5px 12px;
+    background:var(--control-surface, var(--glass-light)); border:2px solid var(--control-outline, var(--gold));
+    border-radius:var(--radius); box-shadow:0 0 0 1px var(--gold-faint);
+    color:var(--cream); font:600 13px var(--font-ui); letter-spacing:0; text-transform:none; cursor:pointer;
+  }
+  :root:not(.hub-classic) #chores-card .chores-close:hover { background:var(--gold-faint); border-color:var(--gold); color:var(--gold); }
+
+  /* 4. Focus geometry shared by every activity: slides out (from the right) and
+        up (from below) into a box that spans most of the screen. */
+  :root:not(.hub-classic) :is(#chores-card, #notepad-panel, #dashboard-overlay, #settings-panel) {
+    position:fixed; inset:var(--hub-focus-gap) var(--hub-focus-right) var(--hub-focus-gap) var(--hub-reserved-left);
+    width:auto; height:auto; min-height:0; max-height:none; box-sizing:border-box; margin:0;
+    z-index:10000;
+    background:var(--layer-1-fill, var(--glass));
+    border:var(--layer-1-border-width, 2px) solid var(--layer-1-edge, var(--ui-outline));
+    border-radius:var(--radius);
+    box-shadow:var(--layer-1-shadow, none), var(--shadow), inset 0 1px 0 rgba(255,255,255,.07);
+    backdrop-filter:blur(30px) saturate(1.5); -webkit-backdrop-filter:blur(30px) saturate(1.5);
+    animation:none;
+    transform:translate(56px, 40px) scale(.94); transform-origin:100% 100%;
+    opacity:0; visibility:hidden; pointer-events:none;
+    transition:transform .38s cubic-bezier(.4,0,.2,1), opacity .28s ease, visibility 0s linear .38s;
+  }
+  :root:not(.hub-classic) :is(#chores-card.activity-open, #notepad-panel.open, #dashboard-overlay.open, #settings-panel.open) {
+    transform:none; opacity:1; visibility:visible; pointer-events:auto;
+    transition:transform .38s cubic-bezier(.4,0,.2,1), opacity .28s ease, visibility 0s;
+  }
+  :root:not(.hub-classic) #chores-card { display:flex; align-self:auto; overflow-y:auto; }
+  :root:not(.hub-classic) #dashboard-overlay { overflow:hidden; background:var(--layer-1-fill, var(--glass)); }
+  :root:not(.hub-classic) #settings-panel { overflow-y:auto; border-left:var(--layer-1-border-width, 2px) solid var(--layer-1-edge, var(--ui-outline)); }
+  :root:not(.hub-classic) #settings-panel .settings-inner { width:100%; max-width:760px; margin:0 auto; box-sizing:border-box; }
+
+  /* Notepad: composer left, recent-note context right, both inside the focus box. */
+  :root:not(.hub-classic) #notepad-panel { flex-direction:row; }
+  :root:not(.hub-classic) #notepad-panel.open.expanded { width:auto; height:auto; max-height:none; }
+  :root:not(.hub-classic) #notepad-panel .np-expand { display:none; }
+  :root:not(.hub-classic) #notepad-panel.open #notepad-main {
+    position:static; flex:1 1 auto; width:auto; height:auto; min-width:0; right:auto; bottom:auto;
+    background:none; border:0; border-radius:0; backdrop-filter:none; -webkit-backdrop-filter:none;
+  }
+  :root:not(.hub-classic) #notepad-panel.open #notepad-main-inner { width:100%; box-sizing:border-box; }
+  :root:not(.hub-classic) #notepad-handle { flex:0 0 min(340px, 38%); width:min(340px, 38%); }
+  :root:not(.hub-classic) #notepad-handle .np-handle-top { display:none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not(.hub-classic) :is(#chores-card, #notepad-panel, #dashboard-overlay, #settings-panel) { transition:opacity .01s; transform:none; }
+  }
+}
+
+/* Short viewports: shrink rail buttons rather than let the stack climb into the header. */
+@media (min-width: 901px) and (max-height: 620px) {
+  :root { --hub-rail-btn-h: 52px; --hub-rail-gap: 6px; --hub-focus-gap: 12px; }
+  :root:not(.hub-classic) :is(.rail-btn .rail-icon, #settings-btn .fab-icon, #dashboard-fab::before) { font-size:15px; }
+}
