@@ -1,0 +1,56 @@
+name: Telemetry export tests
+# The full-history telemetry download (GET /api/events/export and scripts/export_telemetry.py).
+# The backend's own gate (deploy-cabin-backend.yml) runs only on main; this runs the export's tests on the pull
+# request itself, on a GitHub runner that has Docker, so the Testcontainers Postgres tests actually execute before merge.
+on:
+  pull_request:
+    paths:
+      - 'cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/events/TelemetryExportService.java'
+      - 'cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/events/TelemetryArchivalService.java'
+      - 'cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/TelemetryExportController.java'
+      - 'cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/security/**'
+      - 'cabin-orchestration-platform/backend/src/test/java/com/cabin/orchestrator/events/TelemetryExportServiceTest.java'
+      - 'cabin-orchestration-platform/backend/src/test/java/com/cabin/orchestrator/security/**'
+      - 'scripts/export_telemetry.py'
+      - 'scripts/test_export_telemetry.py'
+      - 'docs/ai-assistant/user-guide/access-and-storage.md'
+      - '.github/workflows/telemetry-export-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/export_telemetry.py'
+      - 'scripts/test_export_telemetry.py'
+      - '.github/workflows/telemetry-export-tests.yml'
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Export service (real Postgres), access rules, role table
+        working-directory: cabin-orchestration-platform/backend
+        run: |
+          mvn -B -Dtest='TelemetryExportServiceTest,TelemetryExportAccessTest,TelemetryArchivalServiceTest,RoleMatrixTest,DemoAccessTest,WebConfigTest' \
+            -Dsurefire.failIfNoSpecifiedTests=false test
+      - name: Test report summary (counts only)
+        if: always()
+        run: |
+          {
+            echo "### Telemetry export tests"
+            grep -h -E "Tests run:.*in com" cabin-orchestration-platform/backend/target/surefire-reports/*.txt 2>/dev/null || echo "_no surefire reports_"
+          } >> "$GITHUB_STEP_SUMMARY"
+  script:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download script (offline, against a local stub server)
+        run: python3 -B -m unittest discover -s scripts -p 'test_export_telemetry.py' -v

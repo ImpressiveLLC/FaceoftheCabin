@@ -31,6 +31,35 @@ The readings behind the BI metrics (temperature, humidity, presence, CO2, leak, 
 | Cold | `/storage/archives/cabin_event/` | Monthly: whole months older than the hot window are written as gzipped JSONL, then **deleted from the live table** (cron `0 0 2 1 * *`, the 1st at 02:00). Hourly additive copy to `incremental/incremental-YYYY-MM-DD.jsonl` since 2026-09-14 |
 | Independent copy | `infra/telemetry-backup-agent/` (D19 Option B) | Documented in `MAINTENANCE.md`, but **no such container and no `/storage/telemetry-backup/` existed on 2026-10-10**. Both copies above depend on `cabin-backend` being alive |
 
+### Exporting the full history (2026-11-14)
+
+The telemetry in all three places above (live Postgres table, monthly `.jsonl.gz` archives, hourly incremental copy) can be downloaded as one de-duplicated set, with no day limit. The 60-day cap on the Monitoring history chart (`cabin.history.max-days`) does not apply to it.
+
+**Endpoint.** `GET /api/events/export`, administrator only. A caller who is not signed in gets 401; a signed-in caller who is not an administrator, a guest link and a demo link get 403 (see the "Telemetry export (full history)" row in `docs/ai-assistant/user-guide/access-and-storage.md`, which a test keeps in step with the code). Parameters, all optional:
+
+| Parameter | Meaning |
+|---|---|
+| `from`, `to` | `from` inclusive, `to` exclusive; an ISO instant (`2026-08-01T00:00:00Z`) or a UTC date (`2026-08-01`). Default: everything |
+| `deviceId` | Comma-separated exact device ids. Default: every device |
+| `field` | Comma-separated payload fields to keep (`temperature,humidity`). Rows with none of them are dropped. Default: the whole payload |
+| `format` | `jsonl.gz` (default), `jsonl`, `csv.gz`, `csv`. CSV is long format, one line per payload field: `time,eventId,deviceId,severity,field,value` |
+
+JSONL rows have the same shape as the archive files: `eventId`, `time`, `deviceId`, `eventType`, `severity`, `payload`. Only `TELEMETRY` rows are exported (camera, workflow and discrete state-change events are not), and outdoor weather is not included: it is in `outdoor_observation` and `/storage/archives/weather` and is a separate download if the review needs it.
+
+**How it merges the tiers.** The range is read one UTC month at a time. For each month the export reads that month's archive file, then the live table, then the incremental files written in that month and the week after it, and writes each `eventId` once. A row that is in two places (an incremental row still in Postgres, or an archive written just before a failed delete) is counted once. Memory holds only the current month's id set and one page of 5,000 rows, so a multi-year export does not load into memory. Output is grouped by month, ascending; inside a month it is archive rows, then live rows, then incremental-only rows, so sort by `time` after loading if strict order matters. A malformed line in an archive file is skipped and counted in the backend log (counts only, never values); an unreadable file aborts the download rather than returning a quietly short one.
+
+**Script.** `scripts/export_telemetry.py` (Python 3.8 or newer, standard library only) calls the endpoint once per month and saves one file per month, so an interrupted download resumes by running the same command again. Each file is written as `.part`, read back completely, then renamed; finished months are skipped, the month in flight and any month that was still open when downloaded are fetched again. `manifest.tsv` in the output folder lists month, row count, bytes and SHA-256 per file.
+
+```bash
+# token: an administrator CabinSession token (never on the command line, never printed)
+export CABIN_SESSION_TOKEN="$(cat ~/.cabin-token)"
+python3 scripts/export_telemetry.py --out-dir ./telemetry-export
+```
+
+Options: `--from` and `--to` (days, default the last four years to tomorrow), `--format`, `--device-id`, `--field`, `--token-file`, `--auth-scheme Bearer` (for a Google access token), `--base-url` (default `https://api.unicornpingpong.com`, or `CABIN_API_BASE`). To join the months into one file: `zcat telemetry-export/telemetry-*.jsonl.gz | gzip > all.jsonl.gz`.
+
+**Tested** by `TelemetryExportServiceTest` (Postgres in Testcontainers plus real archive and incremental files: hot only, cold only, hot and cold overlap, empty range, range edges, filters, CSV, paging across a page boundary), `TelemetryExportAccessTest` (the real auth interceptor in front of the real route: unauthenticated 401, every non-administrator 403) and `scripts/test_export_telemetry.py`, run on every pull request by `.github/workflows/telemetry-export-tests.yml`.
+
 ### The dump-warning rule (Nate, 2026-10-10)
 
 **BI telemetry is never deleted, archived-and-deleted or "dumped" without a warning first.** When the amount gets large, the system tells the owner what it is about to remove (how much, which range, where the cold copy is) and waits, rather than deleting on a schedule. The monthly archive-and-delete job above is exactly such a dump, and **today it has no warning**. At current volume it is small, so "massive" has to be defined by the owner (a size or row-count threshold on the live table, or on the archive directory). Tracked as **W-49**.
