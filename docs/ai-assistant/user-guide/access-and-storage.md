@@ -8,7 +8,7 @@ Audience: household.
 
 | Who | How they get in | What they can do |
 |---|---|---|
-| Administrator | Google sign-in with an email on the instance's administrator list | Everything below, plus administrator-only screens: Guest Access (share and demo links), Managed Users, Trim old backups, Optimization Opportunities, Location Roles and confirming a platform import (households can read the import records) |
+| Administrator | Google sign-in with an email on the instance's administrator list | Everything below, plus administrator-only screens: Guest Access (share and demo links), Managed Users, Trim old backups, the full telemetry export (a scripted download, see `docs/STORAGE_ARCHITECTURE.md`), Optimization Opportunities, Location Roles and confirming a platform import (households can read the import records) |
 | Household member signed in with Google | Google sign-in with any other accepted account | See the app and make the changes that need a sign-in, for example workflows, notes and chores. Administrator-only screens say "Admin access required" or "Only an administrator can trim storage" |
 | Managed user, "Household member (read/write)" | A sign-in link from Managed Users (copied and handed over, or emailed) | Same as a household member. Cannot manage share links or managed users |
 | Managed user, "Viewer (read-only)" | A sign-in link from Managed Users (copied or emailed) | Look only. Any change is refused |
@@ -58,6 +58,7 @@ Audience: household.
 | Location roles | - | RU | - | - | - | - | - |
 | Disk status | R | R | R | R | R | R | - |
 | Trim old backups | - | R+ | - | - | - | - | - |
+| Telemetry export (full history) | - | R | - | - | - | - | - |
 | Recovery status and heartbeats | - | R | - | - | - | - | - |
 | Platform info | - | R | - | - | - | - | - |
 | Optimization Opportunities | - | RU | - | - | - | - | - |

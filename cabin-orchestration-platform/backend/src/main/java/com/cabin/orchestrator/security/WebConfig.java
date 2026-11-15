@@ -168,6 +168,11 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * /api/roof-spec/entries (GoogleAuthInterceptor.handleGuestToken); DELETE is
  * signed-in only. No device or other route is reachable with that scope.
  *
+ * /api/events/export — added 2026-11-14, the full-history telemetry download (TelemetryExportController).
+ * Already under /api/events/**, so a token is required here; the controller then requires ADMINISTRATOR, because it
+ * returns every sensor reading ever kept with no day limit. Guest links do not cover it (observations_read names only
+ * telemetry-history and reported-fields) and demo links are denied.
+ *
  * cabin.security.googleAuth.enabled defaults to true (secure by default —
  * absence of the property changes nothing). The only reason it exists is
  * local verification: there's no way to obtain a real Google access token
