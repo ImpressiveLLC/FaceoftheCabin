@@ -6015,7 +6015,10 @@ function reportsField(device, field) {
 // Reusable "3rd-party/non-native sensor onboarding" pattern, frontend half
 // (see HomeAssistantDiscoveryService.semanticFieldFor()'s javadoc for the
 // backend half, and the cabin-3rd-party-device-onboarding skill for the
-// full pattern write-up). Each option's `types` list is which DeviceType(s)
+// full pattern write-up). Each option's `types` list (REMOVED 2026-11-14, slice S1 of the
+// ontology-drives-device-adds roadmap: nothing read it, the picker gates on observed fields from
+// GET /api/events/reported-fields, and the backend's DeviceType.telemetryFields() is the one list of what a
+// type reports, already served as attributes.reportsFields) was which DeviceType(s)
 // can actually produce that payload field -- added 2026-08-27 when Kidde's
 // CO2/air-quality/CO entities turned out to be excluded by this panel's old
 // `d.type === "TEMPERATURE_SENSOR"`-only filter (docs/MAINTENANCE.md's own
@@ -6035,15 +6038,15 @@ function reportsField(device, field) {
 // plus one DeviceType case -- nothing else in this component should need
 // to change").
 const SENSOR_FIELD_OPTIONS = [
-  { value: "humidity", label: "Humidity", types: ["TEMPERATURE_SENSOR", "HUMIDITY_SENSOR"] },
-  { value: "temperature", label: "Temperature", types: ["TEMPERATURE_SENSOR"] },
-  { value: "co2", label: "CO₂", types: ["CO2_SENSOR"] },
-  { value: "airQualityIndex", label: "Air Quality Index", types: ["AIR_QUALITY_SENSOR"] },
-  { value: "co", label: "CO", types: ["CO_SENSOR"] },
-  { value: "power", label: "Power", types: ["POWER_METER"] },
-  { value: "energy", label: "Energy", types: ["POWER_METER"] },
-  { value: "current", label: "Current", types: ["POWER_METER"] },
-  { value: "voltage", label: "Voltage", types: ["POWER_METER"] },
+  { value: "humidity", label: "Humidity" },
+  { value: "temperature", label: "Temperature" },
+  { value: "co2", label: "CO₂" },
+  { value: "airQualityIndex", label: "Air Quality Index" },
+  { value: "co", label: "CO" },
+  { value: "power", label: "Power" },
+  { value: "energy", label: "Energy" },
+  { value: "current", label: "Current" },
+  { value: "voltage", label: "Voltage" },
 ];
 const SENSOR_FIELD_UNITS = {
   temperature: "°", humidity: "%", co2: " ppm", co: " ppm", airQualityIndex: "",
