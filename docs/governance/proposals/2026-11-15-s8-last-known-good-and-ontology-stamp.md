@@ -61,13 +61,15 @@ S8 follows S3 (it needs the catalog and ontology hash and the stamp on reads) an
 3. **A stale stamp blocking enrollment after a harmless ontology edit.** Intended by N1; the refusal message must say which hash differs and that re-adjudication is the fix, so it is not mistaken for a fault.
 4. **Detection noise.** Start read-only and log only; do not page on the first runs.
 
-## 7. Questions for the owner and Cowork
+## 7. Questions, answered by the owner on 2026-11-15
 
-1. **Q1, retention.** Is keeping the last 3 snapshots right?
-2. **Q2, who restores.** Administrator only? (Recommended.)
-3. **Q3, scan cadence.** Every 6 hours, or tied to deploy and CI only?
-4. **Q4, version number.** Enforce a bump of `version` in `docs/ontology.yaml` on every ontology change in CI, in addition to the hash? Recommended: yes, as a label for humans; the hash remains the check.
-5. **Q5, automatic restore for safety devices.** Recommended: never automatic for leak, valve, lock or CO types, even in S9.
+The owner answered "use recommendations" for all five, so each recommended answer below is ruled. Cowork records them as a D-id with the N1 to N3 rulings.
+
+1. **Q1, retention.** Keep the last 3 snapshots per device. Ruled.
+2. **Q2, who restores.** Administrator only. Ruled.
+3. **Q3, scan cadence.** Every 6 hours, also callable by an administrator. Ruled.
+4. **Q4, version number.** Enforce a bump of `version` in `docs/ontology.yaml` on every ontology change in CI, as a human label; the content hash remains the check. Ruled.
+5. **Q5, automatic restore for safety devices.** Never automatic for leak, valve, lock or CO types, in S8 or S9. Ruled.
 
 ## 8. What this is not
 
