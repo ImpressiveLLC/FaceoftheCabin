@@ -1503,3 +1503,19 @@ Minimal schema (`state / confidence / observed_at / expires_at / sources / polic
 Platform import duplicate detection — resolved 2026-09-03
 
 `(original_platform, original_id)` UNIQUE constraint implemented as part of WSJF \#9 (commit f37930d). Re-import presents as a conflict, not a duplicate.
+
+
+## D29 — Ontology drives device adds and check-ins: staged catalog, unknown devices held, version-checked adjudication
+
+**Status:** ruled by Nate in chat, 2026-11-14 to 2026-11-15, **relayed by Code** on issue #244 (comments 6889276499, 6889494027, 6889630979) and recorded here by Cowork. Nate's direct confirmation of this wording is pending; until then treat it as recorded, not ratified. Plan and slices: [roadmap](../proposals/2026-11-14-ontology-drives-device-adds-roadmap.md) (PR #449), [S8 scope](../proposals/2026-11-15-s8-last-known-good-and-ontology-stamp.md) (PR #452). Builds on D27, D28 and its amendment A1, D1, D7, D8.
+
+**Rulings.**
+1. **Direction (N1).** Staged. A parity test first (S1, merged #450), then a catalog file driven by the ontology in one direction. An ontology change that affects the catalog is tested and validated before it may be saved. Each catalog entry records the ontology version it was built from and is checked against the current one; a stale entry is refreshed from the ontology and the change applied at field or row level. Refresh happens at build or review time as a generated change committed through a PR, not live at runtime. Types are never decided at runtime on the safety path.
+2. **Version check.** At adjudication, the ontology version a device was matched against must equal the version in the run tables; a mismatch refuses enrollment. The same check runs over all devices as a gate that may sit in git or CI. New devices are detected periodically in tests as part of self-healing.
+3. **Unknown devices (N2).** An unmatched device is a flagged candidate and is never auto-enabled: no telemetry, workflows, Ask inventory or commands until matched. The heuristic becomes a visible suggestion. Existing assigned devices are grandfathered. The status board shows a count of unmatched devices.
+4. **Box 3 (N3).** No interim assignment; its platform metrics stay unrecorded until S7 and the W-84 gate. Live values remain in Home Assistant.
+5. **S8 answers (Nate: "Use recommendations").** Keep the last 3 known-good snapshots per device (Q1); restore is administrator only (Q2); the scan runs every 6 hours and an administrator may also call it (Q3); CI enforces a bump of the ontology `version` as a human label, with the content hash as the real check (Q4); automatic restore is never done for leak, valve, lock or CO types, in S8 or S9 (Q5).
+
+**Proposed, not ruled.** (a) Pin the last snapshot taken before each ontology-hash change, in addition to the last 3 (Cowork); (b) hash the catalog-relevant projection of the ontology for the refusal check and keep the whole-file hash informational, so a prose-only edit does not refuse all enrollment (Cowork); (c) the catalog is the Phase 1 seed for the W-68 metadata store (D27 R-OC-1), so there is one source.
+
+**Not authorized by this record.** Any code, schema, migration, ontology edit, device assignment, restore or deploy. Each slice is its own PR with Nate's merge word; nothing deploys without his go.
