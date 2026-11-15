@@ -212,7 +212,7 @@ cabin:
     cron: ${WEATHER_CRON:0 30 3 * * *}
   telemetryArchival:
     enabled: ${TELEMETRY_ARCHIVAL_ENABLED:true}
-    hotRetentionMonths: ${TELEMETRY_ARCHIVAL_HOT_MONTHS:3}
+    hotRetentionMonths: ${TELEMETRY_ARCHIVAL_HOT_MONTHS:36}
     archiveDir: ${TELEMETRY_ARCHIVAL_DIR:/app/archives/cabin_event}
     cron: ${TELEMETRY_ARCHIVAL_CRON:0 0 2 1 * *}
   # Sprint 5 WSJF #1 (Optimization Opportunities, 2026-09-06) -- see

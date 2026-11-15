@@ -27,7 +27,7 @@ The readings behind the BI metrics (temperature, humidity, presence, CO2, leak, 
 
 | Tier | Where | Detail |
 |---|---|---|
-| Hot | Postgres on the NVMe | 3-month window (`cabin.telemetryArchival.hotRetentionMonths`). 515 MB for 755,000 rows over 70 days, about 13,800 rows (about 7 MB) per day: roughly 2.5 GB per year. Telemetry is tiny next to video |
+| Hot | Postgres on the NVMe | 36-month window (`cabin.telemetryArchival.hotRetentionMonths`, raised from 3 on 2026-11-15 so the full history stays queryable and exportable from Postgres). 515 MB for 755,000 rows over 70 days, about 13,800 rows (about 7 MB) per day: roughly 2.5 GB per year. Telemetry is tiny next to video |
 | Cold | `/storage/archives/cabin_event/` | Monthly: whole months older than the hot window are written as gzipped JSONL, then **deleted from the live table** (cron `0 0 2 1 * *`, the 1st at 02:00). Hourly additive copy to `incremental/incremental-YYYY-MM-DD.jsonl` since 2026-09-14 |
 | Independent copy | `infra/telemetry-backup-agent/` (D19 Option B) | Documented in `MAINTENANCE.md`, but **no such container and no `/storage/telemetry-backup/` existed on 2026-10-10**. Both copies above depend on `cabin-backend` being alive |
 
