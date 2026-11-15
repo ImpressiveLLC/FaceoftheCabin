@@ -77,10 +77,12 @@ public enum DeviceType {
 
     /**
      * Which CabinEvent payload fields a device of this type can actually
-     * report -- see this class's own doc for why this exists. Mirrors
-     * App.jsx's SENSOR_FIELD_OPTIONS types arrays exactly (kept in sync by
-     * hand, same discipline as everything else in this taxonomy); a type
-     * not listed here reports no chartable numeric telemetry field.
+     * report -- see this class's own doc for why this exists. This is the only
+     * list of it: App.jsx's SENSOR_FIELD_OPTIONS used to carry a hand-synced
+     * copy per type, removed 2026-11-14 (slice S1, ontology-drives-device-adds).
+     * Every field here must be a D7 measurement type, held by
+     * DeviceTypeOntologyParityTest. A type not listed here reports no
+     * chartable numeric telemetry field.
      */
     public Set<String> telemetryFields() {
         return switch (this) {
