@@ -63,11 +63,17 @@ Each of P-1 to P-4 needs an ack within 20 minutes of the ACTION (`got it, ETA hh
 | Candidate | Round id | Intent | Slot F1 | Critical failures | Verdict (Nate) |
 |---|---|---|---|---|---|
 | r9-b (baseline) | r9-b | 0.837 | 0.581 | 13 | n/a |
-| E1 |  |  |  |  |  |
-| E2 |  |  |  |  |  |
+| r9-b rerun (noise check) | 2026-11-15-r10-base | 0.837 | 0.569 | 13 | n/a |
+| E1 | 2026-11-15-r10-e1 | 0.857 | 0.617 | 12 | **Hold** (Nate, 2026-11-15 01:10 CST) |
+| E2 | 2026-11-15-r10-e2 | 0.837 | 0.699 | 12 | **Hold** (Nate, 2026-11-15 01:10 CST) |
+| E1, E2 and base repeats | `-rep2`, `-rep3` of each | same as first runs | same (base 0.569, 0.569, 0.581) | same | repeats stable; Hold stands |
 | E3 |  |  |  |  |  |
 | E4 |  |  |  |  |  |
 | E5 |  |  |  |  |  |
+
+E1 and E2 evidence: Code's PR #455 (round files under `training/intent-slot/rounds/`), one run each on the M920q Ollama, dev gold only (sha 1d33f622), valid output 1.0. Each of base, E1 and E2 was then run three times in total (Code, 2026-11-15 01:41 CST, PR #455): intent and critical counts did not move across runs, only the base slot F1 varied (0.012), and the failed-fixture sets were identical in all three runs. The first-run differences and the per-fixture regressions are therefore real and repeatable, not noise. E1 fixed gold-07 and gold-38 and breaks gold-48 every run; E2 fixed gold-13, gold-14 and gold-38 and breaks gold-02, gold-16 and gold-43 every run (two new critical failures, to review before iterating). Neither meets any package gate. `system.txt` is unchanged; nothing is adopted.
+
+Would do differently (E1, E2): the baseline prompts already quote one gold text ("I am cold", gold-23), which can flatter dev numbers; replace it with a non-gold example in a later round and note it here. Hand review of gold-48, gold-16 and gold-43 (not yet done) comes before E5 combines anything; the regressions repeat, so they are a property of the prompt change.
 
 After each verdict Cowork adds a one-line "would do differently" note per candidate, so this document keeps the same shape as the prior art it mirrors.
 
