@@ -119,7 +119,44 @@
     if (!activities.notes.isOpen()) setNotepadUnread(true);
   };
 
+  // A "Done" bar at the bottom of every focus box: people arrive trained to look for an
+  // exit inside the box, and the bottom is where they end up after reading or scrolling.
+  const footHosts = {
+    chores: () => $('chores-card'),
+    notes: () => $('notepad-main-inner'),
+    dashboard: () => $('dashboard-overlay'),
+    settings: () => $('settings-panel'),
+  };
+  function addFooters() {
+    Object.entries(footHosts).forEach(([id, host]) => {
+      const el = host();
+      if (!el || el.querySelector(':scope > .activity-foot')) return;
+      const foot = document.createElement('div');
+      foot.className = 'activity-foot';
+      foot.innerHTML = '<button type="button" class="activity-done" data-activity-close>Done — back to the hub</button>' +
+        '<span class="activity-foot-hint" aria-hidden="true">or tap anywhere outside, or swipe right</span>';
+      el.appendChild(foot);
+    });
+  }
+
+  // Swipe right (the way the box slid in) dismisses it on touch screens.
+  let swipe = null;
+  document.addEventListener('touchstart', event => {
+    const id = isCompact() && current();
+    const t = event.touches[0];
+    if (!id || event.touches.length !== 1 || !activities[id].panel().contains(event.target) || event.target.closest('input, textarea, select, [contenteditable]')) { swipe = null; return; }
+    swipe = { x: t.clientX, y: t.clientY };
+  }, { passive: true });
+  document.addEventListener('touchend', event => {
+    if (!swipe) return;
+    const t = event.changedTouches[0];
+    const dx = t.clientX - swipe.x, dy = Math.abs(t.clientY - swipe.y);
+    swipe = null;
+    if (dx > 110 && dy < dx / 2) close();
+  }, { passive: true });
+
   function start() {
+    addFooters();
     if (isCompact() && typeof notepadState !== 'undefined' && notepadState.open) toggleNotepad(false); // always load compressed
     sync();
   }
