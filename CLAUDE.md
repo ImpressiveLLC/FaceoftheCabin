@@ -1088,7 +1088,13 @@ themselves, they just never had anything to trip on before:
   `cabin_security_mqtt_publish.py` (the publish allow-list HA's
   `shell_command` runs inside HA's own container, not in the backend) and
   its unit test, plus `test/ha-sim/run_sim.py`, an offline Home Assistant
-  simulation that runs only on a developer machine. Updated 2026-09-10 for
+  simulation that runs only on a developer machine, plus, since 2026-11-14 (#453),
+  `scripts/export_telemetry.py` and its test `scripts/test_export_telemetry.py`: a
+  standard-library download client the owner runs on his own machine to fetch
+  the full telemetry history from the Java `GET /api/events/export` route (the
+  route itself is Java and administrator-only; this script only calls it, runs
+  in no container and no request path, and was added without being listed here,
+  found by Cowork's review of #453 on 2026-11-15). Updated 2026-09-10 for
   the corpus tooling and 2026-10-12 for the HA side (the allow-list script
   already existed, so this constraint had drifted again, found by the
   2026-10-12 session DoD). All are deliberately narrow, tooling-only
