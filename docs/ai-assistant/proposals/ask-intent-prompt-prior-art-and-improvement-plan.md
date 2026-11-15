@@ -67,6 +67,8 @@ Each of P-1 to P-4 needs an ack within 20 minutes of the ACTION (`got it, ETA hh
 | E1 | 2026-11-15-r10-e1 | 0.857 | 0.617 | 12 | **Hold** (Nate, 2026-11-15 01:10 CST) |
 | E2 | 2026-11-15-r10-e2 | 0.837 | 0.699 | 12 | **Hold** (Nate, 2026-11-15 01:10 CST) |
 | E1, E2 and base repeats | `-rep2`, `-rep3` of each | same as first runs | same (base 0.569, 0.569, 0.581) | same | repeats stable; Hold stands |
+| E1b | 2026-11-15-r11-e1b | 0.816 | 0.5625 | 14 | Fails acceptance (intent below base, critical above); not adopted. Process ruling below |
+| E2b (three changes together) | 2026-11-15-r11-e2b | 0.837 | 0.699 | 12 | Identical to E2 on every fixture; not adopted. Process ruling below |
 | E3 |  |  |  |  |  |
 | E4 |  |  |  |  |  |
 | E5 |  |  |  |  |  |
@@ -74,6 +76,10 @@ Each of P-1 to P-4 needs an ack within 20 minutes of the ACTION (`got it, ETA hh
 E1 and E2 evidence: Code's PR #455 (round files under `training/intent-slot/rounds/`), one run each on the M920q Ollama, dev gold only (sha 1d33f622), valid output 1.0. Each of base, E1 and E2 was then run three times in total (Code, 2026-11-15 01:41 CST, PR #455): intent and critical counts did not move across runs, only the base slot F1 varied (0.012), and the failed-fixture sets were identical in all three runs. The first-run differences and the per-fixture regressions are therefore real and repeatable, not noise. E1 fixed gold-07 and gold-38 and breaks gold-48 every run; E2 fixed gold-13, gold-14 and gold-38 and breaks gold-02, gold-16 and gold-43 every run (two new critical failures, to review before iterating). Neither meets any package gate. `system.txt` is unchanged; nothing is adopted.
 
 Would do differently (E1, E2): the baseline prompts already quote one gold text ("I am cold", gold-23), which can flatter dev numbers; replace it with a non-gold example in a later round and note it here. Hand review of gold-48, gold-16 and gold-43 (not yet done) comes before E5 combines anything; the regressions repeat, so they are a property of the prompt change.
+
+r11 evidence (Code, PR #460, 2026-11-15 14:46 CST): E1b and E2b, three runs each, identical within each candidate, dev gold only, `system.txt` unchanged. E1b fixed gold-48 and gold-38 but broke gold-35 and gold-43 (critical). E2b moved only clarification wording; gold-02, gold-16 and gold-43 still fail as in E2. Code's reading: the pull comes from the worked-example format as a whole, not from the specific lines swapped. Independent review before merge: a fresh-context reviewer re-checked the numbers against the round JSON files (proxy CLEAN, Cowork, 2026-11-15 15:23 CST).
+
+Process ruling (Cowork acting as Nate's proxy, 24 hours from 2026-11-15 15:22 CST; Nate can veto): wording-only rounds on this tag are closed, because r10 and r11 show repeatable fixture trades with no candidate near a gate, and the literature pass (section 7a) says the same. No further E1 or E2 variants. Next: E3 contrast fixtures (authoring only), a leave-one-example-out ablation on the current prompt (no new wording), then E4 as a descriptions-only schema candidate under `rounds/`, then E5. Prompt-only edits stay development evidence, not A1.
 
 After each verdict Cowork adds a one-line "would do differently" note per candidate, so this document keeps the same shape as the prior art it mirrors.
 
@@ -125,6 +131,39 @@ P4 on the M910 is measured not viable (Code comment 6884429419: about 19 minutes
 | Templates are precise but brittle; minimal keywords and embedding similarity are cheap non-LLM options (Lemmy selfhosted thread) | **Note only**: a deterministic pre-check could one day catch garbled input before the model, but the earlier lesson that over-deterministic pre-processing hurt casual phrasing applies. Not in this plan |
 | Microphone and speech-to-text quality dominate errors (same thread) | **Not applicable**: our route takes typed text, not speech |
 
+## 7a. Lesson application tracker (kept so no lesson is dropped)
+
+Status as of 2026-11-15 15:25 CST. Applied = tested in a recorded round; Queued = assigned to a named round; Not applicable = reason given. Every row needs a status change in a docs PR when it moves.
+
+| Lesson | Status | Where applied or why not |
+|---|---|---|
+| Ordered decision list, question first | Applied | E1 and E1b (r10, r11). E1b fixed gold-48, broke gold-35 and gold-43; no adoption |
+| Concrete worked example per intent | Applied | E2 and E2b. Examples are copied by the model (gold-02, gold-43); see the examples rows below |
+| Examples get copied; vary leading verb and topic | Applied, no effect | E2b swapped the clarify example and fixtures did not move |
+| Negative example with a one-line reason | Queued | Inside the E3 contrast pairs (each pair carries a short reason); not repeated as a wording round |
+| One clarification, naming only the ambiguity | Applied | E1 clarify branch |
+| Need check on its own line | Applied | E1b |
+| Replace the quoted gold-23 "I am cold" in baseline prompts with an invented line | Queued | First change in the next prompt file that is run; noted so dev numbers are not flattered |
+| Contrast pairs: nonexistent room or device, quantity with no source, reply must not claim an action, wrong-room substitution | Queued | E3 fixtures, authoring only, apart from the 49; Nate approves before any row joins gold. Also adds near-miss pairs (surface of one intent, meaning of another) per the precedent finding below |
+| Low temperature | Not applicable | Already 0 in `evaluate.py`; recorded as a finding, not a candidate |
+| Fully described schema fields | Queued | E4 as a descriptions-only candidate schema under `rounds/`, served schema untouched, no type, enum, required or additionalProperties change, own sha, scored on the 49 and on the E3 set |
+| Measure the served quantized tag; human-written, noisy, out-of-domain stress set (CLINC150 out-of-scope) | Queued | E5 |
+| Report M920q p50 and p95 per stage | Queued | E5 |
+| Never report a synthetic-only score as a gate result | Standing | Every round note |
+| Wrong-room action: room stays a stated constraint | Standing | express_need spec; E3 pair |
+| Over-deterministic pre-processing hurts casual phrasing | Standing | No rewrite rules before classification |
+| Fewer entities and aliases; decompose; newer model; STT quality; reasoning mode | Not applicable or already our design | See section 7 rows |
+
+Literature pass (Cowork, 2026-11-15, public papers and projects read by URL; none contacted, none reproduced by us; one anecdote or one paper each):
+
+| Source | What it says | What we do with it |
+|---|---|---|
+| arXiv 2510.05152 (single-character example delimiter) | Changing only the separator between few-shot examples shifted accuracy by roughly 18 to 46 points on 7B to GPT-4o models; stating the delimiter helped | Wording-level swings on a 49-row set are within prompt sensitivity, so judge candidates per fixture and on contrast slices, not on one aggregate. State the example delimiter explicitly in the prompt and record it in each round note. Different task (MMLU), so only the direction transfers |
+| Few-shot examples as binding precedent (tianpan.co blog) | Models carry over the surface of the most similar example; test with near-miss slices, ablate examples one at a time, prefer rules over examples, label each example's scope | Leave-one-example-out ablation on the current prompt (zero new wording); near-miss pairs in E3; keep examples only for patterns hard to state as rules. Blog, not peer reviewed |
+| Small local models and JSON (zimaspace vendor blog) | Flatten schemas, allow an unknown value, describe each field, validate after parsing and reject rather than invent | Supports E4 (descriptions only); our resolver already fails closed. Vendor blog, weakest source |
+| acon96 home-llm (project README) | Home Assistant control by fine-tuned 270M to 3B models; the README gives no evaluation method; tool-call parsing needed auto-repair for malformed JSON | Fine-tuning is the community route for small models; supports the training-track host decision. No evaluation numbers to borrow |
+| arXiv 2403.17536 (ILLUMINER) | Parameter-efficient fine-tuning matched full fine-tuning with under 6% of the training data, on an 11B model | Supports a PEFT plan when a GPU host exists; the model size is not ours, so the effect size does not transfer |
+
 ## 8. Gaps and risks
 - Reddit and other DIY communities reached only partly (P-6, 2026-11-15): three threads by id through third-party mirrors, no stable dates, no measured before-and-after numbers. One fetched page carried text addressed to the reader (formatting and quoting rules); it was ignored as page content, not instructions. Treat every community row as one anecdote.
 - Source numbers are reported by the authors; none are reproduced by us.
@@ -142,3 +181,8 @@ P4 on the M910 is measured not viable (Code comment 6884429419: about 19 minutes
 - https://community.home-assistant.io/t/anyone-else-have-issues-with-their-llm-just-not-calling-an-intent/845697
 - https://community.home-assistant.io/t/running-a-local-llm-on-an-intel-n150-mini-pc-for-home-assistant-a-practical-journey/1007724
 - https://ar5iv.labs.arxiv.org/html/2207.13211
+- https://arxiv.org/pdf/2510.05152
+- https://tianpan.co/blog/2026-06-03-the-few-shot-example-your-model-treated-as-binding-precedent
+- https://shop.zimaspace.com/blogs/tech-ai-hub/small-local-models-hallucinate-json-output
+- https://github.com/acon96/home-llm
+- https://arxiv.org/abs/2403.17536v1
