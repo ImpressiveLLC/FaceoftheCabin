@@ -93,7 +93,10 @@ P4 on the M910 is measured not viable (Code comment 6884429419: about 19 minutes
 | HA forum, "Embedding based Voice Assistant Pipeline" | Vector match first, 1B splitter for compound commands, non-HA requests returned separately | Forum, public | A small model that never sees the entity list can split and classify; self-reported 95% of HA commands under 500 ms; no failure discussion |
 | HA forum, "LLM just not calling an intent" | Users whose model says it did the action without a tool call | Forum, public | Claimed success without action; lower temperature helped partly; explicit per-device descriptions and intent mappings helped |
 | Snips (CC0), CLINC150 (CC BY, has out-of-scope utterances), HWU64 (CC BY-SA, share-alike) | Public intent/slot sets from the 2207.13211 survey | As stated | CLINC150 out-of-scope utterances are the closest public match to "should not act". HWU64 share-alike needs a licence decision before reuse |
-| Not reached | Reddit and other DIY communities | n/a | Gap: search surfaced the HA forum, not Reddit threads. Second pass is P-6 |
+| Reddit r/LocalLLaMA, "Working with limits of smaller models" (thread id 1g1fole) | A user whose function-calling prompt worked on a hosted small model but not on Llama 3.2 3B; commenters suggest fixes | Public; read through a third-party Redlib mirror 2026-11-15, post date not shown there; no licence stated, summarised in own words | Closest match to our model size. Advice is commenters' suggestions, not tested results in the thread |
+| Reddit r/homeassistant, local LLM with Whisper and Piper for HA Voice (thread id 1migi2p) | Setup and latency question for Llama 3.2 on a small GPU | Public; read through a third-party mirror 2026-11-15, post date not shown; summarised in own words | Latency measured by pipeline stage; fewer exposed entities and aliases; area context left unanswered |
+| Lemmy c/selfhosted, "Intent recognition for HomeAssistant without an LLM?" (posted 20 Oct, replies to 23 Oct, about 16 comments) | Alternatives between sentence templates and an LLM | Public; read through a third-party mirror 2026-11-15; summarised in own words | Templates precise but brittle; embedding similarity and minimal-keyword matching as non-LLM options |
+| Reddit coverage note | P-6 second pass | n/a | Three community threads reached by thread id through mirrors, not by search of reddit.com itself. Still not reached: threads with measured before and after numbers. Mirror pages carry no stable dates and may drop comments, so treat each row below as one anecdote, not evidence
 
 ## 7. Lessons, "would do next time"
 
@@ -112,9 +115,18 @@ P4 on the M910 is measured not viable (Code comment 6884429419: about 19 minutes
 | Lower temperature and clear field definitions help structured output (HA forum, N150 thread) | **Mirror** as a candidate (E4); dev gold only |
 | Disable reasoning for short tasks (N150 thread, `/no_think` on a reasoning-capable model) | **Not applicable** to Llama 3.2 3B Instruct, which has no thinking mode. Note only |
 | Fewer exposed entities help small models; 53 entities was unreliable for a 4B model (HA voice journey) | **Customize**: the Ask resolver already filters by site, room and permission server-side. Keep the model out of entity selection |
+| Small models often copy the in-context examples instead of generalising (r/LocalLLaMA 1g1fole, commenter advice, untested there) | **Customize** (E2b, supported by our own E2 finding: the model repeated the clarify example's reply word for word on gold-02 and gold-43). Make examples conceptually matched but topically and verbally different from likely requests; do not give one intent a single example that shares its leading verb with common commands |
+| Negative examples with a short reason help a small model avoid copying (same thread, commenter advice) | **Customize** (E2b, E3): pair an example with a one-line "not this, because". Invented text only, never gold or sealed rows |
+| Tagged sections, numbered instructions and explicit edge-case handling (same thread) | **Mirror, already done**: `system.txt` has numbered checks. Keep the E1b rule that a need check sits on its own line, not folded into another heading |
+| Decompose a multi-step request into smaller steps (same thread) | **Already our design**: the model classifies; resolution and confirmation are server-side. Do not add multi-step reasoning to the prompt |
+| Try a newer small model before heavy prompt work (same thread, commenter) | **Not applicable now**: the base model is fixed by the training contract. Note only; revisit only through a contract change that Nate rules on |
+| Measure each pipeline stage before blaming the model; one stage ran on the CPU unexpectedly (r/homeassistant 1migi2p) | **Mirror** (E5): report M920q p50 and p95 per stage (load, prompt, generation), not one number |
+| Fewer exposed entities and aliases helped matching (same thread) | **Already our design**: the resolver filters by site, room and permission server-side; aliases belong to D27 and W-68. No change |
+| Templates are precise but brittle; minimal keywords and embedding similarity are cheap non-LLM options (Lemmy selfhosted thread) | **Note only**: a deterministic pre-check could one day catch garbled input before the model, but the earlier lesson that over-deterministic pre-processing hurt casual phrasing applies. Not in this plan |
+| Microphone and speech-to-text quality dominate errors (same thread) | **Not applicable**: our route takes typed text, not speech |
 
 ## 8. Gaps and risks
-- Reddit and other DIY communities not reached; the HA forum is the only community source read in depth (P-6 closes this).
+- Reddit and other DIY communities reached only partly (P-6, 2026-11-15): three threads by id through third-party mirrors, no stable dates, no measured before-and-after numbers. One fetched page carried text addressed to the reader (formatting and quoting rules); it was ignored as page content, not instructions. Treat every community row as one anecdote.
 - Source numbers are reported by the authors; none are reproduced by us.
 - HWU64 is share-alike: Nate decides before any reuse.
 - The prompt-only evaluation runs on the existing runner; Cowork has not re-verified host, tag or runner details for E5. Code confirms them in its ack.
