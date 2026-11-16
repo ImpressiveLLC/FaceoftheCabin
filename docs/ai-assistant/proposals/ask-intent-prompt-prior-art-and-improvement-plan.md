@@ -68,7 +68,7 @@ Each of P-1 to P-4 needs an ack within 20 minutes of the ACTION (`got it, ETA hh
 | E2 | 2026-11-15-r10-e2 | 0.837 | 0.699 | 12 | **Hold** (Nate, 2026-11-15 01:10 CST) |
 | E1, E2 and base repeats | `-rep2`, `-rep3` of each | same as first runs | same (base 0.569, 0.569, 0.581) | same | repeats stable; Hold stands |
 | E1b | 2026-11-15-r11-e1b | 0.816 | 0.5625 | 14 | Fails acceptance (intent below base, critical above); not adopted. Process ruling below |
-| E2b (three changes together) | 2026-11-15-r11-e2b | 0.837 | 0.699 | 12 | Identical to E2 on every fixture; not adopted. Process ruling below |
+| E2b (three changes together) | 2026-11-15-r11-e2b | 0.837 | 0.699 | 12 | Aggregate scores and failed-intent set equal E2 (the clarify-example wording changed, so outputs are not asserted identical on every fixture); not adopted. Process ruling below |
 | E3 |  |  |  |  |  |
 | E4 |  |  |  |  |  |
 | E5 |  |  |  |  |  |
@@ -139,11 +139,11 @@ Status as of 2026-11-15 15:25 CST. Applied = tested in a recorded round; Queued 
 |---|---|---|
 | Ordered decision list, question first | Applied | E1 and E1b (r10, r11). E1b fixed gold-48, broke gold-35 and gold-43; no adoption |
 | Concrete worked example per intent | Applied | E2 and E2b. Examples are copied by the model (gold-02, gold-43); see the examples rows below |
-| Examples get copied; vary leading verb and topic | Applied, no effect | E2b swapped the clarify example and fixtures did not move |
+| Examples get copied; vary leading verb and topic | Tested within bundled E2b | Aggregate scores and failed-intent set unchanged; individual effect not isolated (three changes ran together) |
 | Negative example with a one-line reason | Queued | Inside the E3 contrast pairs (each pair carries a short reason); not repeated as a wording round |
 | One clarification, naming only the ambiguity | Applied | E1 clarify branch |
 | Need check on its own line | Applied | E1b |
-| Replace the quoted gold-23 "I am cold" in baseline prompts with an invented line | Queued | First change in the next prompt file that is run; noted so dev numbers are not flattered |
+| Replace the quoted gold-23 "I am cold" in baseline prompts with an invented line | Queued | Applied once, in one revised control prompt (see the ablation row below), not as a change that differs between arms; noted so dev numbers are not flattered |
 | Contrast pairs: nonexistent room or device, quantity with no source, reply must not claim an action, wrong-room substitution | Queued | E3 fixtures, authoring only, apart from the 49; Nate approves before any row joins gold. Also adds near-miss pairs (surface of one intent, meaning of another) per the precedent finding below |
 | Low temperature | Not applicable | Already 0 in `evaluate.py`; recorded as a finding, not a candidate |
 | Fully described schema fields | Queued | E4 as a descriptions-only candidate schema under `rounds/`, served schema untouched, no type, enum, required or additionalProperties change, own sha, scored on the 49 and on the E3 set |
@@ -159,7 +159,7 @@ Literature pass (Cowork, 2026-11-15, public papers and projects read by URL; non
 | Source | What it says | What we do with it |
 |---|---|---|
 | arXiv 2510.05152 (single-character example delimiter) | Changing only the separator between few-shot examples shifted accuracy by roughly 18 to 46 points on 7B to GPT-4o models; stating the delimiter helped | Wording-level swings on a 49-row set are within prompt sensitivity, so judge candidates per fixture and on contrast slices, not on one aggregate. State the example delimiter explicitly in the prompt and record it in each round note. Different task (MMLU), so only the direction transfers |
-| Few-shot examples as binding precedent (tianpan.co blog) | Models carry over the surface of the most similar example; test with near-miss slices, ablate examples one at a time, prefer rules over examples, label each example's scope | Leave-one-example-out ablation on the current prompt (zero new wording); near-miss pairs in E3; keep examples only for patterns hard to state as rules. Blog, not peer reviewed |
+| Few-shot examples as binding precedent (tianpan.co blog) | Models carry over the surface of the most similar example; test with near-miss slices, ablate examples one at a time, prefer rules over examples, label each example's scope | Leave-one-example-out ablation, matched design: first fix ONE revised control prompt that carries both the invented replacement for the quoted gold-23 line and the explicit example delimiter, and record its hash; every deletion arm is that control minus one example, so the only difference between an arm and the control is the deleted example. Never compare deletion arms with the unrevised baseline; near-miss pairs in E3; keep examples only for patterns hard to state as rules. Blog, not peer reviewed |
 | Small local models and JSON (zimaspace vendor blog) | Flatten schemas, allow an unknown value, describe each field, validate after parsing and reject rather than invent | Supports E4 (descriptions only); our resolver already fails closed. Vendor blog, weakest source |
 | acon96 home-llm (project README) | Home Assistant control by fine-tuned 270M to 3B models; the README gives no evaluation method; tool-call parsing needed auto-repair for malformed JSON | Fine-tuning is the community route for small models; supports the training-track host decision. No evaluation numbers to borrow |
 | arXiv 2403.17536 (ILLUMINER) | Parameter-efficient fine-tuning matched full fine-tuning with under 6% of the training data, on an 11B model | Supports a PEFT plan when a GPU host exists; the model size is not ours, so the effect size does not transfer |
