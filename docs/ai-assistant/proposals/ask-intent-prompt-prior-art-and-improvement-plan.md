@@ -77,7 +77,7 @@ E1 and E2 evidence: Code's PR #455 (round files under `training/intent-slot/roun
 
 Would do differently (E1, E2): the baseline prompts already quote one gold text ("I am cold", gold-23), which can flatter dev numbers; replace it with a non-gold example in a later round and note it here. Hand review of gold-48, gold-16 and gold-43 (not yet done) comes before E5 combines anything; the regressions repeat, so they are a property of the prompt change.
 
-r11 evidence (Code, PR #460, 2026-11-15 14:46 CST): E1b and E2b, three runs each, identical within each candidate, dev gold only, `system.txt` unchanged. E1b fixed gold-48 and gold-38 but broke gold-35 and gold-43 (critical). E2b moved only clarification wording; gold-02, gold-16 and gold-43 still fail as in E2. Code's reading: the pull comes from the worked-example format as a whole, not from the specific lines swapped. Independent review before merge: a fresh-context reviewer re-checked the numbers against the round JSON files (proxy CLEAN, Cowork, 2026-11-15 15:23 CST).
+r11 evidence (Code, PR #460, 2026-11-15 14:46 CST): E1b and E2b, three runs each, identical within each candidate, dev gold only, `system.txt` unchanged. Against E1, E1b fixed one fixture (gold-48) and regressed three (gold-07, gold-35, gold-43; intent 42/49 to 40/49); gold-38 already passed E1. Codex corrected this on 2026-11-15 22:18 CST (review 6907192709); the merged round note still carries the older wording until Code's correction PR lands. E2b moved only clarification wording; gold-02, gold-16 and gold-43 still fail as in E2. Code's reading: the pull comes from the worked-example format as a whole, not from the specific lines swapped. Independent review before merge: a fresh-context reviewer re-checked the numbers against the round JSON files (proxy CLEAN, Cowork, 2026-11-15 15:23 CST).
 
 Process ruling (Cowork acting as Nate's proxy, 24 hours from 2026-11-15 15:22 CST; Nate can veto): wording-only rounds on this tag are closed, because r10 and r11 show repeatable fixture trades with no candidate near a gate, and the literature pass (section 7a) says the same. No further E1 or E2 variants. Next: E3 contrast fixtures (authoring only), a leave-one-example-out ablation on the current prompt (no new wording), then E4 as a descriptions-only schema candidate under `rounds/`, then E5. Prompt-only edits stay development evidence, not A1.
 
@@ -121,12 +121,12 @@ P4 on the M910 is measured not viable (Code comment 6884429419: about 19 minutes
 | Lower temperature and clear field definitions help structured output (HA forum, N150 thread) | **Mirror** as a candidate (E4); dev gold only |
 | Disable reasoning for short tasks (N150 thread, `/no_think` on a reasoning-capable model) | **Not applicable** to Llama 3.2 3B Instruct, which has no thinking mode. Note only |
 | Fewer exposed entities help small models; 53 entities was unreliable for a 4B model (HA voice journey) | **Customize**: the Ask resolver already filters by site, room and permission server-side. Keep the model out of entity selection |
-| Small models often copy the in-context examples instead of generalising (r/LocalLLaMA 1g1fole, commenter advice, untested there) | **Customize** (E2b, supported by our own E2 finding: the model repeated the clarify example's reply word for word on gold-02 and gold-43). Make examples conceptually matched but topically and verbally different from likely requests; do not give one intent a single example that shares its leading verb with common commands |
-| Negative examples with a short reason help a small model avoid copying (same thread, commenter advice) | **Customize** (E2b, E3): pair an example with a one-line "not this, because". Invented text only, never gold or sealed rows |
+| Small models often copy the in-context examples instead of generalising; the same thread reports examples can amplify copying (r/LocalLLaMA 1g1fole, commenter experience, untested here) | **Customize** (E2b, supported by our own E2 finding: the model repeated the clarify example's reply word for word on gold-02 and gold-43). Make examples conceptually matched but topically and verbally different from likely requests; do not give one intent a single example that shares its leading verb with common commands |
+| Negative examples with a short reason might help a small model avoid copying (same thread; an untested hypothesis, not a settled lesson, and the thread's own experience shows examples can amplify copying) | **Customize** (E3, to be tested, not assumed): pair an example with a one-line "not this, because". Invented text only, never gold or sealed rows |
 | Tagged sections, numbered instructions and explicit edge-case handling (same thread) | **Mirror, already done**: `system.txt` has numbered checks. Keep the E1b rule that a need check sits on its own line, not folded into another heading |
 | Decompose a multi-step request into smaller steps (same thread) | **Already our design**: the model classifies; resolution and confirmation are server-side. Do not add multi-step reasoning to the prompt |
 | Try a newer small model before heavy prompt work (same thread, commenter) | **Not applicable now**: the base model is fixed by the training contract. Note only; revisit only through a contract change that Nate rules on |
-| Measure each pipeline stage before blaming the model; one stage ran on the CPU unexpectedly (r/homeassistant 1migi2p) | **Mirror** (E5): report M920q p50 and p95 per stage (load, prompt, generation), not one number |
+| Measure each pipeline stage before blaming the model; the thread suggests checking whether a stage is placed on the CPU, a proposed diagnostic only (the author reports GPU execution; r/homeassistant 1migi2p) | **Mirror** (E5): report M920q p50 and p95 per stage (load, prompt, generation), not one number |
 | Fewer exposed entities and aliases helped matching (same thread) | **Already our design**: the resolver filters by site, room and permission server-side; aliases belong to D27 and W-68. No change |
 | Templates are precise but brittle; minimal keywords and embedding similarity are cheap non-LLM options (Lemmy selfhosted thread) | **Note only**: a deterministic pre-check could one day catch garbled input before the model, but the earlier lesson that over-deterministic pre-processing hurt casual phrasing applies. Not in this plan |
 | Microphone and speech-to-text quality dominate errors (same thread) | **Not applicable**: our route takes typed text, not speech |
@@ -137,7 +137,7 @@ Status as of 2026-11-15 15:25 CST. Applied = tested in a recorded round; Queued 
 
 | Lesson | Status | Where applied or why not |
 |---|---|---|
-| Ordered decision list, question first | Applied | E1 and E1b (r10, r11). E1b fixed gold-48, broke gold-35 and gold-43; no adoption |
+| Ordered decision list, question first | Applied | E1 and E1b (r10, r11). Against E1, E1b fixed gold-48 and regressed gold-07, gold-35 and gold-43; no adoption |
 | Concrete worked example per intent | Applied | E2 and E2b. Examples are copied by the model (gold-02, gold-43); see the examples rows below |
 | Examples get copied; vary leading verb and topic | Tested within bundled E2b | Aggregate scores and failed-intent set unchanged; individual effect not isolated (three changes ran together) |
 | Negative example with a one-line reason | Queued | Inside the E3 contrast pairs (each pair carries a short reason); not repeated as a wording round |
@@ -152,7 +152,7 @@ Status as of 2026-11-15 15:25 CST. Applied = tested in a recorded round; Queued 
 | Never report a synthetic-only score as a gate result | Standing | Every round note |
 | Wrong-room action: room stays a stated constraint | Standing | express_need spec; E3 pair |
 | Over-deterministic pre-processing hurts casual phrasing | Standing | No rewrite rules before classification |
-| Fewer entities and aliases; decompose; newer model; STT quality; reasoning mode | Not applicable or already our design | See section 7 rows |
+| Fewer entities and aliases; decompose; newer model; STT quality; reasoning mode | Not applicable or already our design; these were suggestions in the thread, not demonstrated improvements | See section 7 rows |
 
 Literature pass (Cowork, 2026-11-15, public papers and projects read by URL; none contacted, none reproduced by us; one anecdote or one paper each):
 
