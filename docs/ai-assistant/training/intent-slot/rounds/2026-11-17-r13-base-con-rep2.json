@@ -1,0 +1,71 @@
+{
+  "round": "2026-11-17-r13-base-con-rep2",
+  "model": "cabin-intent-slot-poc2-r9-b",
+  "prompt_sha256": "15a94e07fcfe04f936ded4643ea73b8a0a2da96739c18464566873d66b8f1254",
+  "gold_sha256": "baac968c9b2fffccd321b312d1a792f83d1c0aa154eca65b2e71cd51ab2d1d50",
+  "schema_sha256": "59f63b920a66d85fb20a08d66d31b2bbc3268dea871e691debfdb50842ca15dd",
+  "fixtures": 16,
+  "valid_output_rate": 1.0,
+  "intent_accuracy": 0.6875,
+  "slot_micro_f1": 0.4666666666666667,
+  "critical_fixture_failures": 5,
+  "per_intent": {
+    "answer_question": {
+      "correct": 2,
+      "total": 2
+    },
+    "clarify": {
+      "correct": 0,
+      "total": 5
+    },
+    "express_need": {
+      "correct": 1,
+      "total": 1
+    },
+    "get_device_state": {
+      "correct": 2,
+      "total": 2
+    },
+    "set_device_attribute": {
+      "correct": 1,
+      "total": 1
+    },
+    "set_device_state": {
+      "correct": 5,
+      "total": 5
+    }
+  },
+  "confusions": {
+    "clarify->set_device_state": 2,
+    "clarify->answer_question": 2,
+    "clarify->set_device_attribute": 1
+  },
+  "failed": {
+    "e3-02": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "e3-04": {
+      "want": "clarify",
+      "got": "set_device_attribute",
+      "critical": true
+    },
+    "e3-06": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "e3-10": {
+      "want": "clarify",
+      "got": "answer_question",
+      "critical": true
+    },
+    "e3-11": {
+      "want": "clarify",
+      "got": "answer_question",
+      "critical": true
+    }
+  },
+  "released": false
+}

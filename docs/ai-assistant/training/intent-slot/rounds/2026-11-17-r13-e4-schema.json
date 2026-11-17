@@ -1,0 +1,1631 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "intent": {
+          "enum": [
+            "get_device_state",
+            "set_device_state",
+            "set_device_attribute",
+            "unsupported"
+          ],
+          "description": "The classification of the request, chosen by applying the ordered checks in the system prompt."
+        },
+        "slots": {
+          "type": "object",
+          "properties": {
+            "device_name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Semantic device name as the person said it, never an entity id or topic."
+            },
+            "location": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Room name as the person said it."
+            },
+            "site": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Site name when the request or selected card names one."
+            },
+            "state": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Requested on or off state for a set_device_state command."
+            },
+            "attribute_type": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The attribute being changed or read, such as brightness or temperature."
+            },
+            "attribute_value": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The value for the attribute, copied from the request as a string."
+            },
+            "unit": {
+              "type": "string",
+              "enum": [
+                "C",
+                "F",
+                "K",
+                "percent",
+                "lux",
+                "seconds",
+                "minutes",
+                "hours"
+              ],
+              "description": "Include a unit only when the request itself states one."
+            }
+          },
+          "additionalProperties": false,
+          "description": "Values copied or conservatively normalized from the request. Only the listed keys are allowed."
+        },
+        "requires_confirmation": {
+          "type": "boolean",
+          "description": "True for any mutation proposal, automation proposal or expressed need."
+        },
+        "clarification": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "description": "One short question naming only what is missing or ambiguous, or null when nothing needs clarifying."
+        },
+        "automation": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "trigger": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "target": {
+                          "type": "object",
+                          "properties": {
+                            "device_name": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Semantic device name as the person said it, never an entity id or topic."
+                            },
+                            "location": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Room name as the person said it."
+                            },
+                            "site": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Site name when the request or selected card names one."
+                            }
+                          },
+                          "required": [
+                            "device_name",
+                            "location",
+                            "site"
+                          ],
+                          "additionalProperties": false,
+                          "description": "Semantic device, room and site of the thing referred to; never a live identity."
+                        },
+                        "attribute": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "The attribute or state name being watched or set."
+                        },
+                        "operator": {
+                          "enum": [
+                            "eq",
+                            "lt",
+                            "gt"
+                          ],
+                          "description": "How the attribute value is compared with the trigger value."
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "The value compared with or set, as a string."
+                        },
+                        "unit": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "Include a unit only when the request itself states one."
+                        }
+                      },
+                      "required": [
+                        "target",
+                        "attribute",
+                        "operator",
+                        "value",
+                        "unit"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "time_once",
+                          "description": "Which trigger shape this is."
+                        },
+                        "at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "description": "The one time the automation runs, as an ISO datetime with offset."
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "at"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "time_recurring",
+                          "description": "Which trigger shape this is."
+                        },
+                        "start_time": {
+                          "type": "string",
+                          "format": "date-time",
+                          "description": "When a recurring schedule starts, as an ISO datetime with offset."
+                        },
+                        "rrule": {
+                          "type": "string",
+                          "minLength": 1,
+                          "pattern": "^FREQ=[A-Z]+(;(COUNT|INTERVAL|BYDAY|BYMONTH|BYMONTHDAY|BYSETPOS|BYYEARDAY|BYWEEKNO|BYHOUR|BYMINUTE|BYSECOND|WKST)=[A-Za-z0-9,+-]+|;UNTIL=[0-9]{4}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]Z)*$",
+                          "description": "An RFC 5545 recurrence rule value for a recurring schedule."
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "start_time",
+                        "rrule"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "state_changes_to",
+                          "description": "Which trigger shape this is."
+                        },
+                        "target": {
+                          "type": "object",
+                          "properties": {
+                            "device_name": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Semantic device name as the person said it, never an entity id or topic."
+                            },
+                            "location": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Room name as the person said it."
+                            },
+                            "site": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Site name when the request or selected card names one."
+                            }
+                          },
+                          "required": [
+                            "device_name",
+                            "location",
+                            "site"
+                          ],
+                          "additionalProperties": false,
+                          "description": "Semantic device, room and site of the thing referred to; never a live identity."
+                        },
+                        "attribute": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "The attribute or state name being watched or set."
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "The value compared with or set, as a string."
+                        },
+                        "for_seconds": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "Optional number of seconds the state must hold before the trigger fires."
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "target",
+                        "attribute",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ],
+                  "description": "The condition or time that starts the automation, in one of the allowed trigger shapes."
+                },
+                "conditions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "target": {
+                        "type": "object",
+                        "properties": {
+                          "device_name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Semantic device name as the person said it, never an entity id or topic."
+                          },
+                          "location": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Room name as the person said it."
+                          },
+                          "site": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Site name when the request or selected card names one."
+                          }
+                        },
+                        "required": [
+                          "device_name",
+                          "location",
+                          "site"
+                        ],
+                        "additionalProperties": false,
+                        "description": "Semantic device, room and site of the thing referred to; never a live identity."
+                      },
+                      "attribute": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "The attribute or state name being watched or set."
+                      },
+                      "operator": {
+                        "enum": [
+                          "eq",
+                          "lt",
+                          "gt"
+                        ],
+                        "description": "How the attribute value is compared with the trigger value."
+                      },
+                      "value": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "The value compared with or set, as a string."
+                      },
+                      "unit": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "Include a unit only when the request itself states one."
+                      }
+                    },
+                    "required": [
+                      "target",
+                      "attribute",
+                      "operator",
+                      "value",
+                      "unit"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "Extra state conditions that must hold, in the same predicate shape as a trigger."
+                },
+                "actions": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 10,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "target": {
+                        "type": "object",
+                        "properties": {
+                          "device_name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Semantic device name as the person said it, never an entity id or topic."
+                          },
+                          "location": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Room name as the person said it."
+                          },
+                          "site": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Site name when the request or selected card names one."
+                          }
+                        },
+                        "required": [
+                          "device_name",
+                          "location",
+                          "site"
+                        ],
+                        "additionalProperties": false,
+                        "description": "Semantic device, room and site of the thing referred to; never a live identity."
+                      },
+                      "operation": {
+                        "enum": [
+                          "on",
+                          "off",
+                          "set"
+                        ],
+                        "description": "Whether the action turns the target on, off, or sets an attribute."
+                      },
+                      "attribute": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "The attribute or state name being watched or set."
+                      },
+                      "value": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "The value compared with or set, as a string."
+                      },
+                      "unit": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "Include a unit only when the request itself states one."
+                      },
+                      "delay_seconds": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 86400,
+                        "description": "Seconds to wait before this action runs."
+                      }
+                    },
+                    "required": [
+                      "target",
+                      "operation",
+                      "attribute",
+                      "value",
+                      "unit",
+                      "delay_seconds"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "The semantic actions to take; targets are resolved and authorized by a separate layer."
+                }
+              },
+              "required": [
+                "trigger",
+                "conditions",
+                "actions"
+              ],
+              "additionalProperties": false
+            }
+          ],
+          "description": "A semantic automation plan for propose_automation; null for every other intent."
+        }
+      },
+      "required": [
+        "intent",
+        "slots",
+        "requires_confirmation",
+        "clarification",
+        "automation"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "intent": {
+          "const": "express_need",
+          "description": "The classification of the request, chosen by applying the ordered checks in the system prompt."
+        },
+        "slots": {
+          "type": "object",
+          "properties": {
+            "device_name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Semantic device name as the person said it, never an entity id or topic."
+            },
+            "location": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Room name as the person said it."
+            },
+            "site": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Site name when the request or selected card names one."
+            },
+            "state": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Requested on or off state for a set_device_state command."
+            },
+            "attribute_type": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The attribute being changed or read, such as brightness or temperature."
+            },
+            "attribute_value": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The value for the attribute, copied from the request as a string."
+            },
+            "unit": {
+              "type": "string",
+              "enum": [
+                "C",
+                "F",
+                "K",
+                "percent",
+                "lux",
+                "seconds",
+                "minutes",
+                "hours"
+              ],
+              "description": "Include a unit only when the request itself states one."
+            },
+            "concept": {
+              "enum": [
+                "cold",
+                "hot",
+                "humid",
+                "dark",
+                "light",
+                "arriving",
+                "leaving",
+                "bedtime",
+                "nap",
+                "wake_up",
+                "tv_time"
+              ],
+              "description": "The need concept for an express_need, from the fixed vocabulary."
+            }
+          },
+          "additionalProperties": false,
+          "description": "Values copied or conservatively normalized from the request. Only the listed keys are allowed."
+        },
+        "requires_confirmation": {
+          "type": "boolean",
+          "description": "True for any mutation proposal, automation proposal or expressed need."
+        },
+        "clarification": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "description": "One short question naming only what is missing or ambiguous, or null when nothing needs clarifying."
+        },
+        "automation": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "trigger": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "target": {
+                          "type": "object",
+                          "properties": {
+                            "device_name": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Semantic device name as the person said it, never an entity id or topic."
+                            },
+                            "location": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Room name as the person said it."
+                            },
+                            "site": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Site name when the request or selected card names one."
+                            }
+                          },
+                          "required": [
+                            "device_name",
+                            "location",
+                            "site"
+                          ],
+                          "additionalProperties": false,
+                          "description": "Semantic device, room and site of the thing referred to; never a live identity."
+                        },
+                        "attribute": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "The attribute or state name being watched or set."
+                        },
+                        "operator": {
+                          "enum": [
+                            "eq",
+                            "lt",
+                            "gt"
+                          ],
+                          "description": "How the attribute value is compared with the trigger value."
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "The value compared with or set, as a string."
+                        },
+                        "unit": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "Include a unit only when the request itself states one."
+                        }
+                      },
+                      "required": [
+                        "target",
+                        "attribute",
+                        "operator",
+                        "value",
+                        "unit"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "time_once",
+                          "description": "Which trigger shape this is."
+                        },
+                        "at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "description": "The one time the automation runs, as an ISO datetime with offset."
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "at"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "time_recurring",
+                          "description": "Which trigger shape this is."
+                        },
+                        "start_time": {
+                          "type": "string",
+                          "format": "date-time",
+                          "description": "When a recurring schedule starts, as an ISO datetime with offset."
+                        },
+                        "rrule": {
+                          "type": "string",
+                          "minLength": 1,
+                          "pattern": "^FREQ=[A-Z]+(;(COUNT|INTERVAL|BYDAY|BYMONTH|BYMONTHDAY|BYSETPOS|BYYEARDAY|BYWEEKNO|BYHOUR|BYMINUTE|BYSECOND|WKST)=[A-Za-z0-9,+-]+|;UNTIL=[0-9]{4}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]Z)*$",
+                          "description": "An RFC 5545 recurrence rule value for a recurring schedule."
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "start_time",
+                        "rrule"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "state_changes_to",
+                          "description": "Which trigger shape this is."
+                        },
+                        "target": {
+                          "type": "object",
+                          "properties": {
+                            "device_name": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Semantic device name as the person said it, never an entity id or topic."
+                            },
+                            "location": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Room name as the person said it."
+                            },
+                            "site": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Site name when the request or selected card names one."
+                            }
+                          },
+                          "required": [
+                            "device_name",
+                            "location",
+                            "site"
+                          ],
+                          "additionalProperties": false,
+                          "description": "Semantic device, room and site of the thing referred to; never a live identity."
+                        },
+                        "attribute": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "The attribute or state name being watched or set."
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "The value compared with or set, as a string."
+                        },
+                        "for_seconds": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "Optional number of seconds the state must hold before the trigger fires."
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "target",
+                        "attribute",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ],
+                  "description": "The condition or time that starts the automation, in one of the allowed trigger shapes."
+                },
+                "conditions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "target": {
+                        "type": "object",
+                        "properties": {
+                          "device_name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Semantic device name as the person said it, never an entity id or topic."
+                          },
+                          "location": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Room name as the person said it."
+                          },
+                          "site": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Site name when the request or selected card names one."
+                          }
+                        },
+                        "required": [
+                          "device_name",
+                          "location",
+                          "site"
+                        ],
+                        "additionalProperties": false,
+                        "description": "Semantic device, room and site of the thing referred to; never a live identity."
+                      },
+                      "attribute": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "The attribute or state name being watched or set."
+                      },
+                      "operator": {
+                        "enum": [
+                          "eq",
+                          "lt",
+                          "gt"
+                        ],
+                        "description": "How the attribute value is compared with the trigger value."
+                      },
+                      "value": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "The value compared with or set, as a string."
+                      },
+                      "unit": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "Include a unit only when the request itself states one."
+                      }
+                    },
+                    "required": [
+                      "target",
+                      "attribute",
+                      "operator",
+                      "value",
+                      "unit"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "Extra state conditions that must hold, in the same predicate shape as a trigger."
+                },
+                "actions": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 10,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "target": {
+                        "type": "object",
+                        "properties": {
+                          "device_name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Semantic device name as the person said it, never an entity id or topic."
+                          },
+                          "location": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Room name as the person said it."
+                          },
+                          "site": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Site name when the request or selected card names one."
+                          }
+                        },
+                        "required": [
+                          "device_name",
+                          "location",
+                          "site"
+                        ],
+                        "additionalProperties": false,
+                        "description": "Semantic device, room and site of the thing referred to; never a live identity."
+                      },
+                      "operation": {
+                        "enum": [
+                          "on",
+                          "off",
+                          "set"
+                        ],
+                        "description": "Whether the action turns the target on, off, or sets an attribute."
+                      },
+                      "attribute": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "The attribute or state name being watched or set."
+                      },
+                      "value": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "The value compared with or set, as a string."
+                      },
+                      "unit": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "Include a unit only when the request itself states one."
+                      },
+                      "delay_seconds": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 86400,
+                        "description": "Seconds to wait before this action runs."
+                      }
+                    },
+                    "required": [
+                      "target",
+                      "operation",
+                      "attribute",
+                      "value",
+                      "unit",
+                      "delay_seconds"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "The semantic actions to take; targets are resolved and authorized by a separate layer."
+                }
+              },
+              "required": [
+                "trigger",
+                "conditions",
+                "actions"
+              ],
+              "additionalProperties": false
+            }
+          ],
+          "description": "A semantic automation plan for propose_automation; null for every other intent."
+        }
+      },
+      "required": [
+        "intent",
+        "slots",
+        "requires_confirmation",
+        "clarification",
+        "automation"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "intent": {
+          "enum": [
+            "answer_question",
+            "propose_automation"
+          ],
+          "description": "The classification of the request, chosen by applying the ordered checks in the system prompt."
+        },
+        "slots": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false,
+          "description": "Values copied or conservatively normalized from the request. Only the listed keys are allowed."
+        },
+        "requires_confirmation": {
+          "type": "boolean",
+          "description": "True for any mutation proposal, automation proposal or expressed need."
+        },
+        "clarification": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "description": "One short question naming only what is missing or ambiguous, or null when nothing needs clarifying."
+        },
+        "automation": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "trigger": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "target": {
+                          "type": "object",
+                          "properties": {
+                            "device_name": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Semantic device name as the person said it, never an entity id or topic."
+                            },
+                            "location": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Room name as the person said it."
+                            },
+                            "site": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Site name when the request or selected card names one."
+                            }
+                          },
+                          "required": [
+                            "device_name",
+                            "location",
+                            "site"
+                          ],
+                          "additionalProperties": false,
+                          "description": "Semantic device, room and site of the thing referred to; never a live identity."
+                        },
+                        "attribute": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "The attribute or state name being watched or set."
+                        },
+                        "operator": {
+                          "enum": [
+                            "eq",
+                            "lt",
+                            "gt"
+                          ],
+                          "description": "How the attribute value is compared with the trigger value."
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "The value compared with or set, as a string."
+                        },
+                        "unit": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "Include a unit only when the request itself states one."
+                        }
+                      },
+                      "required": [
+                        "target",
+                        "attribute",
+                        "operator",
+                        "value",
+                        "unit"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "time_once",
+                          "description": "Which trigger shape this is."
+                        },
+                        "at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "description": "The one time the automation runs, as an ISO datetime with offset."
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "at"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "time_recurring",
+                          "description": "Which trigger shape this is."
+                        },
+                        "start_time": {
+                          "type": "string",
+                          "format": "date-time",
+                          "description": "When a recurring schedule starts, as an ISO datetime with offset."
+                        },
+                        "rrule": {
+                          "type": "string",
+                          "minLength": 1,
+                          "pattern": "^FREQ=[A-Z]+(;(COUNT|INTERVAL|BYDAY|BYMONTH|BYMONTHDAY|BYSETPOS|BYYEARDAY|BYWEEKNO|BYHOUR|BYMINUTE|BYSECOND|WKST)=[A-Za-z0-9,+-]+|;UNTIL=[0-9]{4}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]Z)*$",
+                          "description": "An RFC 5545 recurrence rule value for a recurring schedule."
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "start_time",
+                        "rrule"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "state_changes_to",
+                          "description": "Which trigger shape this is."
+                        },
+                        "target": {
+                          "type": "object",
+                          "properties": {
+                            "device_name": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Semantic device name as the person said it, never an entity id or topic."
+                            },
+                            "location": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Room name as the person said it."
+                            },
+                            "site": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Site name when the request or selected card names one."
+                            }
+                          },
+                          "required": [
+                            "device_name",
+                            "location",
+                            "site"
+                          ],
+                          "additionalProperties": false,
+                          "description": "Semantic device, room and site of the thing referred to; never a live identity."
+                        },
+                        "attribute": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "The attribute or state name being watched or set."
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "The value compared with or set, as a string."
+                        },
+                        "for_seconds": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "Optional number of seconds the state must hold before the trigger fires."
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "target",
+                        "attribute",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ],
+                  "description": "The condition or time that starts the automation, in one of the allowed trigger shapes."
+                },
+                "conditions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "target": {
+                        "type": "object",
+                        "properties": {
+                          "device_name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Semantic device name as the person said it, never an entity id or topic."
+                          },
+                          "location": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Room name as the person said it."
+                          },
+                          "site": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Site name when the request or selected card names one."
+                          }
+                        },
+                        "required": [
+                          "device_name",
+                          "location",
+                          "site"
+                        ],
+                        "additionalProperties": false,
+                        "description": "Semantic device, room and site of the thing referred to; never a live identity."
+                      },
+                      "attribute": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "The attribute or state name being watched or set."
+                      },
+                      "operator": {
+                        "enum": [
+                          "eq",
+                          "lt",
+                          "gt"
+                        ],
+                        "description": "How the attribute value is compared with the trigger value."
+                      },
+                      "value": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "The value compared with or set, as a string."
+                      },
+                      "unit": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "Include a unit only when the request itself states one."
+                      }
+                    },
+                    "required": [
+                      "target",
+                      "attribute",
+                      "operator",
+                      "value",
+                      "unit"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "Extra state conditions that must hold, in the same predicate shape as a trigger."
+                },
+                "actions": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 10,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "target": {
+                        "type": "object",
+                        "properties": {
+                          "device_name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Semantic device name as the person said it, never an entity id or topic."
+                          },
+                          "location": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Room name as the person said it."
+                          },
+                          "site": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Site name when the request or selected card names one."
+                          }
+                        },
+                        "required": [
+                          "device_name",
+                          "location",
+                          "site"
+                        ],
+                        "additionalProperties": false,
+                        "description": "Semantic device, room and site of the thing referred to; never a live identity."
+                      },
+                      "operation": {
+                        "enum": [
+                          "on",
+                          "off",
+                          "set"
+                        ],
+                        "description": "Whether the action turns the target on, off, or sets an attribute."
+                      },
+                      "attribute": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "The attribute or state name being watched or set."
+                      },
+                      "value": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "The value compared with or set, as a string."
+                      },
+                      "unit": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "Include a unit only when the request itself states one."
+                      },
+                      "delay_seconds": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 86400,
+                        "description": "Seconds to wait before this action runs."
+                      }
+                    },
+                    "required": [
+                      "target",
+                      "operation",
+                      "attribute",
+                      "value",
+                      "unit",
+                      "delay_seconds"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "The semantic actions to take; targets are resolved and authorized by a separate layer."
+                }
+              },
+              "required": [
+                "trigger",
+                "conditions",
+                "actions"
+              ],
+              "additionalProperties": false
+            }
+          ],
+          "description": "A semantic automation plan for propose_automation; null for every other intent."
+        }
+      },
+      "required": [
+        "intent",
+        "slots",
+        "requires_confirmation",
+        "clarification",
+        "automation"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "intent": {
+          "const": "clarify",
+          "description": "The classification of the request, chosen by applying the ordered checks in the system prompt."
+        },
+        "slots": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false,
+          "description": "Values copied or conservatively normalized from the request. Only the listed keys are allowed."
+        },
+        "requires_confirmation": {
+          "const": false,
+          "description": "True for any mutation proposal, automation proposal or expressed need."
+        },
+        "clarification": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "description": "One short question naming only what is missing or ambiguous, or null when nothing needs clarifying."
+        },
+        "automation": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "trigger": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "target": {
+                          "type": "object",
+                          "properties": {
+                            "device_name": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Semantic device name as the person said it, never an entity id or topic."
+                            },
+                            "location": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Room name as the person said it."
+                            },
+                            "site": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Site name when the request or selected card names one."
+                            }
+                          },
+                          "required": [
+                            "device_name",
+                            "location",
+                            "site"
+                          ],
+                          "additionalProperties": false,
+                          "description": "Semantic device, room and site of the thing referred to; never a live identity."
+                        },
+                        "attribute": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "The attribute or state name being watched or set."
+                        },
+                        "operator": {
+                          "enum": [
+                            "eq",
+                            "lt",
+                            "gt"
+                          ],
+                          "description": "How the attribute value is compared with the trigger value."
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "The value compared with or set, as a string."
+                        },
+                        "unit": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "Include a unit only when the request itself states one."
+                        }
+                      },
+                      "required": [
+                        "target",
+                        "attribute",
+                        "operator",
+                        "value",
+                        "unit"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "time_once",
+                          "description": "Which trigger shape this is."
+                        },
+                        "at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "description": "The one time the automation runs, as an ISO datetime with offset."
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "at"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "time_recurring",
+                          "description": "Which trigger shape this is."
+                        },
+                        "start_time": {
+                          "type": "string",
+                          "format": "date-time",
+                          "description": "When a recurring schedule starts, as an ISO datetime with offset."
+                        },
+                        "rrule": {
+                          "type": "string",
+                          "minLength": 1,
+                          "pattern": "^FREQ=[A-Z]+(;(COUNT|INTERVAL|BYDAY|BYMONTH|BYMONTHDAY|BYSETPOS|BYYEARDAY|BYWEEKNO|BYHOUR|BYMINUTE|BYSECOND|WKST)=[A-Za-z0-9,+-]+|;UNTIL=[0-9]{4}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]Z)*$",
+                          "description": "An RFC 5545 recurrence rule value for a recurring schedule."
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "start_time",
+                        "rrule"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "state_changes_to",
+                          "description": "Which trigger shape this is."
+                        },
+                        "target": {
+                          "type": "object",
+                          "properties": {
+                            "device_name": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Semantic device name as the person said it, never an entity id or topic."
+                            },
+                            "location": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Room name as the person said it."
+                            },
+                            "site": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Site name when the request or selected card names one."
+                            }
+                          },
+                          "required": [
+                            "device_name",
+                            "location",
+                            "site"
+                          ],
+                          "additionalProperties": false,
+                          "description": "Semantic device, room and site of the thing referred to; never a live identity."
+                        },
+                        "attribute": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "The attribute or state name being watched or set."
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "The value compared with or set, as a string."
+                        },
+                        "for_seconds": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "Optional number of seconds the state must hold before the trigger fires."
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "target",
+                        "attribute",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ],
+                  "description": "The condition or time that starts the automation, in one of the allowed trigger shapes."
+                },
+                "conditions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "target": {
+                        "type": "object",
+                        "properties": {
+                          "device_name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Semantic device name as the person said it, never an entity id or topic."
+                          },
+                          "location": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Room name as the person said it."
+                          },
+                          "site": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Site name when the request or selected card names one."
+                          }
+                        },
+                        "required": [
+                          "device_name",
+                          "location",
+                          "site"
+                        ],
+                        "additionalProperties": false,
+                        "description": "Semantic device, room and site of the thing referred to; never a live identity."
+                      },
+                      "attribute": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "The attribute or state name being watched or set."
+                      },
+                      "operator": {
+                        "enum": [
+                          "eq",
+                          "lt",
+                          "gt"
+                        ],
+                        "description": "How the attribute value is compared with the trigger value."
+                      },
+                      "value": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "The value compared with or set, as a string."
+                      },
+                      "unit": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "Include a unit only when the request itself states one."
+                      }
+                    },
+                    "required": [
+                      "target",
+                      "attribute",
+                      "operator",
+                      "value",
+                      "unit"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "Extra state conditions that must hold, in the same predicate shape as a trigger."
+                },
+                "actions": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 10,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "target": {
+                        "type": "object",
+                        "properties": {
+                          "device_name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Semantic device name as the person said it, never an entity id or topic."
+                          },
+                          "location": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Room name as the person said it."
+                          },
+                          "site": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Site name when the request or selected card names one."
+                          }
+                        },
+                        "required": [
+                          "device_name",
+                          "location",
+                          "site"
+                        ],
+                        "additionalProperties": false,
+                        "description": "Semantic device, room and site of the thing referred to; never a live identity."
+                      },
+                      "operation": {
+                        "enum": [
+                          "on",
+                          "off",
+                          "set"
+                        ],
+                        "description": "Whether the action turns the target on, off, or sets an attribute."
+                      },
+                      "attribute": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "The attribute or state name being watched or set."
+                      },
+                      "value": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "The value compared with or set, as a string."
+                      },
+                      "unit": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "Include a unit only when the request itself states one."
+                      },
+                      "delay_seconds": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 86400,
+                        "description": "Seconds to wait before this action runs."
+                      }
+                    },
+                    "required": [
+                      "target",
+                      "operation",
+                      "attribute",
+                      "value",
+                      "unit",
+                      "delay_seconds"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "The semantic actions to take; targets are resolved and authorized by a separate layer."
+                }
+              },
+              "required": [
+                "trigger",
+                "conditions",
+                "actions"
+              ],
+              "additionalProperties": false
+            }
+          ],
+          "description": "A semantic automation plan for propose_automation; null for every other intent."
+        }
+      },
+      "required": [
+        "intent",
+        "slots",
+        "requires_confirmation",
+        "clarification",
+        "automation"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}
