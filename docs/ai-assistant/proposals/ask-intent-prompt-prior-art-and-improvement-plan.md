@@ -69,7 +69,7 @@ Each of P-1 to P-4 needs an ack within 20 minutes of the ACTION (`got it, ETA hh
 | E1, E2 and base repeats | `-rep2`, `-rep3` of each | same as first runs | same (base 0.569, 0.569, 0.581) | same | repeats stable; Hold stands |
 | E1b | 2026-11-15-r11-e1b | 0.816 | 0.5625 | 14 | Fails acceptance (intent below base, critical above); not adopted. Process ruling below |
 | E2b (three changes together) | 2026-11-15-r11-e2b | 0.837 | 0.699 | 12 | Aggregate scores and failed-intent set equal E2 (the clarify-example wording changed, so outputs are not asserted identical on every fixture); not adopted. Process ruling below |
-| Ablation control (r12, final) | 2026-11-16-r12 (round files and note under `training/intent-slot/rounds/`, #466) | 0.857 | 0.615 | 12 | Not a candidate; matched control for the leave-one-example-out ablation, 27 runs (9 arms, 3 runs each), dev gold only. No deletion arm beats the control on intent; overall offline acceptance gates were not passed; no adoption |
+| Ablation control (r12, final) | r12 (round files and note under `training/intent-slot/rounds/`, #466) | 0.857 | 0.615 | 12 | Not a candidate; matched control for the leave-one-example-out ablation, 27 runs (9 arms, 3 runs each), dev gold only. No deletion arm beats the control on intent; overall offline acceptance gates were not passed; no adoption |
 | E3 | #464 (16 candidate rows, 7 critical, Codex CLEAN ef6f853a) | not run | not run | not run | Authored and merged as candidates only. Not scored, not in gold; room rows are vocabulary-policy checks, not proof of nonexistent live inventory; e3-08 and e3-09 quantity checks are routing-only and need separate manual answer review. Admission to gold is Nate's word |
 | E4 |  |  |  |  |  |
 | E5 |  |  |  |  |  |
