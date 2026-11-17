@@ -1,6 +1,6 @@
 # Round r12: leave-one-example-out ablation (2026-11-16)
 
-Work order from #244 (Cowork, 2026-11-15), design in section 7a of [the prompt prior-art plan](../../../proposals/ask-intent-prompt-prior-art-and-improvement-plan.md) (matched control). Run at Nate's word in chat on 2026-11-16 (about 10:17 CST, "Approve both"); Tailscale SSH to the M920q approved by Nate at about 16:00 CST. Prompt-only, the existing evaluator (package files byte-identical to r11's), dev gold only, tag `cabin-intent-slot-poc2-r9-b` unchanged, M920q Ollama loopback, `system.txt` unchanged, recorded with `round_ledger.py`. Not training, not a deploy. A1 stays NOT_MEASURED, `release_eligible` stays false, no gate was met.
+Work order from #244 (Cowork, 2026-11-15), design in section 7a of [the prompt prior-art plan](../../../proposals/ask-intent-prompt-prior-art-and-improvement-plan.md) (matched control). Run at Nate's word in chat on 2026-11-16 (about 10:17 CST, "Approve both"); Tailscale SSH to the M920q approved by Nate at about 16:00 CST. Prompt-only, the existing evaluator (package files byte-identical to r11's), dev gold only, tag `cabin-intent-slot-poc2-r9-b` unchanged, M920q Ollama loopback, `system.txt` unchanged, recorded with `round_ledger.py`. Not training, not a deploy. A1 stays NOT_MEASURED, `release_eligible` stays false, overall offline acceptance gates were not passed.
 
 ## Design
 
