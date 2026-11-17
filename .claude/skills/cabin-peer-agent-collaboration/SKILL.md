@@ -7,7 +7,8 @@ description: >
   the append-only tables every PR edits (backlog.md, discrepancy-log.md,
   decision indexes, test import lists), merging only when GitHub reports the PR
   clean and pinned to the commit you checked, which PRs an agent may merge and
-  which wait for Nate, previewing what a merge does to everyone else's open
+  which wait for Nate, exact-head READY/ACK handoffs when Cowork and Code
+  are both active in the ecosystem, previewing what a merge does to everyone else's open
   PRs, and handling Autofix conflict events. Load this whenever a PR shows
   merge conflicts, an Autofix or ci-monitor event arrives, you are about to
   merge or open a PR while other sessions are active, you are allocating a
@@ -19,6 +20,23 @@ description: >
 Several agent sessions (Claude Code on two machines, Codex, Cowork) open and merge PRs here at the same time. Almost every PR appends to the same tables (`docs/governance/backlog.md`, `discrepancy-log.md`, the decisions index, the import list in `ui/src/App.test.jsx`, the env-var table in `CLAUDE.md`), so conflicts are normal, not a sign something went wrong. On 2026-10-12 a single sweep over one agent's PRs found four of them conflicting after other sessions merged; the repair is mechanical. The goal of this skill is to make that repair safe, quick, and invisible to the other agents.
 
 This skill extends `fotc-git-and-host-routing` (the freshness rule: clean tree, `main` equals `origin/main`, branch from that `main`; which machine does which work). That skill lives in Cowork's plugin store, outside git, so it cannot be edited here; if it is missing in your session, the freshness rule is restated in step 0 below. Cowork or Nate: adopting a pointer to this file from that skill would close the loop.
+
+## Active Cowork and Code collaboration cycles
+
+When Cowork and Code are known to be active in the same ecosystem, including alongside Codex, load this skill AND `fotc-peer-merge-sequencing` at the start of the collaboration cycle. Do not wait for a conflict, a merge command, or another explicit skill request. Known presence can come from Nate, current #244 handoffs, or session inventory. Presence triggers coordination, not authority to change a peer's branch or merge.
+
+Use #244 for ownership and handoffs, and the PR for its verdict. Default to event-driven **READY -> ACK -> verdict -> merge**, bound to the full head SHA:
+
+1. Author posts `READY #<PR> <full head SHA>`, changed files, checks and remaining gates.
+2. Reviewer reads the current remote head and posts `ACK #<PR> <same full SHA>` before reviewing. A queued older READY is superseded if the head moved; request or acknowledge the new READY instead of reviewing stale work.
+3. Reviewer posts `CLEAN <full SHA>` or `HOLD <full SHA>` with all known actionable findings together. Any push, including a docs-only delta or merge from main, needs a new READY/ACK and an exact-head delta verdict; do not carry CLEAN forward silently.
+4. The named merge owner rechecks the remote head against that verdict, queue position, checks, named holds and Nate's applicable authority, then performs a pinned merge under `fotc-peer-merge-sequencing`. ACK and CLEAN do not grant merge, deploy or training permission.
+
+Do not maintain scheduled polling merely because a collaboration cycle is active. A heartbeat requires Nate's current request; if he replaces it with READY/ACK, stop the timer. Event-driven handoffs do not imply agents receive GitHub notifications or wake automatically: report that limitation when relevant and continue when notified or prompted. Do not claim another agent's timer was changed.
+
+Count repair/review returns per PR. If the loop bounces **more than twice** (a third return), revisit the process: reconcile all outstanding findings and ownership into one bounded repair, agree the next exact head and acceptance checks, then resume review. Avoid another isolated wording round or restarting broad tests without a new reason. Do not waive genuine findings to reduce the count.
+
+Record branch ownership changes on #244 before touching the branch; inspect the remote head again before pushing. Silence is unknown, not agreement. Preserve isolated checkouts, no force-push, independent review, and all existing merge gates.
 
 ## 0. Before you touch any branch
 
