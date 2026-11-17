@@ -74,8 +74,8 @@ Rules for any public piece: nothing from the insurance claim, no secrets, hostna
 
 ## 6. Open items
 
-1. **Licence scan (Code).** From inside the real environment: read `docker inspect` image labels on the M920q, run a Node licence checker over `ui` and `family-hub`, and run an offline Maven licence report for `backend`. Post counts and any non-permissive licence on #244; update section 2 rows from `unverified` to `verified` with the date.
-2. **Pin `ui/package.json`.** Five dependencies use `latest`. Pin exact versions so builds repeat and licence changes are visible. Small docs-and-config PR for Code.
+1. **Licence scan (Code): done for Node, Maven and image labels, see [LICENCE_SCAN_2026-11-17.md](LICENCE_SCAN_2026-11-17.md).** Remaining: Open WebUI (label says NOASSERTION) and Prometheus are running but have no register row; ten images carry no licence label.
+2. **Pin `ui/package.json`: done.** The five `latest` dependencies are pinned to the lockfile's resolved versions.
 3. **TimescaleDB.** Read the second licence file and record which features are Apache-2.0 and which are not.
 4. **Blinkbridge** upstream and licence; **home-llm** repository licence; **Home Assistant, Tailscale and Cloudflare** trademark terms.
 5. **Llama distribution question.** Nate decides whether to take the question to counsel before any public release.
@@ -83,3 +83,4 @@ Rules for any public piece: nothing from the insurance claim, no secrets, hostna
 ## 7. Change log
 
 - 2026-11-15 (Cowork): created. Verified eight project licences and the Llama 3.2 terms; carried fonts, dataset register and prior-art rows; listed open items.
+- 2026-11-17 (Code): licence scan recorded in `LICENCE_SCAN_2026-11-17.md` (ui 146 packages, family-hub 2, backend 59 runtime jars, M920q image labels); five `latest` UI dependencies pinned. Open items 1 and 2 updated. The rows for React, Vite, lucide-react and Spring Boot below are still labelled unverified: metadata now agrees with the beliefs but no licence file was read.
