@@ -28,19 +28,20 @@ public class JdbcAlertAcknowledgmentStore {
               acknowledged_by  TEXT,
               acknowledged_at  TIMESTAMPTZ NOT NULL DEFAULT now()
             )""");
+        jdbc.execute("ALTER TABLE alert_acknowledgment ADD COLUMN IF NOT EXISTS acknowledged_severity TEXT");
     }
 
     public void save(AlertAcknowledgment ack) {
         jdbc.update("""
-            INSERT INTO alert_acknowledgment (alert_key, mode, snoozed_until, acknowledged_by, acknowledged_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO alert_acknowledgment (alert_key, mode, snoozed_until, acknowledged_by, acknowledged_at, acknowledged_severity)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT (alert_key) DO UPDATE SET
               mode = EXCLUDED.mode, snoozed_until = EXCLUDED.snoozed_until,
-              acknowledged_by = EXCLUDED.acknowledged_by, acknowledged_at = EXCLUDED.acknowledged_at
+              acknowledged_by = EXCLUDED.acknowledged_by, acknowledged_at = EXCLUDED.acknowledged_at, acknowledged_severity = EXCLUDED.acknowledged_severity
             """,
             ack.alertKey(), ack.mode(),
             ack.snoozedUntil() == null ? null : Timestamp.from(ack.snoozedUntil()),
-            ack.acknowledgedBy(), Timestamp.from(ack.acknowledgedAt()));
+            ack.acknowledgedBy(), Timestamp.from(ack.acknowledgedAt()), ack.acknowledgedSeverity());
     }
 
     public void clear(String alertKey) {
@@ -67,12 +68,12 @@ public class JdbcAlertAcknowledgmentStore {
                     until.toInstant(), until.toInstant()));
             });
         return jdbc.query(
-            "SELECT alert_key, mode, snoozed_until, acknowledged_by, acknowledged_at FROM alert_acknowledgment",
+            "SELECT alert_key, mode, snoozed_until, acknowledged_by, acknowledged_at, acknowledged_severity FROM alert_acknowledgment",
             (rs, i) -> new AlertAcknowledgment(
                 rs.getString("alert_key"),
                 rs.getString("mode"),
                 rs.getTimestamp("snoozed_until") == null ? null : rs.getTimestamp("snoozed_until").toInstant(),
                 rs.getString("acknowledged_by"),
-                rs.getTimestamp("acknowledged_at").toInstant()));
+                rs.getTimestamp("acknowledged_at").toInstant(), rs.getString("acknowledged_severity")));
     }
 }

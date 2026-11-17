@@ -1,7 +1,7 @@
 name: Cabin UI PR checks
 on:
   pull_request:
-    paths: ['cabin-orchestration-platform/ui/**', '.github/workflows/kiosk-cabin-ui.yml']
+    paths: ['cabin-orchestration-platform/contracts/**', 'cabin-orchestration-platform/ui/**', '.github/workflows/kiosk-cabin-ui.yml']
 permissions:
   contents: read
 jobs:

@@ -37,6 +37,11 @@ class WebConfigTest {
         assertThat(gated("/api/ha/services")).isTrue();
     }
 
+    @Test
+    void statusCheckFeedIsCoveredByAuthenticationInterceptor() {
+        assertThat(gated("/api/events/status-checks")).isTrue();
+    }
+
     // D14: device reads stay open for glanceable/kiosk use. Since W-31
     // /api/devices/** is in the interceptor's pattern list so its writes are
     // gated, and reads stay open through GoogleAuthInterceptor's own GET
