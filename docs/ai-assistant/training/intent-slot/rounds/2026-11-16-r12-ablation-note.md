@@ -49,8 +49,8 @@ For reference, the unrevised baseline in r10 scored intent 0.837, F1 0.569, crit
 - Every deletion changes at least one fixture, so no example is demonstrably inert on this set. Fixtures that move with deletions: gold-16 (del6, del7, del8), gold-48 (del2, del3, del5), gold-08 (del1, del4) and gold-38 (del4, del6).
 - Deleting an example never cleanly helps: del2 and del7 each fix one fixture and break another; the rest only break fixtures.
 - These are associations on 49 rows with a 3 B model, one deletion at a time. They support the plan's lesson that examples act as binding precedent (the surface of the nearest example can carry over to a fixture), but they do not show why, and the near-miss pairs in the E3 set are the right test for it. Verbatim copying was not checked.
-- The temperature is 0, so the three runs are repeats of one deterministic process, not independent samples; they show that the host and evaluator are stable, not that the effects would hold on other fixtures.
+- Temperature 0 did not make the runs bit-identical: slot F1 differed between run 1 and runs 2 and 3 for del2 and del3 while their failed sets, intent and critical counts did not, so the process is not shown to be fully deterministic and no host-stability claim is made. The three runs are repeats of the same fixtures, not independent samples. They show that the intent and failed-fixture verdicts repeated here; they do not show that the effects would hold on other fixtures.
 
 ## Not claimed
 
-No candidate is adopted. Nothing here is a gate result, an A1 measurement or evidence about the served model beyond this tag and this set. No E4 or E5 result is implied.
+No candidate is adopted, and nothing here is an acceptance of any prompt: these are offline development observations on the 49 dev rows only. Nothing here is a gate result, an A1 measurement or evidence about the served model beyond this tag and this set. No E4 or E5 result is implied.
