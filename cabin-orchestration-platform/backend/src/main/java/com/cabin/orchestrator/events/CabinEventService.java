@@ -94,6 +94,19 @@ public class CabinEventService implements DeviceEventLookup {
             event.eventType(), event.severity(), toJson(event.payload()));
     }
 
+    /** Complete status-check window, shared by the display and suppression policy.
+     * A display page limit must never remove a critical condition. */
+    public List<CabinEvent> statusCheckEvents(Instant since) {
+        return jdbc.queryForList("""
+            SELECT * FROM cabin_event
+            WHERE time >= ? AND (starts_with(event_type, 'AUTOMATION_ALERT')
+                OR starts_with(event_type, 'WORKFLOW_ACTION')
+                OR starts_with(event_type, 'WORKFLOW_UNCONFIRMED')
+                OR starts_with(event_type, 'STORAGE_'))
+            ORDER BY time DESC, event_id
+            """, java.sql.Timestamp.from(since)).stream().map(this::fromRow).toList();
+    }
+
     /** Most recent events, newest first, optionally filtered by camera/device and a lookback window. */
     public List<CabinEvent> recent(String deviceId, int limit, Instant since) {
         return recent(deviceId, limit, 0, since, null);

@@ -9175,13 +9175,20 @@ elements:
       which normalizes and merges two independently-fetched sources: every
       active_alert_condition visible for the current location, and every
       automation_alert_see_think_act event from the last 24h
-      (useAutomationAlerts, GET /api/events?eventTypePrefix=
-      AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED&limit=20).
+      (useAutomationAlerts, authenticated GET /api/events/status-checks,
+      including AUTOMATION_ALERT, WORKFLOW_ACTION, WORKFLOW_UNCONFIRMED and
+      STORAGE_ prefixes without a display-page limit).
     transformation: >
       active_alert_condition[] --normalizeDeviceAlert()--> {kind:"device",...}
       automation_alert_see_think_act[] --normalizeAutomationAlert()--> {kind:"automation",...}
       both --sort by severity (CRITICAL first) then recency--> ui_status_check_item[]
       Pure function, App.jsx; no server-side persistence of the merged shape.
+      Groups retain their highest severity. Suppression uses the backend's
+      acknowledgedSeverity snapshot: CRITICAL permits only an explicit critical
+      snooze of at most one hour, never Ignore. WARN and legacy acknowledgments
+      cannot hide a critical escalation. WARN duration choices are unchanged.
+      Both event and acknowledgment feeds refresh every 30 seconds and on focus
+      or reconnect; cached acknowledgments also obey expiry and severity checks.
     rendering:
       semantic: "One thing that needs your attention -- a device that's gone quiet, or a decision the automation engine made"
       systems: "Status Checks list (StatusChecksCard), Rules & Alerts panel"

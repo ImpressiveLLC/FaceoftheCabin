@@ -56,8 +56,40 @@ class AlertControllerTest {
         jdbc.execute("DROP TABLE IF EXISTS cabin_event");
         jdbc.execute("DROP TABLE IF EXISTS device_reporting_relationship");
         CabinEventService events = new CabinEventService(jdbc);
-        controller = new AlertController(mock(ActiveAlertService.class), mock(AutomationRuleService.class), store,
-            new AlertHistoryService(historyStore, events));
+        ActiveAlertService active = mock(ActiveAlertService.class);
+        org.mockito.Mockito.when(active.snapshot()).thenReturn(
+            new com.cabin.orchestrator.alerts.ActiveAlertsSnapshot(Instant.now(), List.of(), java.util.Map.of()));
+        controller = new AlertController(active, mock(AutomationRuleService.class), store,
+            new AlertHistoryService(historyStore, events), new com.cabin.orchestrator.alerts.AlertAcknowledgmentPolicy(active, events));
+    }
+
+    @Test
+    void addingSeverityMetadataPreservesExistingAcknowledgments() {
+        JdbcTemplate jdbc = new JdbcTemplate(new SimpleDriverDataSource(
+            new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword()));
+        jdbc.execute("ALTER TABLE alert_acknowledgment DROP COLUMN acknowledged_severity");
+        jdbc.update("INSERT INTO alert_acknowledgment (alert_key, mode, acknowledged_by) VALUES (?, ?, ?)",
+            "device:legacy:alarm", "IGNORED", "user");
+        var migrated = new JdbcAlertAcknowledgmentStore(jdbc, historyStore);
+        var legacy = migrated.activeAcknowledgments().getFirst();
+        assertEquals("device:legacy:alarm", legacy.alertKey());
+        assertEquals("IGNORED", legacy.mode());
+        assertNull(legacy.acknowledgedSeverity());
+        // Constructor migration is idempotent on the next application start.
+        assertEquals(1, new JdbcAlertAcknowledgmentStore(jdbc, historyStore).activeAcknowledgments().size());
+    }
+
+    @Test
+    void severityMetadataRoundTripsAndLegacyRowsRemainUnknown() {
+        Instant now = Instant.now();
+        store.save(new AlertAcknowledgment("device:critical:alarm", "SNOOZED", now.plusSeconds(1800), "user", now, "CRITICAL"));
+        store.save(new AlertAcknowledgment("device:legacy:alarm", "IGNORED", null, "user", now));
+        var rows = store.activeAcknowledgments();
+        assertEquals("CRITICAL", rows.stream().filter(a -> a.alertKey().equals("device:critical:alarm")).findFirst().orElseThrow().acknowledgedSeverity());
+        assertNull(rows.stream().filter(a -> a.alertKey().equals("device:legacy:alarm")).findFirst().orElseThrow().acknowledgedSeverity());
+        // Upsert must replace the server's old severity snapshot too.
+        store.save(new AlertAcknowledgment("device:critical:alarm", "IGNORED", null, "user", now, "WARN"));
+        assertEquals("WARN", store.activeAcknowledgments().stream().filter(a -> a.alertKey().equals("device:critical:alarm")).findFirst().orElseThrow().acknowledgedSeverity());
     }
 
     private MockHttpServletRequest authedRequest(String email) {

@@ -4,6 +4,7 @@ import com.cabin.orchestrator.alerts.AcknowledgeAlertRequest;
 import com.cabin.orchestrator.alerts.ActiveAlertService;
 import com.cabin.orchestrator.alerts.ActiveAlertsSnapshot;
 import com.cabin.orchestrator.alerts.AlertAcknowledgment;
+import com.cabin.orchestrator.alerts.AlertAcknowledgmentPolicy;
 import com.cabin.orchestrator.alerts.AlertHistoryEntry;
 import com.cabin.orchestrator.alerts.AlertHistoryService;
 import com.cabin.orchestrator.alerts.JdbcAlertAcknowledgmentStore;
@@ -39,13 +40,15 @@ public class AlertController {
     private final AutomationRuleService automationRules;
     private final JdbcAlertAcknowledgmentStore acknowledgments;
     private final AlertHistoryService history;
+    private final AlertAcknowledgmentPolicy policy;
 
     public AlertController(ActiveAlertService activeAlerts, AutomationRuleService automationRules,
-                            JdbcAlertAcknowledgmentStore acknowledgments, AlertHistoryService history) {
+                            JdbcAlertAcknowledgmentStore acknowledgments, AlertHistoryService history, AlertAcknowledgmentPolicy policy) {
         this.activeAlerts = activeAlerts;
         this.automationRules = automationRules;
         this.acknowledgments = acknowledgments;
         this.history = history;
+        this.policy = policy;
     }
 
     /** Current conditions only; historical automation decisions remain under /api/events. */
@@ -71,7 +74,12 @@ public class AlertController {
      */
     @GetMapping("/acknowledgments")
     public List<AlertAcknowledgment> acknowledgments() {
-        return acknowledgments.activeAcknowledgments();
+        List<AlertAcknowledgment> active = acknowledgments.activeAcknowledgments();
+        if (active.isEmpty()) return active;
+        Instant now = Instant.now();
+        Map<String, String> severities = policy.currentSeverities(now);
+        return active.stream()
+            .filter(ack -> policy.effective(ack, severities.get(ack.alertKey()), now)).toList();
     }
 
     /** Snooze or ignore an alert. Google-token gated (see WebConfig) -- an anonymous caller must never be able to silence a safety-relevant alert. */
@@ -91,7 +99,13 @@ public class AlertController {
         }
         String actor = actorEmail(request);
         Instant now = Instant.now();
-        acknowledgments.save(new AlertAcknowledgment(body.alertKey(), body.mode(), body.snoozedUntil(), actor, now));
+        String severity = policy.currentSeverities(now).get(body.alertKey());
+        if ("CRITICAL".equalsIgnoreCase(severity) && !"CRITICAL".equalsIgnoreCase(body.expectedSeverity())) {
+            return ResponseEntity.status(409).body(Map.of("error", "Alert is CRITICAL; refresh and explicitly snooze the critical alert"));
+        }
+        String rejection = policy.rejection(severity, body.mode(), body.snoozedUntil(), now);
+        if (rejection != null) return ResponseEntity.badRequest().body(Map.of("error", rejection));
+        acknowledgments.save(new AlertAcknowledgment(body.alertKey(), body.mode(), body.snoozedUntil(), actor, now, severity));
         history.recordAcknowledgmentAction(body.alertKey(), body.mode(), actor, body.snoozedUntil(), now);
         return ResponseEntity.ok(Map.of("ok", true));
     }

@@ -59,6 +59,20 @@ class CabinEventServiceTest {
     }
 
     @Test
+    void statusChecksRetainCriticalBeyondDisplayPageAndMatchLiteralPrefixes() {
+        Instant now = Instant.now();
+        save(service, "critical", "sensor", "AUTOMATION_ALERT", "CRITICAL", now.minusSeconds(600));
+        for (int i = 0; i < 25; i++)
+            save(service, "warn-" + i, "sensor", "WORKFLOW_ACTION", "WARN", now.minusSeconds(i));
+        save(service, "expired", "sensor", "AUTOMATION_ALERT", "CRITICAL", now.minusSeconds(86401));
+        save(service, "not-prefix", "sensor", "STORAGEXTHRESHOLD", "CRITICAL", now);
+        save(service, "storage", "sensor", "STORAGE_THRESHOLD", "WARN", now);
+        assertThat(service.statusCheckEvents(now.minusSeconds(86400)))
+            .hasSize(27).extracting(CabinEvent::eventId)
+            .contains("critical", "storage").doesNotContain("expired", "not-prefix", "evt-1");
+    }
+
+    @Test
     void withNoFilterReturnsEverything() {
         List<CabinEvent> all = service.recent(null, 20, 0, Instant.now().minusSeconds(60), null);
         assertThat(all).hasSize(5);

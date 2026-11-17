@@ -7898,91 +7898,111 @@ export function deviceConditionSteps(item) {
 // 94% for weeks with nothing saying so). Their payload carries the same see/think/act text.
 // sourceId("storage-hdd") in StorageMonitorService: the cold-tier disk alert.
 export const STORAGE_HDD_SOURCE = "storage-storage-hdd";
-const AUTOMATION_ALERT_EVENT_PREFIXES = "AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED,STORAGE_";
+// Physical locations can share one backend (Home collector -> Cabin).
+export function statusCheckApiBases(activeLocation = "cabin", locations = LOCATIONS) {
+  const cabin = locations.cabin.apiBase.replace(/\/$/, "");
+  const home = isLocationDeployed(locations.home) ? locations.home.apiBase.replace(/\/$/, "") : cabin;
+  return [...new Set(activeLocation === "both" ? [cabin, home] : [activeLocation === "home" ? home : cabin])];
+}
 
-// authedFetch falls back to plain fetch when no auth prop is passed, so
-// this component's own existing tests (rendered without one) keep
-// working unchanged -- required in production since /api/events now
-// needs a Google token (WebConfig.java, 2026-09-01).
-// 2026-09-18: lifted from RulesPanel's subtree up to root App() (see its
-// call site) so AlertControls' nav banner and StatusChecksCard read the
-// exact same fetched list -- they used to be two independent fetches
-// (this one local to RulesPanel, the banner not fetching this at all),
-// which is exactly why the banner's count and the merged Status Checks
-// count could disagree. Signature now matches useNavAlerts' own
-// (activeLocation, authedFetch) shape instead of an `auth` object, since
-// it's called alongside that hook at the same level. limit raised
-// 5->20 and the old client-side .slice(0,5) removed -- a badge/count
-// consumer needs the real total, not a display-sized page of it; the
-// row list itself now scrolls (see .active-conditions-list) instead of
-// silently truncating the data.
-export function useAutomationAlerts(activeLocation, authedFetch = fetch) { // exported for src/App.test.jsx -- tested directly, not just indirectly through a consumer
-  const [alerts, setAlerts] = useState([]);
+export function statusCheckEventsPath(activeLocation, locations = LOCATIONS) {
+  const collectorFallback = activeLocation === "home" && !isLocationDeployed(locations.home);
+  return `/api/events/status-checks${collectorFallback ? "?location=home" : ""}`;
+}
+
+async function statusCheckResponseRows(response) {
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const rows = await response.json();
+  if (!Array.isArray(rows)) throw new Error("Invalid status-check response");
+  return rows;
+}
+
+export async function fetchStatusCheckEvents(authedFetch, ownerApiBase, activeLocation) {
+  const response = await authedFetch(`${ownerApiBase}${statusCheckEventsPath(activeLocation)}`);
+  if (response.status !== 404) return statusCheckResponseRows(response);
+  // UI and backend deploy independently. Only a missing new route permits this
+  // compatibility read; auth/server failures must not switch endpoints.
+  // Old location pagination truncates at 500 over-fetched records. Deliberately
+  // show all locations during fallback rather than silently lose Home alerts.
+  const rows = [];
+  const prefixes = "AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED,STORAGE_";
+  for (let offset = 0; ; offset += 200) {
+    const page = await statusCheckResponseRows(await authedFetch(
+      `${ownerApiBase}/api/events?eventTypePrefix=${prefixes}&limit=200&offset=${offset}&window=24h`
+    ));
+    rows.push(...page);
+    if (page.length < 200) return rows;
+  }
+}
+
+function useStatusCheckFeed(path, activeLocation, authedFetch) {
+  const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-
+  const generation = useRef(0);
+  const refresh = useCallback(async () => {
+    const current = ++generation.current;
+    setLoading(true);
+    const results = await Promise.all(statusCheckApiBases(activeLocation).map(async ownerApiBase => {
+      try {
+        const list = path === "/api/events/status-checks"
+          ? await fetchStatusCheckEvents(authedFetch, ownerApiBase, activeLocation)
+          : await statusCheckResponseRows(await authedFetch(`${ownerApiBase}${path}`));
+        return { ownerApiBase, rows: list.map(row => ({ ...row, ownerApiBase })) };
+      } catch { return { ownerApiBase, rows: null }; }
+    }));
+    if (generation.current !== current) return;
+    // An outage is not evidence that a known condition cleared. Suppression,
+    // however, must fail open when its current authorization cannot be read.
+    setRows(previous => results.flatMap(result => result.rows ?? (
+      path === "/api/events/status-checks"
+        ? previous.filter(row => row.ownerApiBase === result.ownerApiBase) : []
+    )));
+    setLoading(false);
+  }, [path, activeLocation, authedFetch]);
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    // Same "cabin or both" / "home or both" attempt shape as
-    // refreshWorkflows -- an unrecognized/missing activeLocation falls
-    // back to cabin-only, matching RulesPanel's own LOCATIONS[activeLocation]
-    // || LOCATIONS.cabin default.
-    const loc = activeLocation === "both" ? "both" : (LOCATIONS[activeLocation] ? activeLocation : "cabin");
-    const attempts = [];
-    if (loc === "cabin" || loc === "both") {
-      attempts.push(authedFetch(`${LOCATIONS.cabin.apiBase}/api/events?eventTypePrefix=${AUTOMATION_ALERT_EVENT_PREFIXES}&limit=20&window=24h`)
-        .then(r => r.ok ? r.json() : []).catch(() => []));
-    }
-    if (loc === "home" || loc === "both") {
-      attempts.push(authedFetch(`${LOCATIONS.home.apiBase}/api/events?eventTypePrefix=${AUTOMATION_ALERT_EVENT_PREFIXES}&limit=20&window=24h`)
-        .then(r => r.ok ? r.json() : []).catch(() => []));
-    }
-    Promise.all(attempts)
-      .then(results => {
-        if (cancelled) return;
-        setAlerts(results.flat().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
-      })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeLocation, authedFetch]);
-
-  return { alerts, loading };
+    // Do not retain another location/authentication context's cached events.
+    setRows([]);
+    refresh();
+    const timer = setInterval(refresh, 30_000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
+    return () => {
+      ++generation.current;
+      clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
+    };
+  }, [refresh]);
+  return { rows, loading, refresh };
 }
 
-// 2026-09-18 (user directive): a real, server-persisted way to ignore or
-// snooze a Status Check item -- "give the user the ability to a) ignore
-// for now, b) let me know if it happens again in the next hour/day/week/
-// month." Lifted to root App(), same reasoning as useAutomationAlerts
-// above: AlertControls' nav banner and StatusChecksCard's list both need
-// the same suppressed set, one fetch, one truth. GET is unauthenticated
-// (WebConfig/GoogleAuthInterceptor's isAlertsRead carve-out); the
-// mutating actions below (acknowledgeAlert/clearAcknowledgment) require
-// authedFetch and are only ever called from a signed-in context.
-export function useAlertAcknowledgments(authedFetch = fetch) {
-  const [acknowledgments, setAcknowledgments] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const refresh = useCallback(() => {
-    setLoading(true);
-    return authedFetch(`${LOCATIONS.cabin.apiBase}/api/alerts/acknowledgments`)
-      .then(r => r.ok ? r.json() : [])
-      .then(list => setAcknowledgments(Array.isArray(list) ? list : []))
-      .catch(() => setAcknowledgments([]))
-      .finally(() => setLoading(false));
-  }, [authedFetch]);
-
-  useEffect(() => { refresh(); }, [refresh]);
-
-  return { acknowledgments, loading, refresh };
+export function useAutomationAlerts(activeLocation, authedFetch = fetch) {
+  const { rows, loading } = useStatusCheckFeed("/api/events/status-checks", activeLocation, authedFetch);
+  return { alerts: rows, loading };
 }
+
+export function useAlertAcknowledgments(authedFetch = fetch, activeLocation = "cabin") {
+  const { rows, loading, refresh } = useStatusCheckFeed("/api/alerts/acknowledgments", activeLocation, authedFetch);
+  const [expiryTick, setExpiryTick] = useState(0);
+  useEffect(() => {
+    const next = Math.min(...rows.filter(row => row.mode === "SNOOZED")
+      .map(row => Date.parse(row.snoozedUntil)).filter(until => until > Date.now()));
+    if (!Number.isFinite(next)) return;
+    const timer = setTimeout(() => setExpiryTick(tick => tick + 1), Math.min(2147483647, next - Date.now() + 1));
+    return () => clearTimeout(timer);
+  }, [rows, expiryTick]);
+  return { acknowledgments: rows.filter(row => row.mode !== "SNOOZED" || Date.parse(row.snoozedUntil) > Date.now()), loading, refresh };
+}
+
+const alertOwner = item => (item.ownerApiBase || LOCATIONS.cabin.apiBase).replace(/\/$/, "");
+const alertIdentity = item => JSON.stringify([alertOwner(item), item.alertKey]);
 
 /** POST /api/alerts/acknowledgments. mode is "IGNORED" (no snoozedUntil) or "SNOOZED" (snoozedUntil required, an ISO string). */
-export async function acknowledgeAlert(authedFetch, alertKey, mode, snoozedUntil = null) {
-  const response = await authedFetch(`${LOCATIONS.cabin.apiBase}/api/alerts/acknowledgments`, {
+export async function acknowledgeAlert(authedFetch, alertKey, mode, snoozedUntil = null, expectedSeverity = null, ownerApiBase = LOCATIONS.cabin.apiBase) {
+  const response = await authedFetch(`${ownerApiBase}/api/alerts/acknowledgments`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ alertKey, mode, snoozedUntil }),
+    body: JSON.stringify({ alertKey, mode, snoozedUntil, ...(expectedSeverity ? { expectedSeverity } : {}) }),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
@@ -7991,8 +8011,8 @@ export async function acknowledgeAlert(authedFetch, alertKey, mode, snoozedUntil
 }
 
 /** DELETE /api/alerts/acknowledgments/{alertKey} -- brings the alert back to "new" immediately instead of waiting out a snooze. */
-export async function clearAlertAcknowledgment(authedFetch, alertKey) {
-  const response = await authedFetch(`${LOCATIONS.cabin.apiBase}/api/alerts/acknowledgments/${encodeURIComponent(alertKey)}`, {
+export async function clearAlertAcknowledgment(authedFetch, alertKey, ownerApiBase = LOCATIONS.cabin.apiBase) {
+  const response = await authedFetch(`${ownerApiBase}/api/alerts/acknowledgments/${encodeURIComponent(alertKey)}`, {
     method: "DELETE",
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -8034,6 +8054,7 @@ export function alertRulesTarget(ruleId) {
 
 function normalizeDeviceAlert(alert) {
   return {
+    ownerApiBase: alertOwner(alert),
     kind: "device", id: alert.alertId, alertKey: alert.alertId, severity: alert.severity,
     groupKey: `device|${alert.location}|${alert.condition}|${alert.title}`,
     title: alert.title, detail: alert.detail, sourceDeviceId: alert.sourceDeviceId,
@@ -8045,8 +8066,9 @@ function normalizeDeviceAlert(alert) {
 
 function normalizeAutomationAlert(alert) {
   const { see, think, ruleId } = alert.payload || {};
-  const alertKey = `automation:${ruleId}:${alert.sourceDeviceId || "none"}`;
+  const alertKey = `automation:${ruleId ?? "undefined"}:${alert.sourceDeviceId || "none"}`;
   return {
+    ownerApiBase: alertOwner(alert),
     kind: "automation", id: alert.eventId, alertKey, groupKey: alertKey,
     severity: alert.severity,
     title: see || humanizeRuleId(ruleId), detail: think || "",
@@ -8081,26 +8103,27 @@ function formatAlertTimestamp(ts, withSeconds = false) {
 // original merge shipped. One function, one truth; both consumers just
 // render a different amount of the same array.
 //
-// acknowledgments (default [], so every existing caller/test keeps working
-// unchanged) filters out anything currently IGNORED or SNOOZED-and-not-
-// yet-expired -- GET /api/alerts/acknowledgments already excludes expired
-// snoozes server-side (JdbcAlertAcknowledgmentStore deletes them on read),
-// so this is a plain key-membership filter, no date math client-side.
+// Check cached acknowledgment expiry as well as the server-owned severity floor.
+// Ownership follows the serving endpoint, independently of physical location.
 export function mergeStatusCheckItems(activeAlerts, activeLocation, automationAlerts, acknowledgments = []) {
   const visibleDeviceAlerts = activeLocation === "both"
     ? activeAlerts
     : activeAlerts.filter(alert => alert.location === activeLocation);
-  const modeByKey = new Map(acknowledgments.map(a => [a.alertKey, a.mode]));
-  // Safety floor (2026-10-12): an open-ended "Ignore" must never hide a
-  // CRITICAL condition -- same principle as the collapse floor, collapsing
-  // or silencing for density can't be allowed to hide the exact thing this
-  // dashboard exists to surface. A CRITICAL item stays visible under an
-  // IGNORED row (including ones already in the database from before this
-  // rule); only a time-boxed SNOOZE (UI caps it at 1 hour for CRITICAL) hides it.
+  const ackByKey = new Map(acknowledgments.map(a => [alertIdentity(a), a]));
+  // Repeat the server floor against fresh alerts even if acknowledgment polling lags.
+  // Legacy/unknown or WARN acknowledgments never authorize hiding CRITICAL.
   const isSuppressed = item => {
-    if (!modeByKey.has(item.alertKey)) return false;
-    const mode = modeByKey.get(item.alertKey);
-    return !(mode === "IGNORED" && (item.severity || "").toLowerCase() === "critical");
+    const ack = ackByKey.get(alertIdentity(item));
+    if (!ack) return false;
+    if (ack.mode === "SNOOZED" && !(Date.parse(ack.snoozedUntil) > Date.now())) return false;
+    if (ack.mode !== "SNOOZED" && ack.mode !== "IGNORED") return false;
+    if ((item.severity || "").toUpperCase() !== "CRITICAL") return true;
+    const start = Date.parse(ack.acknowledgedAt);
+    const until = Date.parse(ack.snoozedUntil);
+    const now = Date.now();
+    return ack.mode === "SNOOZED" && (ack.acknowledgedSeverity || "").toUpperCase() === "CRITICAL"
+      && Number.isFinite(start) && Number.isFinite(until) && start <= now
+      && until > now && until > start && until - start <= 60 * 60 * 1000;
   };
   const members = [
     ...visibleDeviceAlerts.map(normalizeDeviceAlert),
@@ -8121,8 +8144,9 @@ export function mergeStatusCheckItems(activeAlerts, activeLocation, automationAl
   // rather than leaving a twin behind to reappear as a "new" alert.
   const byGroup = new Map();
   for (const item of members) {
-    if (!byGroup.has(item.groupKey)) byGroup.set(item.groupKey, []);
-    byGroup.get(item.groupKey).push(item);
+    const groupKey = JSON.stringify([alertOwner(item), item.groupKey]);
+    if (!byGroup.has(groupKey)) byGroup.set(groupKey, []);
+    byGroup.get(groupKey).push(item);
   }
   const grouped = [...byGroup.entries()].map(([groupKey, group]) => {
     const newestFirst = [...group].sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
@@ -8136,6 +8160,10 @@ export function mergeStatusCheckItems(activeAlerts, activeLocation, automationAl
     }
     return {
       ...newestFirst[0],
+      // Recency chooses detail, not the safety level of the remaining group.
+      severity: group.some(member => (member.severity || "").toUpperCase() === "CRITICAL")
+        ? "CRITICAL" : group.some(member => (member.severity || "").toUpperCase() === "WARN")
+          ? "WARN" : newestFirst[0].severity,
       id: groupKey,
       alertKeys: [...new Set(group.map(member => member.alertKey))],
       occurrences,
@@ -8168,18 +8196,19 @@ export function silencedStatusChecks(activeAlerts, automationAlerts, acknowledgm
   if (acknowledgments.length === 0) return [];
   const titleByKey = new Map();
   mergeStatusCheckItems(activeAlerts, "both", automationAlerts, []).forEach(item =>
-    item.alertKeys.forEach(key => titleByKey.set(key, item.title)));
+    item.alertKeys.forEach(key => titleByKey.set(alertIdentity({ ...item, alertKey: key }), item.title)));
   const stillVisible = new Set();
   mergeStatusCheckItems(activeAlerts, "both", automationAlerts, acknowledgments).forEach(item =>
-    item.alertKeys.forEach(key => stillVisible.add(key)));
+    item.alertKeys.forEach(key => stillVisible.add(alertIdentity({ ...item, alertKey: key }))));
   return acknowledgments
-    .filter(ack => !stillVisible.has(ack.alertKey))
+    .filter(ack => (ack.mode !== "SNOOZED" || Date.parse(ack.snoozedUntil) > Date.now()) && !stillVisible.has(alertIdentity(ack)))
     .map(ack => ({
       alertKey: ack.alertKey,
+      ownerApiBase: alertOwner(ack),
       mode: ack.mode,
       snoozedUntil: ack.snoozedUntil,
-      title: titleByKey.get(ack.alertKey) || ack.alertKey,
-      active: titleByKey.has(ack.alertKey),
+      title: titleByKey.get(alertIdentity(ack)) || ack.alertKey,
+      active: titleByKey.has(alertIdentity(ack)),
     }));
 }
 
@@ -8480,26 +8509,26 @@ function StatusChecksCard({ auth }) {
     setActivePanel("RULES_ENGINE");
   };
   const doFetch = auth?.authedFetch || fetch;
-  const ignoreAlert = async (alertKeys) => {
+  const ignoreAlert = async (alertKeys, ownerApiBase) => {
     setAckError(null);
     try {
-      await Promise.all(alertKeys.map(key => acknowledgeAlert(doFetch, key, "IGNORED")));
+      await Promise.all(alertKeys.map(key => acknowledgeAlert(doFetch, key, "IGNORED", null, null, ownerApiBase)));
       refreshAlertAcknowledgments?.();
     } catch (e) { setAckError(e.message); }
   };
-  const snoozeAlert = async (alertKeys, ms) => {
+  const snoozeAlert = async (alertKeys, ms, severity, ownerApiBase) => {
     setAckError(null);
     setSnoozeOpenFor(null);
     try {
       const snoozedUntil = new Date(Date.now() + ms).toISOString();
-      await Promise.all(alertKeys.map(key => acknowledgeAlert(doFetch, key, "SNOOZED", snoozedUntil)));
+      await Promise.all(alertKeys.map(key => acknowledgeAlert(doFetch, key, "SNOOZED", snoozedUntil, severity, ownerApiBase)));
       refreshAlertAcknowledgments?.();
     } catch (e) { setAckError(e.message); }
   };
-  const restoreAlert = async (alertKey) => {
+  const restoreAlert = async (alertKey, ownerApiBase) => {
     setAckError(null);
     try {
-      await clearAlertAcknowledgment(doFetch, alertKey);
+      await clearAlertAcknowledgment(doFetch, alertKey, ownerApiBase);
       refreshAlertAcknowledgments?.();
     } catch (e) { setAckError(e.message); }
   };
@@ -8513,13 +8542,13 @@ function StatusChecksCard({ auth }) {
       {showSilenced && (
         <ul>
           {silenced.map(entry => (
-            <li key={entry.alertKey}>
+            <li key={alertIdentity(entry)}>
               <span className="active-condition-silenced-title">{entry.title}</span>
               <span className="meta-chip">
                 {entry.mode === "SNOOZED" ? `Snoozed until ${formatAlertTimestamp(entry.snoozedUntil)}` : "Ignored"}
               </span>
               {!entry.active && <span className="config-hint">not currently active</span>}
-              <button type="button" className="active-condition-link" onClick={() => restoreAlert(entry.alertKey)}>
+              <button type="button" className="active-condition-link" onClick={() => restoreAlert(entry.alertKey, entry.ownerApiBase)}>
                 Restore
               </button>
             </li>
@@ -8647,7 +8676,7 @@ function StatusChecksCard({ auth }) {
                       {/* No open-ended Ignore for CRITICAL (safety floor, see
                           mergeStatusCheckItems) -- only a short snooze. */}
                       {(item.severity || "").toLowerCase() !== "critical" && (
-                        <button type="button" className="active-condition-link" onClick={() => ignoreAlert(item.alertKeys)}>
+                        <button type="button" className="active-condition-link" onClick={() => ignoreAlert(item.alertKeys, item.ownerApiBase)}>
                           Ignore for now
                         </button>
                       )}
@@ -8660,7 +8689,7 @@ function StatusChecksCard({ auth }) {
                           <div className="active-condition-snooze-menu">
                             {((item.severity || "").toLowerCase() === "critical" ? CRITICAL_SNOOZE_DURATIONS : SNOOZE_DURATIONS).map(d => (
                               <button key={d.label} type="button" className="active-condition-snooze-option"
-                                onClick={() => snoozeAlert(item.alertKeys, d.ms)}>
+                                onClick={() => snoozeAlert(item.alertKeys, d.ms, item.severity, item.ownerApiBase)}>
                                 {d.label}
                               </button>
                             ))}
@@ -9708,7 +9737,7 @@ function useNavAlerts(authedFetch = fetch) {
           location: loc.id,
           generatedAt: snapshot.generatedAt,
           alerts: (Array.isArray(snapshot.alerts) ? snapshot.alerts : [])
-            .map(alert => ({ ...alert, location: alert.location || loc.id })),
+            .map(alert => ({ ...alert, ownerApiBase: loc.apiBase, location: alert.location || loc.id })),
         };
       }));
       const available = results.filter(result => result.status === "fulfilled").map(result => result.value);
@@ -10314,7 +10343,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
   // own comment) so AlertControls' nav banner and StatusChecksCard share
   // one fetch/one truth for the total instead of computing it twice.
   const { alerts: automationAlerts, loading: automationAlertsLoading } = useAutomationAlerts(activeLocation, cameraAuth.authedFetch);
-  const { acknowledgments: alertAcknowledgments, refresh: refreshAlertAcknowledgments } = useAlertAcknowledgments(cameraAuth.authedFetch);
+  const { acknowledgments: alertAcknowledgments, refresh: refreshAlertAcknowledgments } = useAlertAcknowledgments(cameraAuth.authedFetch, "both");
   const alertLevels = navAlertLevelsFor(activeAlerts, activeLocation, automationAlerts, alertAcknowledgments);
   useHubLocations(); // merges GET /api/locations into LOCATIONS; re-renders this tree when it changes
   const { profile: activeProfile, setProfile, options: presenceOptions, autoDerived: presenceAutoDerived, signals: presenceSignals, freshness: presenceFreshness } = usePresence(cameraAuth.authedFetch);
