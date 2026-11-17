@@ -19,6 +19,8 @@ WORKDIR /app
 COPY cabin-orchestration-platform/ui/package.json cabin-orchestration-platform/ui/package-lock.json ./
 RUN npm ci
 COPY cabin-orchestration-platform/ui/. .
+# App.test.jsx shares status-check identity cases with the backend suite.
+COPY cabin-orchestration-platform/contracts/status-check-keys.json /contracts/status-check-keys.json
 COPY family-hub/family-hub.html /family-hub/family-hub.html
 # ThemeSignal.test.jsx checks the bundled fonts in both apps (Signal theme, 2026-10-29).
 COPY family-hub/fonts /family-hub/fonts
