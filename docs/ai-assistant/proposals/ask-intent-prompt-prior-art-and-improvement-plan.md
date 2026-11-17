@@ -69,7 +69,7 @@ Each of P-1 to P-4 needs an ack within 20 minutes of the ACTION (`got it, ETA hh
 | E1, E2 and base repeats | `-rep2`, `-rep3` of each | same as first runs | same (base 0.569, 0.569, 0.581) | same | repeats stable; Hold stands |
 | E1b | 2026-11-15-r11-e1b | 0.816 | 0.5625 | 14 | Fails acceptance (intent below base, critical above); not adopted. Process ruling below |
 | E2b (three changes together) | 2026-11-15-r11-e2b | 0.837 | 0.699 | 12 | Aggregate scores and failed-intent set equal E2 (the clarify-example wording changed, so outputs are not asserted identical on every fixture); not adopted. Process ruling below |
-| Ablation control (r12, PARTIAL) | 2026-11-16-r12 (Code comment 6933053208, 17:54 CST) | 0.857 | 0.615 | 12 | Not a candidate; matched control for the leave-one-example-out ablation, no verdict. Run 1 of 9 arms done, run 2 done for 7 of 9, run 3 pending at 17:54 CST; final record owed by Code, which supersedes this row |
+| Ablation control (r12, PARTIAL) | r12 (Code comment 6933053208, 17:54 CST; round files not yet in git) | 0.857 | 0.615 | 12 | Not a candidate; matched control for the leave-one-example-out ablation, no verdict. Run 1 of 9 arms done, run 2 done for 7 of 9, run 3 pending at 17:54 CST; final record owed by Code, which supersedes this row |
 | E3 |  |  |  |  |  |
 | E4 |  |  |  |  |  |
 | E5 |  |  |  |  |  |
@@ -134,7 +134,7 @@ P4 on the M910 is measured not viable (Code comment 6884429419: about 19 minutes
 
 ## 7a. Lesson application tracker (kept so no lesson is dropped)
 
-Status as of 2026-11-15 15:25 CST. Applied = tested in a recorded round; Queued = assigned to a named round; Not applicable = reason given. Every row needs a status change in a docs PR when it moves.
+Status as of 2026-11-15 15:25 CST, except the leave-one-example-out row, added 2026-11-16 from Code's 17:54 CST partial. Applied = tested in a recorded round; Queued = assigned to a named round; Not applicable = reason given. Every row needs a status change in a docs PR when it moves.
 
 | Lesson | Status | Where applied or why not |
 |---|---|---|
