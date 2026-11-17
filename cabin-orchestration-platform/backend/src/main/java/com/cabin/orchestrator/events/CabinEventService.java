@@ -25,6 +25,10 @@ import java.util.Map;
 @Service
 public class CabinEventService implements DeviceEventLookup {
 
+    private static final String STATUS_CHECK_TYPES = """
+        starts_with(event_type, 'AUTOMATION_ALERT') OR starts_with(event_type, 'WORKFLOW_ACTION')
+        OR starts_with(event_type, 'WORKFLOW_UNCONFIRMED') OR starts_with(event_type, 'STORAGE_')
+        """;
     private final JdbcTemplate jdbc;
     private final DeviceReportingRelationshipRepository reportingRelationshipRepository;
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
@@ -94,17 +98,33 @@ public class CabinEventService implements DeviceEventLookup {
             event.eventType(), event.severity(), toJson(event.payload()));
     }
 
+    /** Suppression reads need severity per key, not every event payload. Unknown
+     * severity is conservatively critical; the shared key fixtures pin JS parity. */
+    public Map<String, String> statusCheckSeverities(Instant since) {
+        Map<String, String> result = new java.util.HashMap<>();
+        jdbc.query("""
+            SELECT 'automation:' || CASE WHEN jsonb_typeof(payload->'ruleId') = 'string'
+                     THEN payload->>'ruleId' ELSE 'undefined' END || ':' ||
+                   COALESCE(NULLIF(device_id, ''), 'none') AS alert_key,
+                   CASE WHEN bool_or(severity IS NULL OR upper(severity) NOT IN ('INFO', 'WARN'))
+                        THEN 'CRITICAL' WHEN bool_or(upper(severity) = 'WARN') THEN 'WARN'
+                        ELSE 'INFO' END AS severity
+            FROM cabin_event
+            WHERE time >= ? AND (%s)
+            GROUP BY alert_key
+            """.formatted(STATUS_CHECK_TYPES), (org.springframework.jdbc.core.RowCallbackHandler) rs ->
+                result.put(rs.getString("alert_key"), rs.getString("severity")), java.sql.Timestamp.from(since));
+        return result;
+    }
+
     /** Complete status-check window, shared by the display and suppression policy.
      * A display page limit must never remove a critical condition. */
     public List<CabinEvent> statusCheckEvents(Instant since) {
         return jdbc.queryForList("""
             SELECT * FROM cabin_event
-            WHERE time >= ? AND (starts_with(event_type, 'AUTOMATION_ALERT')
-                OR starts_with(event_type, 'WORKFLOW_ACTION')
-                OR starts_with(event_type, 'WORKFLOW_UNCONFIRMED')
-                OR starts_with(event_type, 'STORAGE_'))
+            WHERE time >= ? AND (%s)
             ORDER BY time DESC, event_id
-            """, java.sql.Timestamp.from(since)).stream().map(this::fromRow).toList();
+            """.formatted(STATUS_CHECK_TYPES), java.sql.Timestamp.from(since)).stream().map(this::fromRow).toList();
     }
 
     /** Most recent events, newest first, optionally filtered by camera/device and a lookback window. */

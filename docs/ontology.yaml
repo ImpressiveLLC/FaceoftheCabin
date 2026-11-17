@@ -9187,6 +9187,10 @@ elements:
       acknowledgedSeverity snapshot: CRITICAL permits only an explicit critical
       snooze of at most one hour, never Ignore. WARN and legacy acknowledgments
       cannot hide a critical escalation. WARN duration choices are unchanged.
+      Malformed severity is conservatively CRITICAL. Automation keys accept only
+      string rule IDs, normalize missing or invalid IDs to undefined, and share
+      JSON contract fixtures across server and UI tests. Acknowledgment reads use
+      a severity summary rather than loading event payloads.
       Both event and acknowledgment feeds refresh every 30 seconds and on focus
       or reconnect; cached acknowledgments also obey expiry and severity checks.
     rendering:

@@ -21,15 +21,10 @@ public class AlertAcknowledgmentPolicy {
 
     public Map<String, String> currentSeverities(Instant now) {
         Map<String, String> result = new HashMap<>();
-        for (var event : events.statusCheckEvents(now.minus(Duration.ofHours(24)))) {
-            Object rule = event.payload() == null ? null : event.payload().get("ruleId");
-            String device = event.sourceDeviceId();
-            String key = "automation:" + (rule == null ? "undefined" : rule) + ":"
-                + (device == null || device.isEmpty() ? "none" : device);
-            result.merge(key, event.severity(), AlertAcknowledgmentPolicy::highestSeverity);
-        }
+        events.statusCheckSeverities(now.minus(Duration.ofHours(24))).forEach((key, severity) ->
+            result.put(key, normalizedSeverity(severity)));
         for (ActiveAlert alert : activeAlerts.snapshot().alerts()) {
-            result.merge(alert.alertId(), alert.severity(), AlertAcknowledgmentPolicy::highestSeverity);
+            result.merge(alert.alertId(), normalizedSeverity(alert.severity()), AlertAcknowledgmentPolicy::highestSeverity);
         }
         return result;
     }
@@ -53,6 +48,12 @@ public class AlertAcknowledgmentPolicy {
             && ack.acknowledgedAt() != null && !ack.acknowledgedAt().isAfter(now)
             && ack.snoozedUntil().isAfter(ack.acknowledgedAt())
             && !ack.snoozedUntil().isAfter(ack.acknowledgedAt().plus(CRITICAL_MAX_SNOOZE));
+    }
+
+    private static String normalizedSeverity(String severity) {
+        if ("WARN".equalsIgnoreCase(severity)) return "WARN";
+        if ("INFO".equalsIgnoreCase(severity)) return "INFO";
+        return "CRITICAL";
     }
 
     private static String highestSeverity(String a, String b) {

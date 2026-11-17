@@ -26,13 +26,27 @@ class AlertAcknowledgmentPolicyTest {
     private static final String KEY = "device:sensor:alarm";
 
     @BeforeEach void setup() {
-        when(events.statusCheckEvents(any())).thenReturn(List.of());
+        when(events.statusCheckSeverities(any())).thenReturn(Map.of());
         severity("WARN");
     }
 
     private void severity(String level) {
         when(active.snapshot()).thenReturn(new ActiveAlertsSnapshot(now, List.of(
             new ActiveAlert(KEY, "sensor", "Sensor", "cabin", "ALARM", level, now, "Alarm", "Detail")), Map.of()));
+    }
+
+    record LegacyRequest(String alertKey, String mode, Instant snoozedUntil) {}
+
+    @Test void bootJacksonAcceptsNewUiFieldAgainstLegacyRequestShape() {
+        new org.springframework.boot.test.context.runner.ApplicationContextRunner()
+            .withConfiguration(org.springframework.boot.autoconfigure.AutoConfigurations.of(
+                org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration.class))
+            .run(context -> {
+                var mapper = context.getBean(com.fasterxml.jackson.databind.ObjectMapper.class);
+                var request = mapper.readValue("{\"alertKey\":\"key\",\"mode\":\"IGNORED\",\"expectedSeverity\":\"WARN\"}", LegacyRequest.class);
+                assertEquals("key", request.alertKey());
+                assertFalse(mapper.isEnabled(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES));
+            });
     }
 
     @Test void criticalLimitIncludesExactlyOneHourButNeverIgnore() {
@@ -70,20 +84,18 @@ class AlertAcknowledgmentPolicyTest {
         assertFalse(policy.effective(new AlertAcknowledgment(KEY, "IGNORED", null, "user", now, "CRITICAL"), "CRITICAL", now));
     }
 
-    @Test void automationUsesHighestSeverityAndExactExecutionKeys() {
-        var rows = new java.util.ArrayList<CabinEvent>();
-        rows.add(new CabinEvent("old", "sensor", "WORKFLOW_UNCONFIRMED", "CRITICAL", now.minusSeconds(60), Map.of("ruleId", "WORKFLOW_UNCONFIRMED_123")));
-        rows.add(new CabinEvent("new", "sensor", "WORKFLOW_UNCONFIRMED", "WARN", now, Map.of("ruleId", "WORKFLOW_UNCONFIRMED_123")));
-        rows.add(new CabinEvent("other", "sensor", "WORKFLOW_UNCONFIRMED", "WARN", now, Map.of("ruleId", "WORKFLOW_UNCONFIRMED_456")));
-        var nullRule = new java.util.HashMap<String,Object>();
-        nullRule.put("ruleId", null);
-        rows.add(new CabinEvent("null", null, "STORAGE_THRESHOLD", "CRITICAL", now, nullRule));
-        when(events.statusCheckEvents(any())).thenReturn(rows);
-        var levels = policy.currentSeverities(now);
-        assertEquals("CRITICAL", levels.get("automation:WORKFLOW_UNCONFIRMED_123:sensor"));
-        assertEquals("WARN", levels.get("automation:WORKFLOW_UNCONFIRMED_456:sensor"));
-        assertEquals("CRITICAL", levels.get("automation:undefined:none"));
-        verify(events).statusCheckEvents(now.minus(Duration.ofHours(24)));
+    @Test void missingOrUnknownSeverityCannotCrashOrAuthorizeLongSuppression() {
+        var levels = new java.util.HashMap<String,String>();
+        levels.put("automation:broken:none", null);
+        levels.put("automation:unknown:none", "ERROR");
+        when(events.statusCheckSeverities(any())).thenReturn(levels);
+        severity(null);
+        var resolved = policy.currentSeverities(now);
+        assertEquals("CRITICAL", resolved.get(KEY));
+        assertEquals("CRITICAL", resolved.get("automation:broken:none"));
+        assertEquals("CRITICAL", resolved.get("automation:unknown:none"));
+        assertNotNull(policy.rejection(resolved.get(KEY), "IGNORED", null, now));
+        verify(events).statusCheckSeverities(now.minus(Duration.ofHours(24)));
     }
 
     @Test void staleWarnClientCannotAcknowledgeNowCriticalAlert() {

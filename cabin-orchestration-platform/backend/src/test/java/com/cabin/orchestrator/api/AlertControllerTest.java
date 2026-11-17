@@ -44,6 +44,7 @@ class AlertControllerTest {
     private AlertController controller;
     private JdbcAlertAcknowledgmentStore store;
     private JdbcAlertHistoryStore historyStore;
+    private CabinEventService events;
 
     @BeforeEach
     void setUp() {
@@ -55,12 +56,33 @@ class AlertControllerTest {
         jdbc.execute("TRUNCATE TABLE alert_history");
         jdbc.execute("DROP TABLE IF EXISTS cabin_event");
         jdbc.execute("DROP TABLE IF EXISTS device_reporting_relationship");
-        CabinEventService events = new CabinEventService(jdbc);
+        events = new CabinEventService(jdbc);
         ActiveAlertService active = mock(ActiveAlertService.class);
         org.mockito.Mockito.when(active.snapshot()).thenReturn(
             new com.cabin.orchestrator.alerts.ActiveAlertsSnapshot(Instant.now(), List.of(), java.util.Map.of()));
         controller = new AlertController(active, mock(AutomationRuleService.class), store,
             new AlertHistoryService(historyStore, events), new com.cabin.orchestrator.alerts.AlertAcknowledgmentPolicy(active, events));
+    }
+
+    @Test
+    void realDatabaseWarnEscalationAndExplicitCriticalSnoozeRoundTrip() {
+        Instant now = Instant.now();
+        String key = "automation:review-test:sensor";
+        events.save(new com.cabin.orchestrator.events.CabinEvent("warn", "sensor", "AUTOMATION_ALERT", "WARN", now,
+            java.util.Map.of("ruleId", "review-test")));
+        assertEquals(HttpStatus.OK, controller.acknowledge(new AcknowledgeAlertRequest(key, "SNOOZED", now.plusSeconds(86400), "WARN"),
+            authedRequest("review@example.com")).getStatusCode());
+        assertEquals("WARN", controller.acknowledgments().getFirst().acknowledgedSeverity());
+        events.save(new com.cabin.orchestrator.events.CabinEvent("critical", "sensor", "AUTOMATION_ALERT", "CRITICAL", now,
+            java.util.Map.of("ruleId", "review-test")));
+        assertTrue(controller.acknowledgments().isEmpty());
+        assertEquals(HttpStatus.CONFLICT, controller.acknowledge(new AcknowledgeAlertRequest(key, "SNOOZED", now.plusSeconds(1800), "WARN"),
+            authedRequest("review@example.com")).getStatusCode());
+        assertEquals(HttpStatus.BAD_REQUEST, controller.acknowledge(new AcknowledgeAlertRequest(key, "SNOOZED", now.plusSeconds(7200), "CRITICAL"),
+            authedRequest("review@example.com")).getStatusCode());
+        assertEquals(HttpStatus.OK, controller.acknowledge(new AcknowledgeAlertRequest(key, "SNOOZED", now.plusSeconds(1800), "CRITICAL"),
+            authedRequest("review@example.com")).getStatusCode());
+        assertEquals("CRITICAL", controller.acknowledgments().getFirst().acknowledgedSeverity());
     }
 
     @Test

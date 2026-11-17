@@ -59,6 +59,32 @@ class CabinEventServiceTest {
     }
 
     @Test
+    void sharedKeyFixturesMatchServerAggregation() throws Exception {
+        var fixtures = new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+            java.nio.file.Path.of("../contracts/status-check-keys.json").toFile());
+        Instant now = Instant.now();
+        for (var fixture : fixtures) {
+            jdbc.execute("TRUNCATE cabin_event");
+            var payload = new com.fasterxml.jackson.databind.ObjectMapper().convertValue(fixture.get("payload"),
+                new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>() {});
+            service.save(new CabinEvent("fixture", fixture.get("sourceDeviceId").isNull() ? null : fixture.get("sourceDeviceId").asText(),
+                "AUTOMATION_ALERT", "CRITICAL", now, payload));
+            assertThat(service.statusCheckSeverities(now.minusSeconds(1)))
+                .containsExactly(Map.entry(fixture.get("key").asText(), "CRITICAL"));
+        }
+    }
+
+    @Test
+    void aggregateKeepsOlderCriticalAndConservativelyHandlesUnknownSeverity() {
+        Instant now = Instant.now();
+        service.save(new CabinEvent("older", "sensor", "AUTOMATION_ALERT", "CRITICAL", now.minusSeconds(50), Map.of("ruleId", "rule")));
+        service.save(new CabinEvent("newer", "sensor", "AUTOMATION_ALERT", "WARN", now, Map.of("ruleId", "rule")));
+        service.save(new CabinEvent("unknown", "sensor", "AUTOMATION_ALERT", "ERROR", now, Map.of("ruleId", "other")));
+        assertThat(service.statusCheckSeverities(now.minusSeconds(60)))
+            .containsEntry("automation:rule:sensor", "CRITICAL").containsEntry("automation:other:sensor", "CRITICAL");
+    }
+
+    @Test
     void statusChecksRetainCriticalBeyondDisplayPageAndMatchLiteralPrefixes() {
         Instant now = Instant.now();
         save(service, "critical", "sensor", "AUTOMATION_ALERT", "CRITICAL", now.minusSeconds(600));

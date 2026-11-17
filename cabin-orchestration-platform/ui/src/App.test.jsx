@@ -1,7 +1,8 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within, act } from "@testing-library/react";
-import { fetchStatusCheckEvents, statusCheckEventsPath, statusCheckApiBases, useAlertAcknowledgments, acknowledgeAlert, clearAlertAcknowledgment, dashboardCommandLimit } from "./App.jsx";
+import statusCheckKeyFixtures from "../../contracts/status-check-keys.json";
+import { automationAlertKey, fetchStatusCheckEvents, statusCheckEventsPath, statusCheckApiBases, useAlertAcknowledgments, acknowledgeAlert, clearAlertAcknowledgment, dashboardCommandLimit } from "./App.jsx";
 import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, cameraBelongsToLocation, CameraHealthPanel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, outdoorBaselineSeries, outdoorCellText, isOutdoorDevice, OUTDOOR_BASELINE_FIELDS, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
@@ -4268,7 +4269,7 @@ describe("AlertControls", () => {
     );
 
     expect(screen.queryByRole("button")).toBeNull();
-    expect(screen.getByText(/Current alert status unavailable/)).toBeTruthy();
+    expect(screen.getAllByText(/Current alert status unavailable/).length).toBeGreaterThan(0);
   });
 });
 
@@ -4900,6 +4901,28 @@ describe("useAutomationAlerts", () => {
     rerender(<Host activeLocation="both" authedFetch={fetchMock} />);
     expect(await screen.findByText("All locations")).toBeTruthy();
     expect(fetchMock).toHaveBeenLastCalledWith("http://cabin-hub:8090/api/events/status-checks");
+  });
+
+  it("filters Home when both configured physical locations share the same backend", () => {
+    const apiBase = "https://api.unicornpingpong.com";
+    const locations = { cabin: { id: "cabin", apiBase }, home: { id: "home", apiBase: apiBase + "/" } };
+    expect(statusCheckEventsPath("home", locations)).toBe("/api/events/status-checks?location=home");
+    expect(statusCheckEventsPath("both", locations)).toBe("/api/events/status-checks");
+    expect(statusCheckApiBases("both", locations)).toEqual([apiBase]);
+  });
+
+  it("handles missing API bases without throwing or producing undefined URLs", () => {
+    expect(statusCheckApiBases("both", {})).toEqual([]);
+    expect(statusCheckApiBases("home", { cabin: { apiBase: "https://cabin.example" }, home: {} })).toEqual(["https://cabin.example"]);
+    expect(statusCheckEventsPath("home", {})).toBe("/api/events/status-checks?location=home");
+  });
+
+  it("rejects a repeated full legacy page instead of looping when offsets are ignored", async () => {
+    const page = Array.from({ length: 200 }, (_, i) => ({ eventId: `e-${i}`, severity: "WARN" }));
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => page })
+      .mockResolvedValueOnce({ ok: false, status: 404 });
+    await expect(fetchStatusCheckEvents(fetcher, "http://cabin-hub:8090", "cabin")).rejects.toThrow("pagination did not advance");
+    expect(fetcher).toHaveBeenCalledTimes(3);
   });
 
   it("does not add a location filter for a deployed Home endpoint or Cabin", () => {
@@ -7695,6 +7718,34 @@ describe("status-check critical snooze regressions", () => {
   const json = list => ({ ok: true, json: async () => list });
   afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
+  it.each(statusCheckKeyFixtures)("uses the shared backend key contract: $key", fixture => {
+    expect(automationAlertKey(fixture)).toBe(fixture.key);
+    const [item] = mergeStatusCheckItems([], "both", [{ ...fixture, severity: "WARN" }]);
+    expect(item.alertKey).toBe(fixture.key);
+  });
+
+  it("ignores null array members without losing valid alerts", () => {
+    expect(mergeStatusCheckItems([null], "both", [null, event("CRITICAL")], [null])).toHaveLength(1);
+    expect(silencedStatusChecks([], [], [null])).toEqual([]);
+  });
+
+  it.each([null, undefined, "ERROR", 5, {}, ""])("treats malformed/unknown severity %s as CRITICAL", severity => {
+    const explicit = mergeStatusCheckItems([], "both", [{ ...event(), severity }], [ack({ mode: "IGNORED" })]);
+    expect(explicit[0].severity).toBe("CRITICAL");
+  });
+
+  it("does not hide critical with a missing acknowledgment start time", () => {
+    expect(mergeStatusCheckItems([], "both", [event("CRITICAL")],
+      [ack({ acknowledgedSeverity: "CRITICAL", acknowledgedAt: undefined })])).toHaveLength(1);
+  });
+
+  it("keeps older CRITICAL above newer WARN in the same group", () => {
+    const items = mergeStatusCheckItems([], "both", [event("CRITICAL", { timestamp: "2026-11-16T00:00:00Z" }),
+      event("WARN", { timestamp: "2026-11-16T01:00:00Z" })]);
+    expect(items).toHaveLength(1);
+    expect(items[0].severity).toBe("CRITICAL");
+  });
+
   it("deduplicates shared backend endpoints without splitting physical locations", () => {
     const locations = { cabin: { id: "cabin", apiBase: cabin }, home: { id: "home", apiBase: cabin + "/" } };
     expect(statusCheckApiBases("both", locations)).toEqual([cabin]);
@@ -7783,6 +7834,39 @@ describe("status-check critical snooze regressions", () => {
     const items = mergeStatusCheckItems([], "home", alerts, acknowledgments);
     return <output data-testid="status-feed">{items.map(item => item.severity).join(",")}</output>;
   }
+
+  function AvailabilityHost({ fetcher, location = "cabin" }) {
+    const { alerts, loading, unavailable } = useAutomationAlerts(location, fetcher);
+    return <AppContext.Provider value={{ activeLocation: location, activeAlertLocations: ["cabin", "home"],
+      activeAlerts: [], automationAlerts: alerts, automationAlertsLoading: loading, automationAlertsUnavailable: unavailable,
+      setActivePanel: vi.fn() }}><AlertControls /><RulesPanel auth={{ authedFetch: fetcher }} /></AppContext.Provider>;
+  }
+
+  it("shows status and nav unavailability on first-load failure rather than healthy", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    const fetcher = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+    render(<AvailabilityHost fetcher={fetcher} />);
+    expect(await screen.findByText(/Automation alert status unavailable/)).toBeTruthy();
+    expect(screen.getAllByText(/Current alert status unavailable/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/No status checks need attention/)).toBeNull();
+    expect(screen.queryByText(/Watching assigned/)).toBeNull();
+  });
+
+  it("shows unavailability after switching location during an outage and ignores null feed rows", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    let failed = false;
+    const fetcher = vi.fn(async url => {
+      if (url.includes("/status-checks")) return failed ? { ok: false, status: 500 } : json([null]);
+      return json([]);
+    });
+    const { rerender } = render(<AvailabilityHost fetcher={fetcher} />);
+    expect(await screen.findByText(/No status checks need attention/)).toBeTruthy();
+    failed = true;
+    rerender(<AvailabilityHost fetcher={fetcher} location="home" />);
+    expect(await screen.findByText(/Automation alert status unavailable/)).toBeTruthy();
+    expect(screen.getAllByText(/Current alert status unavailable/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/No status checks need attention/)).toBeNull();
+  });
 
   it("polls both feeds and reveals a WARN escalation; focus and reconnect also refresh", async () => {
     vi.useFakeTimers();
