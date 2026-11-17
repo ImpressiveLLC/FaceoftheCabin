@@ -2,6 +2,7 @@ package com.cabin.orchestrator.alerts;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Timestamp;
 import java.util.List;
@@ -55,9 +56,10 @@ public class JdbcAlertAcknowledgmentStore {
      * suppressed" set. The history of every acknowledgment lives in
      * alert_history (W-64): each expiry deleted here is logged there as
      * SNOOZE_EXPIRED, stamped with the time it actually expired. RETURNING
-     * makes the delete and the log atomic per row, so two concurrent
-     * readers can't both log the same expiry.
+     * prevents two concurrent readers from claiming the same expiry.
+     * The transaction also rolls back the delete if its history write fails.
      */
+    @Transactional
     public List<AlertAcknowledgment> activeAcknowledgments() {
         jdbc.query("""
             DELETE FROM alert_acknowledgment WHERE mode = 'SNOOZED' AND snoozed_until < now()
