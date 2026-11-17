@@ -1,0 +1,90 @@
+{
+  "round": "2026-11-16-r12-del7",
+  "model": "cabin-intent-slot-poc2-r9-b",
+  "prompt_sha256": "d3f95b06b0a1645bc234a6567ad08b6301174e2d1bd2b9b40fa14177ea45fd37",
+  "gold_sha256": "1d33f6226fb1a3bbff2d883c7cf325c00d32b039f71ba4659392dc63d05c8e62",
+  "schema_sha256": "59f63b920a66d85fb20a08d66d31b2bbc3268dea871e691debfdb50842ca15dd",
+  "fixtures": 49,
+  "valid_output_rate": 1.0,
+  "intent_accuracy": 0.8571428571428571,
+  "slot_micro_f1": 0.6324786324786325,
+  "critical_fixture_failures": 13,
+  "per_intent": {
+    "answer_question": {
+      "correct": 4,
+      "total": 4
+    },
+    "clarify": {
+      "correct": 3,
+      "total": 9
+    },
+    "express_need": {
+      "correct": 17,
+      "total": 17
+    },
+    "get_device_state": {
+      "correct": 2,
+      "total": 2
+    },
+    "propose_automation": {
+      "correct": 5,
+      "total": 5
+    },
+    "set_device_attribute": {
+      "correct": 2,
+      "total": 3
+    },
+    "set_device_state": {
+      "correct": 5,
+      "total": 5
+    },
+    "unsupported": {
+      "correct": 4,
+      "total": 4
+    }
+  },
+  "confusions": {
+    "clarify->set_device_state": 4,
+    "set_device_attribute->set_device_state": 1,
+    "clarify->unsupported": 1,
+    "clarify->propose_automation": 1
+  },
+  "failed": {
+    "gold-13": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-14": {
+      "want": "set_device_attribute",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-15": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-16": {
+      "want": "clarify",
+      "got": "unsupported",
+      "critical": true
+    },
+    "gold-37": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-40": {
+      "want": "clarify",
+      "got": "set_device_state",
+      "critical": true
+    },
+    "gold-47": {
+      "want": "clarify",
+      "got": "propose_automation",
+      "critical": true
+    }
+  },
+  "released": false
+}
