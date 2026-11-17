@@ -1,0 +1,31 @@
+name: homeassistant package tests
+on:
+  pull_request:
+    paths:
+      - 'cabin-orchestration-platform/infra/cabin-security/homeassistant/cabin_on_the_way.yaml'
+      - 'cabin-orchestration-platform/infra/cabin-security/homeassistant/test_cabin_on_the_way.py'
+      - 'cabin-orchestration-platform/infra/cabin-security/homeassistant/ON_THE_WAY.md'
+      - 'cabin-orchestration-platform/ui/src/App.jsx'
+      - 'cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/api/HaServiceController.java'
+      - 'docs/ai-assistant/knowledge/heater-control.md'
+      - '.github/workflows/homeassistant-package-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'cabin-orchestration-platform/infra/cabin-security/homeassistant/cabin_on_the_way.yaml'
+      - 'cabin-orchestration-platform/infra/cabin-security/homeassistant/test_cabin_on_the_way.py'
+      - '.github/workflows/homeassistant-package-tests.yml'
+permissions:
+  contents: read
+jobs:
+  on-the-way-package:
+    runs-on: ubuntu-latest   # GitHub-hosted: parses the YAML and reads repo files only; no HA, no secrets
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: pip install pyyaml
+      - name: On the Way package parity and safety tests
+        working-directory: cabin-orchestration-platform/infra/cabin-security/homeassistant
+        run: python -m unittest test_cabin_on_the_way -v
