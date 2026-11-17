@@ -87,6 +87,8 @@ module.exports = async function ({ browser, check, base }) {
   await small.close();
 
   // Compressed default, focus geometry, off-click and close paths.
+  // Closing delays visibility until the CSS transition ends. Wait for that
+  // result: a fixed sleep can outpace Chromium animation frames on a busy host.
   for (const [w, h, q] of [[1024, 600, '?kiosk=1'], [1280, 720, '?kiosk=1'], [1920, 1080, '?kiosk=0']]) {
     const tag = `${w}x${h}`;
     const kioskOn = q.includes('kiosk=1');
@@ -112,7 +114,7 @@ module.exports = async function ({ browser, check, base }) {
       boxStyle[name] = await page.locator(sel).evaluate(el => { const s = getComputedStyle(el); return [s.borderTopWidth, s.borderTopColor, s.borderTopLeftRadius].join('|'); });
       // Off-click on the calendar column (outside the box and the rail) returns to compressed.
       await page.locator('#cal-card').click();
-      await page.waitForTimeout(500);
+      await page.locator(sel).waitFor({ state: 'hidden', timeout: 3000 });
       check(`off-click collapses ${name} at ${tag}`, [await page.locator(sel).isVisible(), await activity(page)], [false, '']);
     }
     check(`Settings box matches the other overlays at ${tag}`, boxStyle.settings, boxStyle.chores);
@@ -122,7 +124,7 @@ module.exports = async function ({ browser, check, base }) {
     // Exactly one activity in focus; the rail button toggles it away.
     await page.click('[data-activity-btn="chores"]');
     await page.click('[data-activity-btn="settings"]');
-    await page.waitForTimeout(600);
+    await page.locator('#chores-card').waitFor({ state: 'hidden', timeout: 3000 });
     check(`one activity at a time at ${tag}`, [await activity(page), await page.locator('#chores-card').isVisible()], ['settings', false]);
     await page.click('[data-activity-btn="settings"]');
     await page.waitForTimeout(500);
@@ -138,7 +140,7 @@ module.exports = async function ({ browser, check, base }) {
       check(`${name} shows a Done bar inside the box bottom at ${tag}`,
         !!fb && fb.x >= pb.x && fb.x + fb.width <= pb.x + pb.width + 1 && fb.y + fb.height <= pb.y + pb.height + 1 && fb.y > pb.y + pb.height * 0.6, true);
       await foot.click();
-      await page.waitForTimeout(500);
+      await page.locator(sel).waitFor({ state: 'hidden', timeout: 3000 });
       check(`${name} Done bar returns to compressed at ${tag}`, [await page.locator(sel).isVisible(), await activity(page)], [false, '']);
     }
 
@@ -146,7 +148,7 @@ module.exports = async function ({ browser, check, base }) {
     await page.click('[data-activity-btn="chores"]');
     await page.waitForTimeout(500);
     await page.locator('#chores-card .chores-close').click();
-    await page.waitForTimeout(500);
+    await page.locator('#chores-card').waitFor({ state: 'hidden', timeout: 3000 });
     check(`chores Close returns to compressed at ${tag}`, [await page.locator('#chores-card').isVisible(), await activity(page)], [false, '']);
     await page.click('[data-activity-btn="dashboard"]');
     await page.waitForTimeout(500);
