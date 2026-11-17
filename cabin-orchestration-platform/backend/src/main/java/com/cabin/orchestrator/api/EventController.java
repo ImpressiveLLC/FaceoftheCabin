@@ -45,6 +45,15 @@ public class EventController {
         this.streamBroadcaster = streamBroadcaster;
     }
 
+    /** Complete 24-hour status checks; protected by the existing event-read authentication. */
+    @GetMapping("/status-checks")
+    public List<CabinEvent> statusChecks(@RequestParam(required = false) String location) {
+        List<CabinEvent> events = eventService.statusCheckEvents(Instant.now().minus(Duration.ofHours(24)));
+        if (location == null || location.isBlank() || "both".equals(location)) return events;
+        Set<String> deviceIds = registry.byLocation(location).stream().map(d -> d.deviceId()).collect(Collectors.toSet());
+        return events.stream().filter(event -> deviceIds.contains(event.sourceDeviceId())).toList();
+    }
+
     /**
      * GET /api/events?camera=outdoor_4&limit=20&offset=0&window=10m&eventTypePrefix=DETECTION_,MOTION_&location=home
      * Unauthenticated, same precedent as /api/devices — this is the "at

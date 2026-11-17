@@ -70,6 +70,29 @@ class EventControllerTest {
     }
 
     @Test
+    void statusChecksFilterRealHomeAndCabinDevices() {
+        CabinEventService service = new CabinEventService(new JdbcTemplate(new SimpleDriverDataSource(
+            new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())));
+        service.save(new CabinEvent("status-home", "home_aldrich_front", "AUTOMATION_ALERT", "WARN", Instant.now(), Map.of()));
+        service.save(new CabinEvent("status-cabin", "driveway", "AUTOMATION_ALERT", "CRITICAL", Instant.now(), Map.of()));
+        assertEquals(List.of("status-home"), controller.statusChecks("home").stream().map(CabinEvent::eventId).toList());
+        assertEquals(List.of("status-cabin"), controller.statusChecks("cabin").stream().map(CabinEvent::eventId).toList());
+    }
+
+    @Test
+    void legacyStatusPaginationHonorsTwoHundredAndOffset() {
+        CabinEventService service = new CabinEventService(new JdbcTemplate(new SimpleDriverDataSource(
+            new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())));
+        Instant now = Instant.now();
+        for (int i = 0; i < 201; i++)
+            service.save(new CabinEvent("page-" + i, "driveway", "AUTOMATION_ALERT", i == 200 ? "CRITICAL" : "WARN", now.minusSeconds(i), Map.of()));
+        assertEquals(200, controller.recentEvents(null, 200, 0, "24h", "AUTOMATION_ALERT", null).size());
+        var last = controller.recentEvents(null, 200, 200, "24h", "AUTOMATION_ALERT", null);
+        assertEquals(1, last.size());
+        assertEquals("CRITICAL", last.getFirst().severity());
+    }
+
+    @Test
     void noLocationFilterReturnsEventsFromEveryLocation() {
         List<CabinEvent> events = controller.recentEvents(null, 20, 0, "24h", null, null);
 

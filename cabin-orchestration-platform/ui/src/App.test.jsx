@@ -1,7 +1,8 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
-import { dashboardCommandLimit } from "./App.jsx";
+import { render, screen, fireEvent, cleanup, waitFor, within, act } from "@testing-library/react";
+import statusCheckKeyFixtures from "../../contracts/status-check-keys.json";
+import { automationAlertKey, fetchStatusCheckEvents, statusCheckEventsPath, statusCheckApiBases, useAlertAcknowledgments, acknowledgeAlert, clearAlertAcknowledgment, dashboardCommandLimit } from "./App.jsx";
 import { isCameraEvent, mergeHubLocations, buildCameraEventsUrl, cameraEventsWindowLabel, CAMERA_EVENTS_WINDOWS, groupCameraEvents, classifyMediaFetchStatus, isLocationDeployed, formatPresenceSignals, formatArmedTitle, cameraHealthLabel, cameraBelongsToLocation, CameraHealthPanel, allLocationsLabel, checkinStatusLabel, groupDevices, filterDeviceManagerDevices, importedFromOptions, importedFromLabel, resolveDeviceManagerFilter, LIFECYCLE_FILTER_OPTIONS, DEFAULT_LIFECYCLE_FILTER, buildOrderedDeviceGroups, migrateLegacyDeviceOrder, reorderIds, WORKFLOW_BY_TYPE, deviceLifecycleState, humanizeRuleId, automationAlertSteps, alertLevelFor, deriveNavAlertLevels, navAlertLevelsFor, AppContext, FamilyHubPanel, FamilyConfigPanel, RulesPanel, DmDeviceDetail, DmEditForm, DmDeviceRow, workflowsForDevice, WorkflowRulesCard, CameraEventsPanel, CameraNotifyToggle, DeviceDiscoveryOverlay, CameraEventClip, cameraClipFilename, cameraClipDownloadTarget, kpiTileFor, MnSeeView, countParentDevices, DeviceManagerPanel, SensorHistoryPanel, outdoorBaselineSeries, outdoorCellText, isOutdoorDevice, OUTDOOR_BASELINE_FIELDS, HelpdeskPanel, GuestDashboard, DmRemoveView, MagicLinkLanding, OptimizationOpportunitiesCard, PlatformImportFlow, PendingImportRow, OpportunityCard, useAutomationAlerts, AlertControls,
 PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
@@ -4268,7 +4269,7 @@ describe("AlertControls", () => {
     );
 
     expect(screen.queryByRole("button")).toBeNull();
-    expect(screen.getByText(/Current alert status unavailable/)).toBeTruthy();
+    expect(screen.getAllByText(/Current alert status unavailable/).length).toBeGreaterThan(0);
   });
 });
 
@@ -4484,7 +4485,7 @@ describe("mergeStatusCheckItems — one row per condition", () => {
   it("acknowledging every member's key removes the whole group", () => {
     const items = mergeStatusCheckItems(
       [deviceAlert("a"), deviceAlert("b")], "cabin", [],
-      [{ alertKey: "device:a:missed-checkin" }, { alertKey: "device:b:missed-checkin" }]);
+      [{ alertKey: "device:a:missed-checkin", mode: "IGNORED" }, { alertKey: "device:b:missed-checkin", mode: "IGNORED" }]);
     expect(items).toHaveLength(0);
   });
 });
@@ -4873,7 +4874,7 @@ describe("useAutomationAlerts", () => {
     return <ul>{alerts.map(a => <li key={a.eventId}>{a.payload.see}</li>)}</ul>;
   }
 
-  it("queries both cabin and home when activeLocation is both", async () => {
+  it("uses the Cabin collector when Home is an undeployed placeholder", async () => {
     const fetchMock = vi.fn((url) => Promise.resolve({
       ok: true,
       json: async () => url.startsWith("http://home-hub:8080")
@@ -4886,26 +4887,120 @@ describe("useAutomationAlerts", () => {
     render(<Host activeLocation="both" authedFetch={fetchMock} />);
 
     expect(await screen.findByText("Cabin alert")).toBeTruthy();
-    expect(screen.getByText("Home alert")).toBeTruthy();
+    expect(screen.queryByText("Home alert")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("requests the broadened eventTypePrefix list, not just AUTOMATION_ALERT", async () => {
+  it("filters Home collector fallback events without filtering Both", async () => {
+    const fetchMock = vi.fn(async url => ({ ok: true, json: async () => [{ eventId: "e", payload: {
+      see: url.endsWith("?location=home") ? "Home only" : "All locations",
+    } }] }));
+    const { rerender } = render(<Host activeLocation="home" authedFetch={fetchMock} />);
+    expect(await screen.findByText("Home only")).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith("http://cabin-hub:8090/api/events/status-checks?location=home");
+    rerender(<Host activeLocation="both" authedFetch={fetchMock} />);
+    expect(await screen.findByText("All locations")).toBeTruthy();
+    expect(fetchMock).toHaveBeenLastCalledWith("http://cabin-hub:8090/api/events/status-checks");
+  });
+
+  it("filters Home when both configured physical locations share the same backend", () => {
+    const apiBase = "https://api.unicornpingpong.com";
+    const locations = { cabin: { id: "cabin", apiBase }, home: { id: "home", apiBase: apiBase + "/" } };
+    expect(statusCheckEventsPath("home", locations)).toBe("/api/events/status-checks?location=home");
+    expect(statusCheckEventsPath("both", locations)).toBe("/api/events/status-checks");
+    expect(statusCheckApiBases("both", locations)).toEqual([apiBase]);
+  });
+
+  it("handles missing API bases without throwing or producing undefined URLs", () => {
+    expect(statusCheckApiBases("both", {})).toEqual([]);
+    expect(statusCheckApiBases("home", { cabin: { apiBase: "https://cabin.example" }, home: {} })).toEqual(["https://cabin.example"]);
+    expect(statusCheckEventsPath("home", {})).toBe("/api/events/status-checks?location=home");
+  });
+
+  it("rejects a repeated full legacy page instead of looping when offsets are ignored", async () => {
+    const page = Array.from({ length: 200 }, (_, i) => ({ eventId: `e-${i}`, severity: "WARN" }));
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => page })
+      .mockResolvedValueOnce({ ok: false, status: 404 });
+    await expect(fetchStatusCheckEvents(fetcher, "http://cabin-hub:8090", "cabin")).rejects.toThrow("pagination did not advance");
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not add a location filter for a deployed Home endpoint or Cabin", () => {
+    const locations = { home: { id: "home", apiBase: "https://home.example.test" } };
+    expect(statusCheckEventsPath("home", locations)).toBe("/api/events/status-checks");
+    expect(statusCheckEventsPath("both", locations)).toBe("/api/events/status-checks");
+    expect(statusCheckEventsPath("cabin", locations)).toBe("/api/events/status-checks");
+  });
+
+  it("reads every legacy page on 404 and keeps older critical alerts beyond 200 records", async () => {
+    const page = Array.from({ length: 200 }, (_, i) => ({ eventId: `warn-${i}`, sourceDeviceId: "d",
+      severity: "WARN", payload: { ruleId: "R", see: `Warning ${i}` } }));
+    const critical = { eventId: "critical-old", sourceDeviceId: "d", severity: "CRITICAL",
+      payload: { ruleId: "R", see: "Older critical" } };
+    const fetcher = vi.fn(async url => {
+      if (new URL(url).pathname.endsWith("/status-checks")) return { ok: false, status: 404 };
+      return { ok: true, json: async () => new URL(url).searchParams.get("offset") === "0" ? page : [critical] };
+    });
+    const rows = await fetchStatusCheckEvents(fetcher, "https://home.example.test", "home");
+    expect(rows).toHaveLength(201);
+    expect(mergeStatusCheckItems([], "both", rows)[0].severity).toBe("CRITICAL");
+    const urls = fetcher.mock.calls.map(([url]) => new URL(url));
+    expect(urls.every(url => url.origin === "https://home.example.test")).toBe(true);
+    expect(urls[0].searchParams.get("location")).toBe("home");
+    expect(urls.slice(1).map(url => url.searchParams.get("offset"))).toEqual(["0", "200"]);
+    urls.slice(1).forEach(url => {
+      expect(url.searchParams.get("limit")).toBe("200");
+      expect(url.searchParams.get("window")).toBe("24h");
+      expect(url.searchParams.get("eventTypePrefix")).toBe("AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED,STORAGE_");
+      // Mixed-version Home is deliberately broader: old location filtering truncates.
+      expect(url.searchParams.has("location")).toBe(false);
+    });
+  });
+
+  it.each([401, 403, 500])("does not fall back on HTTP %s", async status => {
+    const fetcher = vi.fn().mockResolvedValue({ ok: false, status });
+    await expect(fetchStatusCheckEvents(fetcher, "http://cabin-hub:8090", "cabin")).rejects.toThrow(`HTTP ${status}`);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects incomplete fallback pages rather than replacing cached critical alerts", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 404 })
+      .mockResolvedValueOnce({ ok: true, json: async () => Array.from({ length: 200 }, (_, i) => ({ eventId: `${i}` })) })
+      .mockResolvedValueOnce({ ok: false, status: 500 });
+    await expect(fetchStatusCheckEvents(fetcher, "http://cabin-hub:8090", "cabin")).rejects.toThrow("HTTP 500");
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
+  it("preserves endpoint ownership on legacy hook results", async () => {
+    const fetcher = vi.fn(async url => url.includes("/status-checks")
+      ? { ok: false, status: 404 }
+      : { ok: true, json: async () => [{ eventId: "e", severity: "CRITICAL", payload: { see: "Legacy critical" } }] });
+    function OwnerHost() {
+      const { alerts } = useAutomationAlerts("home", fetcher);
+      return <output>{alerts.map(alert => `${alert.payload.see}|${alert.ownerApiBase}`).join(",")}</output>;
+    }
+    render(<OwnerHost />);
+    expect(await screen.findByText("Legacy critical|http://cabin-hub:8090")).toBeTruthy();
+  });
+
+  it("requests the uncapped status-check route", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
 
     render(<Host activeLocation="cabin" authedFetch={fetchMock} />);
 
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) =>
-      url.includes("eventTypePrefix=AUTOMATION_ALERT,WORKFLOW_ACTION,WORKFLOW_UNCONFIRMED"))).toBe(true));
+      url.endsWith("/api/events/status-checks"))).toBe(true));
   });
 
   // W-11: the disk monitor's STORAGE_THRESHOLD events must reach this list, or a filling disk is silent again.
-  it("also asks for STORAGE_ events", async () => {
+  it("does not fetch legacy pages when the new route succeeds", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
 
     render(<Host activeLocation="cabin" authedFetch={fetchMock} />);
 
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) =>
-      /eventTypePrefix=[^&]*STORAGE_/.test(url))).toBe(true));
+      url.endsWith("/api/events/status-checks") && !url.includes("limit="))).toBe(true));
   });
 
   it("renders a storage warning from its see/think payload with a readable rule name", async () => {
@@ -6908,9 +7003,9 @@ describe("Status Checks — silencing safety floor and restore", () => {
     expect(items).toHaveLength(1);
   });
 
-  it("a time-boxed SNOOZE still hides a CRITICAL item", () => {
+  it("an explicitly critical time-boxed SNOOZE still hides a CRITICAL item", () => {
     const items = mergeStatusCheckItems([critical], "cabin", [],
-      [{ alertKey: critical.alertId, mode: "SNOOZED", snoozedUntil: new Date(Date.now() + 3600000).toISOString() }]);
+      [{ alertKey: critical.alertId, mode: "SNOOZED", acknowledgedSeverity: "CRITICAL", acknowledgedAt: new Date(Date.now()).toISOString(), snoozedUntil: new Date(Date.now() + 3599000).toISOString() }]);
     expect(items).toHaveLength(0);
   });
 
@@ -7607,5 +7702,251 @@ describe("Storage trim: not installed, automatic trim states, and the Monitoring
     render(<ThemeProvider><AppContext.Provider value={ctx}><MonitoringPanel active={true} auth={{ authedFetch: () => new Promise(() => {}), signedIn: false }} /></AppContext.Provider></ThemeProvider>);
     expect(screen.queryByText("Storage — backups and disk space")).toBeNull();
     vi.unstubAllGlobals();
+  });
+});
+
+
+describe("status-check critical snooze regressions", () => {
+  const cabin = "http://cabin-hub:8090";
+  const home = "https://home.example.test";
+  const key = "automation:R:d";
+  const event = (severity = "WARN", extra = {}) => ({ eventId: "e", sourceDeviceId: "d", severity,
+    timestamp: new Date().toISOString(), payload: { ruleId: "R", see: "Condition" }, ...extra });
+  const ack = (extra = {}) => ({ alertKey: key, mode: "SNOOZED", acknowledgedSeverity: "WARN",
+    acknowledgedAt: new Date(Date.now() - 1000).toISOString(),
+    snoozedUntil: new Date(Date.now() + 1000).toISOString(), ...extra });
+  const json = list => ({ ok: true, json: async () => list });
+  afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+  it.each(statusCheckKeyFixtures)("uses the shared backend key contract: $key", fixture => {
+    expect(automationAlertKey(fixture)).toBe(fixture.key);
+    const [item] = mergeStatusCheckItems([], "both", [{ ...fixture, severity: "WARN" }]);
+    expect(item.alertKey).toBe(fixture.key);
+  });
+
+  it("ignores null array members without losing valid alerts", () => {
+    expect(mergeStatusCheckItems([null], "both", [null, event("CRITICAL")], [null])).toHaveLength(1);
+    expect(silencedStatusChecks([], [], [null])).toEqual([]);
+  });
+
+  it.each([null, undefined, "ERROR", 5, {}, ""])("treats malformed/unknown severity %s as CRITICAL", severity => {
+    const explicit = mergeStatusCheckItems([], "both", [{ ...event(), severity }], [ack({ mode: "IGNORED" })]);
+    expect(explicit[0].severity).toBe("CRITICAL");
+  });
+
+  it("does not hide critical with a missing acknowledgment start time", () => {
+    expect(mergeStatusCheckItems([], "both", [event("CRITICAL")],
+      [ack({ acknowledgedSeverity: "CRITICAL", acknowledgedAt: undefined })])).toHaveLength(1);
+  });
+
+  it("keeps older CRITICAL above newer WARN in the same group", () => {
+    const items = mergeStatusCheckItems([], "both", [event("CRITICAL", { timestamp: "2026-11-16T00:00:00Z" }),
+      event("WARN", { timestamp: "2026-11-16T01:00:00Z" })]);
+    expect(items).toHaveLength(1);
+    expect(items[0].severity).toBe("CRITICAL");
+  });
+
+  it("deduplicates shared backend endpoints without splitting physical locations", () => {
+    const locations = { cabin: { id: "cabin", apiBase: cabin }, home: { id: "home", apiBase: cabin + "/" } };
+    expect(statusCheckApiBases("both", locations)).toEqual([cabin]);
+    expect(statusCheckApiBases("home", locations)).toEqual([cabin]);
+    expect(statusCheckApiBases("both", { ...locations, home: { id: "home", apiBase: home } })).toEqual([cabin, home]);
+    const device = { alertId: key, location: "home", severity: "WARN", ownerApiBase: cabin };
+    expect(mergeStatusCheckItems([device], "home", [], [ack({ ownerApiBase: cabin })])).toHaveLength(0);
+  });
+
+  it("routes Home-owned writes and restores to Home, with legacy callers defaulting to Cabin", async () => {
+    const fetcher = vi.fn().mockResolvedValue(json({}));
+    await acknowledgeAlert(fetcher, key, "SNOOZED", ack().snoozedUntil, "CRITICAL", home);
+    expect(fetcher.mock.calls[0][0]).toBe(`${home}/api/alerts/acknowledgments`);
+    expect(JSON.parse(fetcher.mock.calls[0][1].body).expectedSeverity).toBe("CRITICAL");
+    await clearAlertAcknowledgment(fetcher, key, home);
+    expect(fetcher.mock.calls[1][0]).toBe(`${home}/api/alerts/acknowledgments/${encodeURIComponent(key)}`);
+    await acknowledgeAlert(fetcher, key, "IGNORED");
+    expect(fetcher.mock.calls[2][0]).toBe(`${cabin}/api/alerts/acknowledgments`);
+  });
+
+  it("passes the owning Home endpoint through the rendered snooze action", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    const fetcher = vi.fn().mockResolvedValue(json({}));
+    render(<AppContext.Provider value={{ activeLocation: "both", activeAlertLocations: ["cabin", "home"],
+      activeAlerts: [], automationAlerts: [event("CRITICAL", { ownerApiBase: home })], alertAcknowledgments: [],
+      refreshAlertAcknowledgments: vi.fn() }}><RulesPanel auth={{ authedFetch: fetcher }} /></AppContext.Provider>);
+    fireEvent.click(screen.getByRole("button", { name: "See more" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remind me in" }));
+    fireEvent.click(screen.getByRole("button", { name: "1 hour" }));
+    await waitFor(() => expect(fetcher.mock.calls.some(([url]) => url === `${home}/api/alerts/acknowledgments`)).toBe(true));
+    const [, options] = fetcher.mock.calls.find(([url]) => url === `${home}/api/alerts/acknowledgments`);
+    expect(JSON.parse(options.body)).toMatchObject({ alertKey: key, mode: "SNOOZED", expectedSeverity: "CRITICAL" });
+  });
+
+  it("keeps same-key alerts and suppressions isolated by owning endpoint", () => {
+    const events = [event("WARN", { ownerApiBase: cabin }), event("WARN", { ownerApiBase: home })];
+    expect(mergeStatusCheckItems([], "both", events)).toHaveLength(2);
+    const acks = [ack({ ownerApiBase: home })];
+    const items = mergeStatusCheckItems([], "both", events, acks);
+    expect(items).toHaveLength(1);
+    expect(items[0].ownerApiBase).toBe(cabin);
+    expect(silencedStatusChecks([], events, acks)[0]).toMatchObject({ ownerApiBase: home, active: true });
+  });
+
+  it("normalizes null and absent rule IDs identically", () => {
+    const items = mergeStatusCheckItems([], "cabin", [event("WARN", { payload: { ruleId: null } }), event("WARN", { payload: {} })]);
+    expect(items).toHaveLength(1);
+    expect(items[0].alertKey).toBe("automation:undefined:d");
+  });
+
+  it("retains the highest group severity even when a newer event is INFO", () => {
+    for (const severity of ["WARN", "CRITICAL"]) {
+      const items = mergeStatusCheckItems([], "cabin", [event(severity, { timestamp: "2026-11-16T00:00:00Z" }),
+        event("INFO", { timestamp: "2026-11-16T01:00:00Z" })]);
+      expect(items[0].severity).toBe(severity);
+    }
+  });
+
+  it("expires cached WARN snoozes and preserves normal WARN ignore/long snooze", () => {
+    vi.useFakeTimers();
+    const events = [event()]; const acks = [ack()];
+    expect(mergeStatusCheckItems([], "cabin", events, acks)).toHaveLength(0);
+    vi.advanceTimersByTime(1001);
+    expect(mergeStatusCheckItems([], "cabin", events, acks)).toHaveLength(1);
+    expect(silencedStatusChecks([], events, acks)).toHaveLength(0);
+    expect(mergeStatusCheckItems([], "cabin", events, [ack({ mode: "IGNORED" })])).toHaveLength(0);
+    expect(mergeStatusCheckItems([], "cabin", events, [ack({ snoozedUntil: new Date(Date.now() + 86400000).toISOString() })])).toHaveLength(0);
+  });
+
+  it("requires explicit critical severity and an unexpired snooze of at most one hour", () => {
+    vi.useFakeTimers();
+    const events = [event("CRITICAL")];
+    for (const patch of [{}, { acknowledgedSeverity: null }, { mode: "IGNORED", acknowledgedSeverity: "CRITICAL" },
+      { acknowledgedSeverity: "CRITICAL", snoozedUntil: new Date(Date.now() + 3600000).toISOString() }]) {
+      expect(mergeStatusCheckItems([], "cabin", events, [ack(patch)])).toHaveLength(1);
+    }
+    const valid = ack({ acknowledgedSeverity: "CRITICAL" });
+    expect(mergeStatusCheckItems([], "cabin", events, [valid])).toHaveLength(0);
+    vi.advanceTimersByTime(1001);
+    expect(mergeStatusCheckItems([], "cabin", events, [valid])).toHaveLength(1);
+  });
+
+  function Host({ fetcher }) {
+    const { alerts } = useAutomationAlerts("home", fetcher);
+    const { acknowledgments } = useAlertAcknowledgments(fetcher, "home");
+    const items = mergeStatusCheckItems([], "home", alerts, acknowledgments);
+    return <output data-testid="status-feed">{items.map(item => item.severity).join(",")}</output>;
+  }
+
+  function AvailabilityHost({ fetcher, location = "cabin" }) {
+    const { alerts, loading, unavailable } = useAutomationAlerts(location, fetcher);
+    return <AppContext.Provider value={{ activeLocation: location, activeAlertLocations: ["cabin", "home"],
+      activeAlerts: [], automationAlerts: alerts, automationAlertsLoading: loading, automationAlertsUnavailable: unavailable,
+      setActivePanel: vi.fn() }}><AlertControls /><RulesPanel auth={{ authedFetch: fetcher }} /></AppContext.Provider>;
+  }
+
+  it("shows status and nav unavailability on first-load failure rather than healthy", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    const fetcher = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+    render(<AvailabilityHost fetcher={fetcher} />);
+    expect(await screen.findByText(/Automation alert status unavailable/)).toBeTruthy();
+    expect(screen.getAllByText(/Current alert status unavailable/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/No status checks need attention/)).toBeNull();
+    expect(screen.queryByText(/Watching assigned/)).toBeNull();
+  });
+
+  it("shows unavailability after switching location during an outage and ignores null feed rows", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    let failed = false;
+    const fetcher = vi.fn(async url => {
+      if (url.includes("/status-checks")) return failed ? { ok: false, status: 500 } : json([null]);
+      return json([]);
+    });
+    const { rerender } = render(<AvailabilityHost fetcher={fetcher} />);
+    expect(await screen.findByText(/No status checks need attention/)).toBeTruthy();
+    failed = true;
+    rerender(<AvailabilityHost fetcher={fetcher} location="home" />);
+    expect(await screen.findByText(/Automation alert status unavailable/)).toBeTruthy();
+    expect(screen.getAllByText(/Current alert status unavailable/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/No status checks need attention/)).toBeNull();
+  });
+
+  it("polls both feeds and reveals a WARN escalation; focus and reconnect also refresh", async () => {
+    vi.useFakeTimers();
+    let severity = "WARN";
+    const storedAck = ack({ mode: "IGNORED" });
+    const fetcher = vi.fn(async url => json(new URL(url).pathname.endsWith("/status-checks") ? [event(severity)] : [storedAck]));
+    await act(async () => { render(<Host fetcher={fetcher} />); });
+    expect(screen.getByTestId("status-feed").textContent).toBe("");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    severity = "CRITICAL";
+    await act(async () => { await vi.advanceTimersByTimeAsync(30000); });
+    expect(screen.getByTestId("status-feed").textContent).toBe("CRITICAL");
+    expect(fetcher).toHaveBeenCalledTimes(4);
+    await act(async () => { window.dispatchEvent(new Event("focus")); });
+    await act(async () => { window.dispatchEvent(new Event("online")); });
+    expect(fetcher).toHaveBeenCalledTimes(8);
+    cleanup();
+    await act(async () => { await vi.advanceTimersByTimeAsync(30000); window.dispatchEvent(new Event("focus")); });
+    expect(fetcher).toHaveBeenCalledTimes(8);
+  });
+
+  it("reveals cached snoozes at expiry without waiting for the next poll", async () => {
+    vi.useFakeTimers();
+    const storedAck = ack({ acknowledgedSeverity: "CRITICAL" });
+    const fetcher = vi.fn(async url => json(new URL(url).pathname.endsWith("/status-checks") ? [event("CRITICAL")] : [storedAck]));
+    await act(async () => { render(<Host fetcher={fetcher} />); });
+    expect(screen.getByTestId("status-feed").textContent).toBe("");
+    await act(async () => { await vi.advanceTimersByTimeAsync(1001); });
+    expect(screen.getByTestId("status-feed").textContent).toBe("CRITICAL");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("retains known critical events on failure while failed acknowledgment reads expose them", async () => {
+    const storedAck = ack({ acknowledgedSeverity: "CRITICAL", snoozedUntil: new Date(Date.now() + 60000).toISOString() });
+    let failure = false;
+    const fetcher = vi.fn(async url => {
+      if (failure) {
+        if (new URL(url).pathname.endsWith("/status-checks")) throw new Error("Network unavailable");
+        return { ok: false, status: 503 };
+      }
+      return json(new URL(url).pathname.endsWith("/status-checks") ? [event("CRITICAL")] : [storedAck]);
+    });
+    await act(async () => { render(<Host fetcher={fetcher} />); });
+    expect(screen.getByTestId("status-feed").textContent).toBe("");
+    failure = true;
+    await act(async () => { window.dispatchEvent(new Event("online")); });
+    expect(screen.getByTestId("status-feed").textContent).toBe("CRITICAL");
+    await act(async () => { window.dispatchEvent(new Event("focus")); });
+    expect(screen.getByTestId("status-feed").textContent).toBe("CRITICAL");
+    expect(fetcher.mock.calls.every(([url]) => new URL(url).pathname === "/api/events/status-checks" || url.endsWith("/api/alerts/acknowledgments"))).toBe(true);
+  });
+
+  it("accepts a successful empty event response as cleared conditions after an outage", async () => {
+    let phase = "critical";
+    const fetcher = vi.fn(async url => {
+      if (!new URL(url).pathname.endsWith("/status-checks")) return json([]);
+      if (phase === "failed") return { ok: false, status: 503 };
+      return json(phase === "critical" ? [event("CRITICAL")] : []);
+    });
+    await act(async () => { render(<Host fetcher={fetcher} />); });
+    phase = "failed";
+    await act(async () => { window.dispatchEvent(new Event("focus")); });
+    expect(screen.getByTestId("status-feed").textContent).toBe("CRITICAL");
+    phase = "cleared";
+    await act(async () => { window.dispatchEvent(new Event("online")); });
+    expect(screen.getByTestId("status-feed").textContent).toBe("");
+  });
+
+  it("does not let an older response overwrite a refreshed escalation", async () => {
+    let finishOld;
+    let calls = 0;
+    const fetcher = vi.fn(url => {
+      if (!new URL(url).pathname.endsWith("/status-checks")) return Promise.resolve(json([]));
+      if (++calls === 1) return new Promise(resolve => { finishOld = resolve; });
+      return Promise.resolve(json([event("CRITICAL")]));
+    });
+    await act(async () => { render(<Host fetcher={fetcher} />); });
+    await act(async () => { window.dispatchEvent(new Event("online")); });
+    expect(screen.getByTestId("status-feed").textContent).toBe("CRITICAL");
+    await act(async () => { finishOld(json([event("WARN")])); });
+    expect(screen.getByTestId("status-feed").textContent).toBe("CRITICAL");
   });
 });
