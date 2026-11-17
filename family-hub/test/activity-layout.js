@@ -128,6 +128,20 @@ module.exports = async function ({ browser, check, base }) {
     await page.waitForTimeout(500);
     check(`rail button toggles the activity back at ${tag}`, await activity(page), '');
 
+    // Bottom "Done" bar inside every focus box: visible, inside the box, closes it.
+    for (const [name, sel] of Object.entries(ACTIVITIES)) {
+      await page.click(`[data-activity-btn="${name}"]`);
+      await page.waitForTimeout(650);
+      const foot = page.locator(`${sel} .activity-done`);
+      const fb = await foot.boundingBox();
+      const pb = await page.locator(sel).boundingBox();
+      check(`${name} shows a Done bar inside the box bottom at ${tag}`,
+        !!fb && fb.x >= pb.x && fb.x + fb.width <= pb.x + pb.width + 1 && fb.y + fb.height <= pb.y + pb.height + 1 && fb.y > pb.y + pb.height * 0.6, true);
+      await foot.click();
+      await page.waitForTimeout(500);
+      check(`${name} Done bar returns to compressed at ${tag}`, [await page.locator(sel).isVisible(), await activity(page)], [false, '']);
+    }
+
     // Close control and Escape.
     await page.click('[data-activity-btn="chores"]');
     await page.waitForTimeout(500);
@@ -146,6 +160,29 @@ module.exports = async function ({ browser, check, base }) {
     }
     await page.close();
   }
+
+  // Swipe right dismisses a focused activity (touch kiosks).
+  const swipeCtx = await browser.newContext({ viewport: { width: 1280, height: 720 }, hasTouch: true });
+  const sw = await swipeCtx.newPage();
+  await sw.goto(`${base}/family-hub.html?kiosk=1`);
+  await sw.evaluate(() => document.getElementById('auth-overlay').classList.add('hidden'));
+  await sw.waitForTimeout(1600);
+  await sw.click('[data-activity-btn="chores"]');
+  await sw.waitForTimeout(600);
+  const swipeTo = async (dx, dy) => sw.evaluate(({ dx, dy }) => {
+    const el = document.getElementById('chores-card'); const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + 120;
+    const mk = (type, px, py) => new TouchEvent(type, { bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [new Touch({ identifier: 1, target: el, clientX: px, clientY: py })], changedTouches: [new Touch({ identifier: 1, target: el, clientX: px, clientY: py })] });
+    el.dispatchEvent(mk('touchstart', x, y)); el.dispatchEvent(mk('touchend', x + dx, y + dy));
+  }, { dx, dy });
+  await swipeTo(150, 200);
+  check('a mostly-vertical swipe does not dismiss', await activity(sw), 'chores');
+  await swipeTo(40, 0);
+  check('a short swipe does not dismiss', await activity(sw), 'chores');
+  await swipeTo(160, 10);
+  await sw.waitForTimeout(400);
+  check('swipe right dismisses the focused activity', await activity(sw), '');
+  await swipeCtx.close();
 
   // A new note must not take over the display: it flags the Notes tab instead.
   const notes = await open(1280, 720, '?kiosk=1');

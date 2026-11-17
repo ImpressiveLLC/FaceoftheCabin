@@ -31,7 +31,7 @@
 #presence-badge .card-label { gap:5px; font-size:8.5px; letter-spacing:1.5px; white-space:nowrap; }
 #presence-badge .card-label-icon { width:12px; height:12px; border-radius:50%; font-size:7px; }
 
-#activity-rail, .chores-close { display:none; }
+#activity-rail, .chores-close, .activity-foot { display:none; }
 
 @media (min-width: 901px) {
   /* 2. Settings is pinned, always. */
@@ -130,6 +130,23 @@
   :root:not(.hub-classic) #notepad-panel.open #notepad-main-inner { width:100%; box-sizing:border-box; }
   :root:not(.hub-classic) #notepad-handle { flex:0 0 min(340px, 38%); width:min(340px, 38%); }
   :root:not(.hub-classic) #notepad-handle .np-handle-top { display:none; }
+
+  /* Done bar: pinned to the bottom edge of the focus box, whatever scrolls above it. */
+  :root:not(.hub-classic) .activity-foot {
+    display:flex; align-items:center; gap:16px; flex:0 0 auto; box-sizing:border-box;
+    margin-top:auto; padding:12px 16px; position:sticky; bottom:0; z-index:2;
+    background:var(--layer-1-fill, var(--glass)); border-top:1px solid var(--layer-1-edge, var(--ui-outline));
+  }
+  :root:not(.hub-classic) #dashboard-overlay > .activity-foot { position:static; }
+  :root:not(.hub-classic) .activity-done {
+    min-height:48px; padding:8px 28px; flex:0 0 auto;
+    background:var(--control-surface, var(--glass-light)); border:2px solid var(--control-outline, var(--gold));
+    border-radius:var(--radius); box-shadow:0 0 0 1px var(--gold-faint);
+    color:var(--cream); font:600 15px var(--font-ui); letter-spacing:0; text-transform:none; cursor:pointer;
+  }
+  :root:not(.hub-classic) .activity-done:hover { background:var(--gold-faint); border-color:var(--gold); color:var(--gold); }
+  :root:not(.hub-classic) .activity-done:focus-visible { outline:3px solid var(--control-outline, var(--gold)); outline-offset:2px; }
+  :root:not(.hub-classic) .activity-foot-hint { font:12px var(--font-ui); color:var(--cream-dim); }
 
   @media (prefers-reduced-motion: reduce) {
     :root:not(.hub-classic) :is(#chores-card, #notepad-panel, #dashboard-overlay, #settings-panel) { transition:opacity .01s; transform:none; }
