@@ -2832,6 +2832,24 @@
           "audience": "administrator"
         }
       ]
+    },
+    {
+      "id": "recreation_plan_for",
+      "description": "C1 installation-plan-for wording: ties installation so required setup inputs and clean-host limitations remain selected",
+      "boost": 0,
+      "keywordPatterns": [
+        "installation plan for"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/independent-installation.md",
+          "section": "establish-the-actual-installation-plan",
+          "audience": "administrator"
+        }
+      ]
     }
   ],
   "r2Changes": [
@@ -2862,6 +2880,7 @@
     "2026-11-18 C2 tail I02: isolated sign-in duration phrase reuses administrator session guidance. No lifetime, security policy or authentication behavior change.",
     "2026-11-18 C2 tail installation phrasings (part 1 of 2): zero-boost categories recreation_instance_plan ('recreate the instance') and recreation_instance_acceptance ('recreating the instance'; both phrases are instance-qualified and three words, so credential password/token/secret wording only ties and stays first, and device, guest-link or rule recreating questions are not captured) reuse the existing administrator installation-plan and acceptance-record sections. The two clean-machine and blank-machine phrasings are not changed here: delivering their section beside the installation limits exceeds the 6000-character budget, so they await a budget ruling, like M04. No guide, boost, matcher or budget change.",
     "2026-11-18 W-117 C1 acceptance gap (#512): isolated zero-boost the installation acceptance phrase (definite noun wording, preserving the older acceptance-record verb question) ties installation at 3. Together with the reviewed 56-character duplicate-clause condensation, the existing minimum inputs, clean-host limitations and acceptance record arrive whole at 5990 characters. Credential guidance remains first on credential ties. No matcher, budget, existing category or baseline expectation change.",
-    "2026-11-18 C2 tail M04: zero-boost category recovery_external_deadman ('external dead-man', two words, qualified to the external host monitor) reuses the existing administrator external dead-man monitoring section. For an external dead-man question it scores 2 against self_healing_recovery's 1 ('dead-man'), so the dead-man section is delivered whole instead of being skipped behind the 4648-character self-healing section. Blink and other dead-man wordings are unaffected; credential wording (3) stays ahead. Per Cowork's ruling on #513. No guide, boost, matcher or budget change."
+    "2026-11-18 C2 tail M04: zero-boost category recovery_external_deadman ('external dead-man', two words, qualified to the external host monitor) reuses the existing administrator external dead-man monitoring section. For an external dead-man question it scores 2 against self_healing_recovery's 1 ('dead-man'), so the dead-man section is delivered whole instead of being skipped behind the 4648-character self-healing section. Blink and other dead-man wordings are unaffected; credential wording (3) stays ahead. Per Cowork's ruling on #513. No guide, boost, matcher or budget change.",
+    "2026-11-18 W-117 C1 plan gap (#516): one zero-boost installation plan for category ties installation at 3. Together with the approved two-paragraph condensation, the full setup-plus-plan bundle is 5960 characters. Credential guidance and role boundaries remain intact. Cowork ruling 6991093994 accepts the mixed guest-link wording losing sharing context as a pinned known limitation, not a preservation negative. No matcher, budget, existing category or frozen expectation change."
   ]
 }
