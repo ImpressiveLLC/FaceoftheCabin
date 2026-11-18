@@ -4,7 +4,7 @@ import { render, screen, act, cleanup } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { LiveEventLog, SensorHistoryPanel } from "./App.jsx";
+import { LiveEventLog, SensorHistoryPanel, MnSeeView, AppContext, renderProbes } from "./App.jsx";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const css = readFileSync(path.join(here, "styles.css"), "utf8");
@@ -122,32 +122,78 @@ describe("delta-only re-render", () => {
 });
 
 describe("layout contract (jsdom has no layout engine, so this checks the CSS that carries it)", () => {
-  it("Sensor History tables use a fixed layout, a set first column and tabular figures", () => {
+  it("Sensor History data table: fixed layout from <col> widths, nothing clipped, presence table untouched", () => {
     expect(css.match(/\.sensor-history-table \{[^}]*\}/)[0]).toMatch(/font-variant-numeric:\s*tabular-nums/);
-    expect(css).toMatch(/\.sensor-history-table--fixed \{[^}]*table-layout:\s*fixed[^}]*min-width:/);
-    expect(css).toMatch(/\.sensor-history-table--fixed th:first-child[^}]*width:\s*13em/);
-    expect(css).toMatch(/\.sensor-history-table--fixed th,[^}]*white-space:\s*nowrap/);
-    // the presence "Day by day" table shares the base class and must keep its auto layout
     expect(css.match(/\.sensor-history-table \{[^}]*\}/)[0]).not.toMatch(/table-layout/);
+    expect(css).toMatch(/\.sensor-history-table--fixed \{\s*table-layout:\s*fixed/);
+    expect(css).toMatch(/\.sh-col-date \{\s*width:\s*13em/);
+    expect(css).toMatch(/\.sh-col-device \{\s*width:\s*11em/);
+    expect(css).toMatch(/\.sh-col-outdoor \{\s*width:\s*30em/);
+    // the outdoor reading is long (mean, low, high, count, partial): it wraps inside its column, never clipped
+    expect(css).toMatch(/td\.sh-cell-outdoor \{\s*white-space:\s*normal/);
+    const fixedRules = css.match(/\.sensor-history-table--fixed[^{]*\{[^}]*\}/g).join(" ");
+    expect(fixedRules).not.toMatch(/text-overflow|overflow:\s*hidden/);
   });
 
   it("the log reserves its height before the first message", () => {
     expect(css).toMatch(/\.event-log-body\s*\{\s*min-height:\s*169px/);
   });
 
-  it("source guard: the section passes Sensor History one memoized array, and only the data table is fixed-layout", () => {
-    // Not a behavioural test: LocationMonitoringSection is not exported and needs the whole app shell, so this only
-    // guards the wiring that keeps the memoized panel's props stable.
-    const app = readFileSync(path.join(here, "App.jsx"), "utf8");
-    expect(app).toMatch(/const locDevices = useMemo\(\s*\(\) => devices\.filter\([^)]*\), \[devices, locCfg\.id\]\)/);
-    expect(app).toMatch(/<SensorHistoryPanel devices=\{locDevices\}/);
-    expect(app).not.toMatch(/<SensorHistoryPanel devices=\{devices\.filter/);
-    expect((app.match(/sensor-history-table--fixed/g) || []).length).toBe(1);
-  });
-
   it("the live stream has no throttle, debounce or batching around setMessages", () => {
     const app = readFileSync(path.join(here, "App.jsx"), "utf8");
     const hook = app.slice(app.indexOf("function useLiveEventStream"), app.indexOf("// ─── Panel: Family Hub"));
     expect(hook).not.toMatch(/setTimeout|debounce|throttle|requestAnimationFrame/);
+  });
+});
+
+describe("render counts through the real parent and provider (MnSeeView inside an AppContext rebuilt on every render)", () => {
+  const device = (over = {}) => ({ deviceId: "t1", name: "Temp A", type: "TEMPERATURE_SENSOR", state: "ONLINE",
+    location: "cabin", attributes: { enabled: true, temperature: 70 }, ...over });
+  let renders;
+  const setActivePanel = vi.fn();
+  beforeEach(() => {
+    renders = 0;
+    renderProbes.sensorHistory = () => { renders += 1; };
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok: true, json: async () => ({}) })));
+  });
+  afterEach(() => { delete renderProbes.sensorHistory; });
+
+  function Harness({ devices, bumpRef }) {
+    const [n, setN] = useState(0);
+    bumpRef.current = () => setN(v => v + 1);
+    // new value object every render, exactly like App's Provider (setActivePanel is a useState setter in App: stable)
+    return (
+      <AppContext.Provider value={{ displayConfigs: {}, setActivePanel, n }}>
+        <MnSeeView devices={devices} activeLocation="cabin" active reorderMode={false}
+          auth={{ cabinSessionToken: "tok", signedIn: true, authedFetch: fetch }} />
+      </AppContext.Provider>
+    );
+  }
+
+  it("neither a parent or context re-render with unchanged devices nor a stream message re-renders Sensor History", async () => {
+    const devices = [device()];
+    const bumpRef = { current: null };
+    render(<Harness devices={devices} bumpRef={bumpRef} />);
+    await act(async () => {});
+    expect(renders).toBeGreaterThan(0);
+    const base = renders;
+    act(() => bumpRef.current());
+    act(() => bumpRef.current());
+    expect(renders).toBe(base);
+    const es = FakeEventSource.instances[0];
+    act(() => es.emit({ n: 1 }));
+    act(() => es.emit({ n: 2 }));
+    expect(document.querySelectorAll(".event-row")).toHaveLength(2);
+    expect(renders).toBe(base);
+  });
+
+  it("a genuinely changed device list does render it again (nothing is frozen)", async () => {
+    const bumpRef = { current: null };
+    const { rerender } = render(<Harness devices={[device()]} bumpRef={bumpRef} />);
+    await act(async () => {});
+    const base = renders;
+    rerender(<Harness devices={[device({ attributes: { enabled: true, temperature: 71 } })]} bumpRef={bumpRef} />);
+    await act(async () => {});
+    expect(renders).toBeGreaterThan(base);
   });
 });

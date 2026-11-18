@@ -6560,9 +6560,10 @@ export function AlertHistoryLog({ devices = [], location, authedFetch = fetch, s
 // /api/events/** now requires a Google token (WebConfig.java, 2026-09-01).
 // Memoized (Nate's delta-only rule, 2026-11-17): it re-renders only when one of its own props changes, not when a
 // sibling in the Monitoring section does. Callers must pass a stable `devices` array (see LocationMonitoringSection).
-export const SensorHistoryPanel = React.memo(function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authedFetch = fetch, signedIn = false }) {
-  // null outside the app shell (direct-render tests); the Alert History link is simply omitted then.
-  const setActivePanel = useApp()?.setActivePanel;
+// Test seam: lets a render-count test see how often the memoized body really renders (set only in tests).
+export const renderProbes = {};
+const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devices, apiBase, location, tempUnit, authedFetch = fetch, signedIn = false, setActivePanel }) {
+  renderProbes.sensorHistory?.();
   const [reportedFields, setReportedFields] = useState({});
   useEffect(() => {
     if (devices.length === 0) return; // nothing to look up yet
@@ -7055,7 +7056,13 @@ export const SensorHistoryPanel = React.memo(function SensorHistoryPanel({ devic
                   {partialDates.size > 0 && " A day marked (partial) covers less than a full 24 hours -- its average is over fewer hours than the other rows, not a stronger or weaker reading."}
                 </p>
                 <div className="sensor-history-table-wrap">
-                  <table className="sensor-history-table sensor-history-table--fixed" style={{ "--sh-cols": selectedIds.length + outdoorSeries.length }}>
+                  <table className="sensor-history-table sensor-history-table--fixed"
+                    style={{ minWidth: `calc(13em + ${selectedIds.length} * 11em + ${outdoorSeries.length} * 30em)` }}>
+                    <colgroup>
+                      <col className="sh-col-date" />
+                      {selectedIds.map(id => <col key={id} className="sh-col-device" />)}
+                      {outdoorSeries.map(sr => <col key={sr.key} className="sh-col-outdoor" />)}
+                    </colgroup>
                     <thead><tr><th>Date</th>{selectedIds.map(id => <th key={id}>{nameFor(id)}</th>)}{outdoorSeries.map(sr => <th key={sr.key}>{sr.label}</th>)}</tr></thead>
                     <tbody>
                       {[...allDates].reverse().map(day => (
@@ -7068,11 +7075,13 @@ export const SensorHistoryPanel = React.memo(function SensorHistoryPanel({ devic
                             // average per cell hides whether a reading came from dozens of
                             // samples or one stray point, which is exactly the kind of
                             // question an insurance inspector would ask.
-                            return <td key={id}>{p?.avg != null ? `${toDisplay(p.avg).toFixed(1)}${unit} (n=${p.sampleCount})` : "—"}</td>;
+                            const text = p?.avg != null ? `${toDisplay(p.avg).toFixed(1)}${unit} (n=${p.sampleCount})` : "—";
+                            return <td key={id} title={text}>{text}</td>;
                           })}
                           {outdoorSeries.map(sr => {
                             const o = sr.byDay[String(day).slice(0, 10)];
-                            return <td key={sr.key}>{o ? outdoorCellText(o, toDisplay, unit) : "—"}</td>;
+                            const text = o ? outdoorCellText(o, toDisplay, unit) : "—";
+                            return <td key={sr.key} className="sh-cell-outdoor" title={text}>{text}</td>;
                           })}
                         </tr>
                       ))}
@@ -7087,6 +7096,15 @@ export const SensorHistoryPanel = React.memo(function SensorHistoryPanel({ devic
     </div>
   );
 });
+
+// The app context is rebuilt as a new object on every App render, so a panel that reads it directly re-renders each time
+// whatever its props are. This thin wrapper is the only part that reads it; it passes the one value the body needs
+// (a stable useState setter, null outside the app shell so the Alert History link is omitted) and the memoized body
+// skips unless its own props changed.
+export function SensorHistoryPanel(props) {
+  const setActivePanel = useApp()?.setActivePanel;
+  return <SensorHistoryPanelBody {...props} setActivePanel={setActivePanel} />;
+}
 
 // The live event log owns the SSE stream, so a message re-renders only this component and its one new row, never the
 // KPI tiles or Sensor History above it (Cowork trace 2026-11-17: the stream state used to live in
@@ -7435,10 +7453,14 @@ export function MnSeeView({ devices, activeLocation, active, reorderMode, auth }
 
   const isAlarm = useCallback((d) => d.state === "ALARM" || d.state === "CRITICAL", []);
   // D13 A1: one card per physical device; an HA entity repeating its Zigbee parent's reading is not a second card.
-  const monitored = collapseDuplicateZigbeeServices(electricalMonitoringDevices(devices));
-  const locDevices = activeLocation === "both"
-    ? monitored
-    : monitored.filter(d => !d.location || d.location === activeLocation);
+  // Memoized on its real inputs so useDraggableOrder and the sections below get the same array until devices or the
+  // location actually change (a fresh array every render defeated every memo downstream).
+  const locDevices = useMemo(() => {
+    const monitored = collapseDuplicateZigbeeServices(electricalMonitoringDevices(devices));
+    return activeLocation === "both"
+      ? monitored
+      : monitored.filter(d => !d.location || d.location === activeLocation);
+  }, [devices, activeLocation]);
 
   const { ordered, pinnedCount, reorder } = useDraggableOrder(
     `order.monitoring.${activeLocation}`, locDevices, isAlarm
