@@ -7291,7 +7291,7 @@ describe("On the Way is reachable from My Places and Monitoring", () => {
     fireEvent.click(screen.getByRole("button", { name: /On the Way/ }));
     await waitFor(() => expect(haCalls(authedFetch)).toHaveLength(1));
     expect(JSON.parse(haCalls(authedFetch)[0][1].body)).toMatchObject({ domain: "input_boolean", service: "turn_on", entity_id: "input_boolean.on_the_way_to_cabin" });
-    expect((await screen.findByRole("status")).textContent).toMatch(/Preheat started\. Mech room is/);
+    expect((await screen.findByRole("status")).textContent).toMatch(/^Sent\. Home Assistant decides whether the heater starts\. Mech room is/);
   });
 
   it("Monitoring has the same button in its header actions", async () => {

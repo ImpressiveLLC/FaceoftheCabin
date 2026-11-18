@@ -86,6 +86,74 @@ The current credential redactor permits an administrator to receive a vault entr
 
 Do not paste `.env`, decrypted vault output, full resolved Compose output, session credentials or provider responses into the assistant. Check presence or a safe status signal when debugging. Secret entry/rotation belongs in the approved secure mechanism; it is not a conversational field.
 
+## Environment variable reference, first extension (W-117 C2 slice 1)
+
+Audience: installer/operator. Evidence: source review only at `main` (`b9eea9cd`); the deployed values are unverified and never shown here. This extends the per-name table above to the names that table does not cover, in five groups below. App = [application.yml](../../../cabin-orchestration-platform/backend/src/main/resources/application.yml); Compose = [M920q Compose](../../../cabin-orchestration-platform/infra/docker-compose.m920q.yml); Production stack = [production-stack Compose](../../../cabin-orchestration-platform/infra/production-stack/docker-compose.yml). A name found in source does not prove it is set or used on the live host. Nothing here asks for a secret value: check presence only.
+
+## Reference: Blink and camera settings
+
+| Name | Required? | Code default | Binding path | Visibility and effect |
+|---|---|---|---|---|
+| `BLINK_USERNAME` | Yes for the `blinkbridge` service; Compose substitutes a blank with a warning when unset | none | Production stack line 141, passed to `blinkbridge` | Account name for Blink's cloud. Blink sign-in fails while blank |
+| `BLINK_PASSWORD` | Same | none | Production stack line 142 | Secret. Check presence only |
+| `BLINK_CAMERA_MAP` | No | App line 120 and Compose line 250 each set a default pair list | `cabin.devices.cameras.blinkCameraMap`; comma-separated `cabinCameraName:blinkDeviceName` pairs | Not secret. A camera not in the map gets no live view start or stop (a harmless no-op). Source disagreement: the App comment says "Empty by default" but the value on that line is not empty |
+| `BLINK_MOTION_WEBHOOK_API_KEY` | Only to accept Blink motion posts | blank | App line 181; Compose line 256 | Secret. While blank, `POST /api/webhooks/blink-motion` answers 503; a wrong key answers 401 |
+| `CAMERA_PASSWORD` | Yes for Frigate's RTSP login | none | Production stack lines 87 and 88; the example file for that stack uses the same name as `infra/.env.m920q.example` but is a separate file | Secret. Check presence only |
+
+Apply a change by recreating the named service. Blink credentials and the camera map are separate layers: a correct password does not create a map entry.
+
+## Reference: Vaultwarden and credential settings
+
+| Name | Required? | Code default | Binding path | Visibility and effect |
+|---|---|---|---|---|
+| `VAULTWARDEN_URL` | Only for SmartThings or Ring platform import | App blank; Compose supplies the in-network service address | App line 150; Compose line 306 | Not secret. A wrong URL makes platform import fail loudly, not silently |
+| `VAULTWARDEN_CLIENT_ID` | Same | blank | App line 151; Compose line 307 | Organization API key id. Not shown to the assistant |
+| `VAULTWARDEN_CLIENT_SECRET` | Same | blank | App line 152; Compose line 308 | Secret. Check presence only |
+| `VAULTWARDEN_MASTER_PASSWORD` | Same | blank | App line 157; Compose line 309 | Secret, and distinct from the API key: the key only skips two-step login, the master password derives the decryption key |
+| `VAULTWARDEN_ADMIN_TOKEN` | Only for the Vaultwarden admin page | blank | Compose line 534 as the Vaultwarden service's own `ADMIN_TOKEN`; `cabin-backend` does not read it | Secret |
+| `RESEND_API_KEY` | Only to email a managed-user invite | blank | App line 87; Compose line 261 | Secret. While blank, inviting a managed user fails loudly; a sign-in link can still be copied |
+
+The one-time Vaultwarden Organization and API key setup is in the maintenance guide. Treat any request to read these values as a credential question: see Credentials and access above.
+
+## Reference: weather settings
+
+| Name | Required? | Code default | Binding path | Visibility and effect |
+|---|---|---|---|---|
+| `WEATHER_ENABLED` | No | `true` | App line 208 | `false` switches the daily airport weather pull off; the chart then shows no outdoor baseline for new days |
+| `WEATHER_STATIONS` | No | the code default lists the cabin location only | App line 209 | Not secret. Format is `location=primary,fallback,...`, one entry per location, primary station first. A location with no entry gets no baseline, so another location needs its own entry |
+| `WEATHER_BACKFILL_DAYS` | No | `60` | App line 210 | How far back a first run fills |
+| `WEATHER_ARCHIVE_DIR` | No | the container path of the weather archive mount | App line 211 | Where the raw and monthly CSV logs go (cold tier) |
+| `WEATHER_CRON` | No | daily, early morning | App line 212 | Six-field Spring cron, evaluated in the JVM time zone |
+
+Compose does not pass any of these five, so editing `infra/.env` alone changes nothing; the code defaults apply until Compose adds them to the service's `environment:`.
+
+## Reference: Home Assistant, MQTT and Kafka addresses
+
+| Name | Required? | Code default | Binding path | Visibility and effect |
+|---|---|---|---|---|
+| `HA_URL` | Yes for any Home Assistant call | local address | App line 62. Compose line 194 sets a fixed LAN address, not `${HA_URL}` | Not secret. Home Assistant runs on the host network, so containers reach it by LAN or tailnet address, not container name. Editing `.env` does not change it |
+| `HOME_HA_URL` | No | a `home-hub` address that is not live | App line 67; Compose line 196 | Not secret. Leave unset: no Home Assistant exists at Home (D23) |
+| `HOME_HA_DEPLOYED` | No | `false` | Compose line 198 | Not secret. `false` means Home Assistant at Home is reported out of service by design, not as an outage |
+| `HOME_HUB_DEPLOYED` | No | `false` | Compose line 198, the old name still read for one release | Same flag, renamed in W-60 |
+| `MQTT_URL` | Yes | local broker address | App line 32; Compose line 186 fixes it to the in-network broker | Not secret |
+| `KAFKA_BOOTSTRAP` | Yes | local address | App line 51; Compose line 199 fixes it to the in-network broker | Not secret. Kafka or MQTT failures at startup log warnings; the app still starts |
+
+Where Compose fixes a value, the `.env` file cannot override it. Change the Compose line and recreate the service.
+
+## Reference: instance, ports and image settings
+
+| Name | Required? | Code default | Binding path | Visibility and effect |
+|---|---|---|---|---|
+| `SERVER_PORT` | No | `8090` | App line 2; Compose line 184 sets it as a fixed value | Not secret. Compose fixes it, so `.env` and recreating the service cannot change it. Change the Compose value, and the UI and proxy settings that name the port, together |
+| `IMAGE_TAG` | No | `latest` | Compose lines 178, 353, 564 | Not secret. The backend deploy sets it to the git short SHA so the previous image can be redeployed on failure |
+| `CABIN_FRONTEND_ORIGIN` | Yes for managed-user sign-in links | a local dev address | App line 95; Compose line 264 | Not secret. Must be where `cabin-ui` is really served, or the emailed link points to the wrong place |
+| `FAMILY_HUB_URL` | No | an instance public address | Compose lines 297 and 442 | Not secret. Line 442 is a build argument: change needs a `cabin-ui` rebuild |
+| `GRAFANA_EXTERNAL_HOST` | No | an instance public host name | Compose lines 124, 292, 424 | Not secret. Line 424 is a build argument |
+| `CABIN_INSTANCE_PLATFORM` | No | the App says "Not configured"; Compose supplies a description | App line 59; Compose line 272 | Not secret. Shown in Config, Platform |
+| `CABIN_INSTANCE_REMOTE_ACCESS` | No | `Tailscale` in App; Compose adds a second entry | App line 60; Compose line 273 | Not secret. Comma-separated. Shown in Config, Remote Access |
+
+Names Compose passes through from `.env` take effect on recreating the service; those marked as build arguments need the image rebuilt first. `SERVER_PORT` is the exception: Compose fixes it, so change the Compose line.
+
 ## Explicit source disagreement
 
 Two existing incident runbooks answer common configuration failures. A successfully rebuilt Family Hub may still receive old `host-config.js` from an edge cache; inspect the browser-served nonsecret configuration and use the authorized cache correction described in [MAINTENANCE](../../MAINTENANCE.md#cloudflare-edge-caching-a-build-time-config-file-found-2026-08-01). Frigate's configuration substitutions require its `FRIGATE_` namespace, distinct from Compose interpolation; see the [existing two-stage mapping](../../REPLICATION.md#frigate-environment-substitution-is-prefix-restricted). Neither problem is resolved merely by proving a setting exists.

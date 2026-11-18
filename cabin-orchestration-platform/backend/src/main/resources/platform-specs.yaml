@@ -226,42 +226,42 @@ groups:
         name: React
         kind: npm
         keys: [react]
-        declared: latest
+        declared: "19.2.8"
         locked: "19.2.8"
-        track: floating
+        track: pinned
         sources: [cabin-orchestration-platform/ui/package.json]
-        note: package.json says latest; package-lock.json holds the version that builds. Pin the range so an upgrade is a decision.
+        note: pinned to an exact version in package.json (PR 473); an upgrade is a decision.
       - id: fe.react-dom
         name: React DOM
         kind: npm
         keys: [react-dom]
-        declared: latest
+        declared: "19.2.8"
         locked: "19.2.8"
-        track: floating
+        track: pinned
         sources: [cabin-orchestration-platform/ui/package.json]
       - id: fe.vite
         name: Vite
         kind: npm
         keys: [vite]
-        declared: latest
+        declared: "8.1.5"
         locked: "8.1.5"
-        track: floating
+        track: pinned
         sources: [cabin-orchestration-platform/ui/package.json]
       - id: fe.plugin-react
         name: Vite React plugin
         kind: npm
         keys: ["@vitejs/plugin-react"]
-        declared: latest
+        declared: "6.0.4"
         locked: "6.0.4"
-        track: floating
+        track: pinned
         sources: [cabin-orchestration-platform/ui/package.json]
       - id: fe.lucide
         name: Lucide icons
         kind: npm
         keys: [lucide-react]
-        declared: latest
+        declared: "1.26.0"
         locked: "1.26.0"
-        track: floating
+        track: pinned
         sources: [cabin-orchestration-platform/ui/package.json]
       - id: fe.vitest
         name: Vitest (tests)

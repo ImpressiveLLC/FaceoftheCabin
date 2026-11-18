@@ -5039,7 +5039,9 @@ export function OnTheWayButton({ auth, devices, prominent = false }) {
     try {
       await callHaService(auth?.authedFetch || fetch, "input_boolean", "turn_on", "input_boolean.on_the_way_to_cabin");
       const temp = mechRoomTemperature(devices);
-      setToast({ ok: true, text: `Preheat started. Mech room is ${temp == null ? "not reporting" : fmtTemp(temp, tempUnit)}.` });
+      // Accepted is not started: HA turns the helper on, then its own automation decides and publishes
+      // HEATER_PREHEAT_STARTED, _SKIPPED or _FAILED later. The toast must not claim an outcome it has not seen.
+      setToast({ ok: true, text: `Sent. Home Assistant decides whether the heater starts. Mech room is ${temp == null ? "not reporting" : fmtTemp(temp, tempUnit)}.` });
     } catch (err) {
       setToast({ ok: false, text: err.outcomeUnknown
         ? "Preheat: no answer from Home Assistant. It may or may not have started: check the mech room heater before trying again."
