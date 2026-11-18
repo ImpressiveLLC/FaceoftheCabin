@@ -41,7 +41,15 @@ The five dependencies that were `latest` are now pinned to the versions the lock
 | Public domain, per CC0 (one with BSD-2-Clause) | 2 |
 | Eclipse Public License 1.0 or 2.0, alone or dual with LGPL / GPL2 with Classpath Exception | 4 |
 
-The four EPL-family jars, none modified here, all dual-licensed so the project can choose the permissive side: `logback-classic` and `logback-core` (EPL-1.0 or LGPL-2.1), `jakarta.annotation-api` (EPL-2.0 or GPL-2.0 with the Classpath Exception), `org.eclipse.paho.client.mqttv3` (EPL-2.0 or EDL-1.0; the POM names EPL-2.0). No GPL-only or AGPL jar appeared in the runtime list. The Spring Boot starters are Apache-2.0 as declared.
+The four EPL-family jars, none modified here, each declare more than one licence in their POM. A declared alternative is an option, not a clearance: the alternatives are listed so a person can decide which one the project relies on.
+
+| Jar | Alternatives declared in the POM | What this scan does and does not say |
+|---|---|---|
+| `logback-classic`, `logback-core` | EPL-1.0 or LGPL-2.1 | Both alternatives carry obligations (EPL-1.0 is weak copyleft; LGPL-2.1 has its own terms). The project has not chosen one. Not checked against the current upstream statement at <https://logback.qos.ch/license.html>, which may differ from the historical POM of the version in use. |
+| `jakarta.annotation-api` | EPL-2.0 or GPL-2.0 with the Classpath Exception | The EPL-2.0 alternative carries weak-copyleft obligations; the second alternative is the GPL with the Classpath Exception. No choice recorded. |
+| `org.eclipse.paho.client.mqttv3` | EPL-2.0 or EDL-1.0 (the POM names EPL-2.0) | EDL-1.0 is a BSD-style licence; the POM text names EPL-2.0. No choice recorded. |
+
+No GPL-only or AGPL jar appeared in the runtime list. The Spring Boot starters are Apache-2.0 as declared. All of this is metadata read from the POMs of the resolved versions (parent POM when an artifact declares none); no licence file or upstream page was read, and it is not legal clearance.
 
 ## Running images on the M920q (labels only)
 
@@ -57,7 +65,7 @@ The four EPL-family jars, none modified here, all dual-licensed so the project c
 | `ghcr.io/blakeblackshear/frigate:stable`, `confluentinc/cp-kafka:7.6.1`, `timescale/timescaledb:latest-pg16`, `bluenviron/mediamtx:latest`, `python:3.12-slim` | no licence label | cannot be confirmed from the image |
 | `cabin-backend`, `infra-cabin-ui`, `infra-family-hub`, `blinkbridge:rewrite`, `birthday-rsvp:*` | not applicable or no label | project-built images |
 
-Also: four of these images track `latest`, `stable` or `main`, which can change licence between pulls; pinning them is a separate host-side decision and not part of this PR.
+Also: of the third-party images in the table above, 13 use a floating tag (12 are exactly `latest`, `stable` or `main`, plus `timescale/timescaledb:latest-pg16`); `uptime-kuma:2.5.0`, `cp-kafka:7.6.1` and `python:3.12-slim` are version-pinned. A floating tag can change licence between pulls; pinning is a separate host-side decision and not part of this PR.
 
 ## What this does not settle
 
