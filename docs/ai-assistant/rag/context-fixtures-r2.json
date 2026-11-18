@@ -2434,6 +2434,184 @@
           "audience": "administrator"
         }
       ]
+    },
+    {
+      "id": "cap_dependencies",
+      "description": "W-117 C2 capability route reference: feature-prerequisites-and-evidence",
+      "boost": 0,
+      "keywordPatterns": [
+        "feature prerequisites",
+        "feature dependencies"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "feature-prerequisites-and-evidence",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_api_base",
+      "description": "W-117 C2 capability route reference: api-bases-and-browser-destinations",
+      "boost": 0,
+      "keywordPatterns": [
+        "api base",
+        "api bases",
+        "browser destinations"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "api-bases-and-browser-destinations",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_access",
+      "description": "W-117 C2 capability route reference: caller-boundaries-and-read-exceptions",
+      "boost": 0,
+      "keywordPatterns": [
+        "caller boundaries",
+        "route permissions"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "caller-boundaries-and-read-exceptions",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_helpdesk",
+      "description": "W-117 C2 capability route reference: ask-routes-and-proposal-prerequisites",
+      "boost": 0,
+      "keywordPatterns": [
+        "helpdesk endpoint",
+        "proposal prerequisites",
+        "ask routes",
+        "propose route"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "ask-routes-and-proposal-prerequisites",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_devices",
+      "description": "W-117 C2 capability route reference: device-routes-and-home-assistant-actions",
+      "boost": 0,
+      "keywordPatterns": [
+        "device routes",
+        "ha actions",
+        "ha prerequisites",
+        "call post /api/ha/services"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "device-routes-and-home-assistant-actions",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_events",
+      "description": "W-117 C2 capability route reference: event-routes-and-telemetry-prerequisites",
+      "boost": 0,
+      "keywordPatterns": [
+        "event routes",
+        "telemetry prerequisites",
+        "export permissions"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "event-routes-and-telemetry-prerequisites",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_cameras",
+      "description": "W-117 C2 capability route reference: camera-routes-and-media-prerequisites",
+      "boost": 0,
+      "keywordPatterns": [
+        "camera routes",
+        "media prerequisites"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "camera-routes-and-media-prerequisites",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_family",
+      "description": "W-117 C2 capability route reference: family-notes-routes-and-synchronization",
+      "boost": 0,
+      "keywordPatterns": [
+        "notes routes",
+        "notes synchronization"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "family-notes-routes-and-synchronization",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_rules",
+      "description": "W-117 C2 capability route reference: workflow-routes-and-alert-acknowledgments",
+      "boost": 0,
+      "keywordPatterns": [
+        "workflow routes",
+        "acknowledgment permissions",
+        "alert routes"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "workflow-routes-and-alert-acknowledgments",
+          "audience": "administrator"
+        }
+      ]
     }
   ],
   "r2Changes": [
@@ -2453,6 +2631,7 @@
     "2026-11-18 W-117 C2 slice 2: source-reviewed operations/recovery reference mapped in bounded role-gated sections. Offline routing/context checks only; no model run, training or restore rehearsal.",
     "2026-11-18 W-117 C2 slice 3 (identity and credentials): four new administrator categories, one section each: identity_admin, identity_sessions, identity_guest_link_checks, identity_sign_in_link (split after the #490 review so a tie with credential_redaction still delivers the asked-for section); the credential inventory is its own administrator category, credential_inventory (boost 1), so credential_redaction is unchanged and credential-location questions keep only credentials-and-access within budget (after #487, adding the inventory to credential_redaction pushed recovery sections out of a tied bundle). Credential-location questions keep credentials-and-access.",
     "2026-11-18 W-117 C2 slice 4: seven bounded administrator stack-map sections, source declarations only. No live topology, model execution, training or infrastructure change.",
-    "2026-11-18 W-117 C2 slice 8: three bounded stack phrasing aliases; zero boost unchanged. Delivered-content and credential-priority regression checks; no runtime or model change."
+    "2026-11-18 W-117 C2 slice 5: bounded administrator feature prerequisites, browser API bases and backend caller boundaries. Source review only; no model, device or host execution.",
+    "2026-11-18 W-117 C2 slice 8: three stack and two capability phrasing aliases; existing zero boosts unchanged. Delivered-content and credential-priority regressions; no matcher/runtime/model change."
   ]
 }

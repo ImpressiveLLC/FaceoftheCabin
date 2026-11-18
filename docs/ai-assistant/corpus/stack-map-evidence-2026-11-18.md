@@ -62,3 +62,11 @@ The three assigned questions now deliver their entire existing section: which po
 72combined tests passed, zero failures/errors/skips: stack5, identity6, recovery5, matcher9, builder22, guide-alias3, routing13, source9. Existing150 replica output unchanged (16no-category). Mechanical comparison confirms only the three aliases and appended change note changed in fixtures; mirrors byte-identical. The guide's original baseline date is verified by git author and committer timestamps: e8b32bb2c5bcd4f2281a213c33456e89b955c873,2026-11-18T03:34:17-06:00. No guide date correction required.
 
 Pending #492/#493 are not in this baseline. Ordered integration and renewed exact-head review/CI are required before merge. No model run, training, live Ask request or host change. A1 NOT_MEASURED; release_eligible remains false. Author checks are not independent CLEAN.
+
+## Slice 8 integration and assigned capability additions
+
+Integrated main `b88d416dca7194bc7eb4ac39bee79df02225b804` after #492 merged. Cowork comment6978245948 also assigned two bounded capability gaps to this slice: "What does the propose route need?" and "Who can call POST /api/ha/services?". Added `propose route` and `call post /api/ha/services` to the existing zero-boost categories. The latter phrase scores3, above generic `who can`2, while credential negatives still retain complete credentials-and-access. No matcher, role, API or execution change.
+
+Current delta against integrated main is exactly five appended aliases and one change note in mirrored fixtures. Existing fields/category contents otherwise preserved. Stack17 and capability20 authored cases deliver whole sections, including all five newly assigned questions. Stack12 and capability10 credential negatives retain complete guidance. Combined suite77passed, zero failures/errors/skips;150existing replica outputs unchanged,16no-category. The small evidence spacing typo assigned by Cowork is corrected.
+
+Updated queue per Cowork6978218250: #492 (merged), this slice #495, #493, then docs evidence #494. Fresh exact-head READY, CI and independent Cowork review required. Earlier72-test results describe the pre-integration stack-only head;77is the current combined result. No live/model/training claim.
