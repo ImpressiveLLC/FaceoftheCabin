@@ -2688,6 +2688,24 @@
           "audience": "administrator"
         }
       ]
+    },
+    {
+      "id": "recovery_heartbeat_commands",
+      "description": "C2 tail M05: recovery heartbeat stop/restart wording without additive scores from existing recovery aliases",
+      "boost": 0,
+      "keywordPatterns": [
+        "recovery heartbeat"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/operations-recovery-reference.md",
+          "section": "recovery-checks-and-notices",
+          "audience": "administrator"
+        }
+      ]
     }
   ],
   "r2Changes": [
@@ -2711,6 +2729,7 @@
     "2026-11-18 W-117 C2 slice 8: three stack and two capability phrasing aliases; existing zero boosts unchanged. Delivered-content and credential-priority regressions; no matcher/runtime/model change.",
     "2026-11-18 W-117 C2 slice 6: map the existing installation plan and acceptance record as bounded administrator sections. Existing inputs, limitations and presence mappings unchanged; no duplicate installer or execution.",
     "2026-11-18 C2 tail C07: bounded invite-destination phrase reuses the reviewed instance-settings section with zero boost; preserves credential ties and baseline expectations. No runtime action or guide change.",
-    "2026-11-18 C2 tail M02: isolated zero-boost Node-RED editor wording reuses reviewed login recovery; old login/rotation patterns and credential guidance preserved. No authentication, host or guide change."
+    "2026-11-18 C2 tail M02: isolated zero-boost Node-RED editor wording reuses reviewed login recovery; old login/rotation patterns and credential guidance preserved. No authentication, host or guide change.",
+    "2026-11-18 C2 tail M05: recovery heartbeat wording reuses the existing recovery-checks-and-notices section. No service action or behavior change."
   ]
 }
