@@ -173,7 +173,7 @@ Audience: administrator. Source review only at `main` e8b32bb2; nothing was run 
 - **After any vault edit,** template `.env` with the `secrets` tag and recreate the containers that read it. Verify the edit by decrypting and comparing a hash before committing: a successful re-encrypt proves nothing (the 2026-10-01 rotation blanked `HA_TOKEN` this way). Never compare secrets by printing them.
 - **The ntfy topic works like a password:** anyone who knows it can read and send to that phone channel. It was blank on 2026-10-12 (W-51); the current value is not known here.
 - **Vaultwarden runs or not: unknown.** MAINTENANCE.md says both "not deployed yet" (its ESPHome note) and describes it as deployed, and the M920q Compose file declares the service. Check the host before relying on it.
-- Node-RED editor sign-in is covered in MAINTENANCE.md's Node-RED editor authentication section; this table does not repeat it.
+- Node-RED and Grafana sign-in recovery are in the [operations and recovery reference](operations-recovery-reference.md#node-red-login-recovery) ([Grafana](operations-recovery-reference.md#grafana-login-outside-the-embedded-panel)); this table does not repeat them.
 
 Evidence: [MAINTENANCE](../../MAINTENANCE.md) Secrets, Vaultwarden and Overnight Camera Alerts sections; `ansible/group_vars/cabin/vars.yml`; [`rotate-secrets.yml`](../../../.github/workflows/rotate-secrets.yml).
 

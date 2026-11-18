@@ -74,15 +74,22 @@ class AskIdentityCredentialsRoutingTest {
         });
     }
 
+    /**
+     * The inventory is its own category so credential_redaction stays exactly as it was: a password or token question
+     * that ties with a recovery category (#487, for example Node-RED password rotation) must still have budget left
+     * for the recovery section.
+     */
     @Test
-    void inventoryQuestionsGetTheInventoryAfterCredentialsAndAccess() {
-        String question = "Where is each credential kept and how do I rotate a secret?";
-        assertThat(builder.categoryIdFor(question)).isEqualTo("credential_redaction");
-        List<String> refs = refs(question, HouseholdRole.ADMINISTRATOR);
-        int access = indexOf(refs, "#credentials-and-access");
-        int inventory = indexOf(refs, "#where-each-credential-lives-and-how-it-changes");
-        assertThat(access).as("credentials-and-access present").isGreaterThanOrEqualTo(0);
-        assertThat(inventory).as("inventory present and after credentials-and-access").isGreaterThan(access);
+    void inventoryQuestionsGetTheInventoryWhole() {
+        for (String question : List.of("Where is each credential kept and how do I rotate a secret?",
+                "How do I do an Ansible Vault edit safely?")) {
+            assertThat(builder.categoryIdFor(question)).as(question).isEqualTo("credential_inventory");
+            KnowledgeNode hit = builder.buildContext(question, HouseholdRole.ADMINISTRATOR).stream()
+                .filter(n -> n.entityRef().endsWith("#where-each-credential-lives-and-how-it-changes")).findFirst().orElse(null);
+            assertThat(hit).as(question).isNotNull();
+            assertThat(hit.content()).as(question).doesNotContain("section truncated");
+        }
+        assertThat(builder.categoryIdsFor("Where is the Vaultwarden master password?")).doesNotContain("credential_inventory");
     }
 
     @Test
@@ -108,11 +115,6 @@ class AskIdentityCredentialsRoutingTest {
                 .noneMatch(r -> r.endsWith(ADMIN) || r.endsWith("#where-each-credential-lives-and-how-it-changes"));
             assertThat(refs(question, null)).as(question).isEmpty();
         }
-    }
-
-    private static int indexOf(List<String> refs, String suffix) {
-        for (int i = 0; i < refs.size(); i++) if (refs.get(i).endsWith(suffix)) return i;
-        return -1;
     }
 
     private List<String> refs(String question, HouseholdRole role) {
