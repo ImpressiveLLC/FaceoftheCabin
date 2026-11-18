@@ -1,0 +1,62 @@
+{
+  "status": "Authored regression questions, not gold or sealed evaluation",
+  "baseline": "77bde9650c5d34f8d73310def4750ff916ad1b7f",
+  "cases": [
+    {
+      "id": "recreation_plan_1",
+      "category": "recreation_plan",
+      "section": "establish-the-actual-installation-plan",
+      "audience": "administrator",
+      "question": "Which steps form the installation plan?",
+      "expectedText": "Inspect the approved target"
+    },
+    {
+      "id": "recreation_plan_2",
+      "category": "recreation_plan",
+      "section": "establish-the-actual-installation-plan",
+      "audience": "administrator",
+      "question": "Does the recreation plan treat a candidate as a successful integration?",
+      "expectedText": "A candidate record or green container is not a successful integration"
+    },
+    {
+      "id": "recreation_plan_3",
+      "category": "recreation_plan",
+      "section": "establish-the-actual-installation-plan",
+      "audience": "administrator",
+      "question": "Does the recreation plan authorize changes on an unidentified host?",
+      "expectedText": "Do not mutate an unidentified host"
+    },
+    {
+      "id": "recreation_acceptance_1",
+      "category": "recreation_acceptance",
+      "section": "acceptance-record",
+      "audience": "administrator",
+      "question": "What should installation acceptance record for each step?",
+      "expectedText": "step_id"
+    },
+    {
+      "id": "recreation_acceptance_2",
+      "category": "recreation_acceptance",
+      "section": "acceptance-record",
+      "audience": "administrator",
+      "question": "Does installation acceptance allow destructive tests on the live cabin?",
+      "expectedText": "Do not introduce bad credentials"
+    },
+    {
+      "id": "recreation_acceptance_3",
+      "category": "recreation_acceptance",
+      "section": "acceptance-record",
+      "audience": "administrator",
+      "question": "Has clean-host acceptance been rehearsed?",
+      "expectedText": "NOT RUN"
+    },
+    {
+      "id": "recreation_plan_4",
+      "category": "recreation_plan",
+      "section": "establish-the-actual-installation-plan",
+      "audience": "administrator",
+      "question": "Does the installation plan require Node-RED authentication before household access?",
+      "expectedText": "enable its editor and HTTP-node authentication before household access"
+    }
+  ]
+}
