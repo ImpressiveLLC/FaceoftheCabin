@@ -1,0 +1,166 @@
+{
+  "status": "Source review and offline context tests only; not gold or answer-quality evaluation",
+  "sourceCommit": "b9eea9cd649dd716672fc574c39aaf5e52b887d9",
+  "cases": [
+    {
+      "id": "recovery_checks_1",
+      "question": "How do I run a recovery check without sending a push?",
+      "category": "recovery_checks",
+      "section": "recovery-checks-and-notices",
+      "audience": "administrator",
+      "expectedText": "without sending a notification"
+    },
+    {
+      "id": "recovery_checks_2",
+      "question": "Does a heartbeat restart send the stopped notice?",
+      "category": "recovery_checks",
+      "section": "recovery-checks-and-notices",
+      "audience": "administrator",
+      "expectedText": "successful restart"
+    },
+    {
+      "id": "recovery_install_1",
+      "question": "What does heartbeat installation require before enabling it?",
+      "category": "recovery_install",
+      "section": "recovery-installation-and-tuning",
+      "audience": "administrator",
+      "expectedText": "before enabling"
+    },
+    {
+      "id": "recovery_install_2",
+      "question": "Why does heartbeat installation not prove my phone gets pushes?",
+      "category": "recovery_install",
+      "section": "recovery-installation-and-tuning",
+      "audience": "administrator",
+      "expectedText": "does not prove receipt"
+    },
+    {
+      "id": "recovery_deadman_1",
+      "question": "How does the external heartbeat distinguish host alive from platform healthy?",
+      "category": "recovery_deadman",
+      "section": "external-dead-man-monitoring",
+      "audience": "administrator",
+      "expectedText": "both answer"
+    },
+    {
+      "id": "recovery_deadman_2",
+      "question": "Does STOP_MAX_MINUTES hide a deliberate stop forever?",
+      "category": "recovery_deadman",
+      "section": "external-dead-man-monitoring",
+      "audience": "administrator",
+      "expectedText": "24 hours"
+    },
+    {
+      "id": "recovery_key_1",
+      "question": "What can the monitoring key read?",
+      "category": "recovery_key",
+      "section": "monitoring-key-access",
+      "audience": "administrator",
+      "expectedText": "cannot run a new check"
+    },
+    {
+      "id": "recovery_key_2",
+      "question": "Why does the monitoring key say permission denied?",
+      "category": "recovery_key",
+      "section": "monitoring-key-access",
+      "audience": "administrator",
+      "expectedText": "permission denied"
+    },
+    {
+      "id": "recovery_triage_1",
+      "question": "What should the family record for incident triage?",
+      "category": "recovery_triage",
+      "section": "incident-triage-for-the-household",
+      "audience": "household",
+      "expectedText": "which feature failed"
+    },
+    {
+      "id": "recovery_triage_2",
+      "question": "During incident triage does a green container prove the feature works?",
+      "category": "recovery_triage",
+      "section": "incident-triage-for-the-household",
+      "audience": "household",
+      "expectedText": "alone is not that evidence"
+    },
+    {
+      "id": "recovery_restore_1",
+      "question": "What is the restore status for the application database?",
+      "category": "recovery_restore",
+      "section": "restore-status-by-store",
+      "audience": "administrator",
+      "expectedText": "NOT_RUN"
+    },
+    {
+      "id": "recovery_restore_2",
+      "question": "Can I restore Kafka and assume replay cannot repeat physical actions?",
+      "category": "recovery_restore",
+      "section": "restore-status-by-store",
+      "audience": "administrator",
+      "expectedText": "duplicate external or physical actions"
+    },
+    {
+      "id": "recovery_nodered_1",
+      "question": "How do I verify Node-RED login after an authentication change?",
+      "category": "recovery_nodered",
+      "section": "node-red-login-recovery",
+      "audience": "administrator",
+      "expectedText": "Both denial and successful authorized login"
+    },
+    {
+      "id": "recovery_nodered_2",
+      "question": "Does Node-RED password rotation work by rerunning the enablement role?",
+      "category": "recovery_nodered",
+      "section": "node-red-login-recovery",
+      "audience": "administrator",
+      "expectedText": "not a general password-rotation mechanism"
+    },
+    {
+      "id": "recovery_grafana_1",
+      "question": "How do I renew Grafana login from the Monitoring panel?",
+      "category": "recovery_grafana",
+      "section": "grafana-login-outside-the-embedded-panel",
+      "audience": "household",
+      "expectedText": "top-level tab"
+    },
+    {
+      "id": "recovery_grafana_2",
+      "question": "Why does Grafana login fail inside the embedded frame?",
+      "category": "recovery_grafana",
+      "section": "grafana-login-outside-the-embedded-panel",
+      "audience": "household",
+      "expectedText": "cannot complete inside"
+    },
+    {
+      "id": "recovery_prune_1",
+      "question": "How do I plan storage pruning before deletion?",
+      "category": "recovery_prune",
+      "section": "storage-pruning-boundaries",
+      "audience": "administrator",
+      "expectedText": "without deleting"
+    },
+    {
+      "id": "recovery_prune_2",
+      "question": "Can storage pruning remove the only telemetry archive?",
+      "category": "recovery_prune",
+      "section": "storage-pruning-boundaries",
+      "audience": "administrator",
+      "expectedText": "only surviving copy"
+    },
+    {
+      "id": "recovery_workflows_1",
+      "question": "Which workflow gates run tests without deploying production?",
+      "category": "recovery_workflows",
+      "section": "workflow-test-gates",
+      "audience": "administrator",
+      "expectedText": "do not themselves deploy"
+    },
+    {
+      "id": "recovery_workflows_2",
+      "question": "If workflow gates pass after a retry is the intermittent cause proven?",
+      "category": "recovery_workflows",
+      "section": "workflow-test-gates",
+      "audience": "administrator",
+      "expectedText": "does not establish the root cause"
+    }
+  ]
+}

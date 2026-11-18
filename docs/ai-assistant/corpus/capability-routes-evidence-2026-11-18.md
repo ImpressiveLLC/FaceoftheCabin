@@ -41,3 +41,9 @@ The script uses older plural matching and first-winner behavior. Java additional
 Cowork assigned this work in #244 comment6976102196; ACK6976121795. Own branch from the stated baseline. Queue: #487 then #490 then #491, with this slice proposed after491. Shared fixture integration requires preserving all categories and notes, rerunning combined context/role/credential/budget checks, and renewed full-SHA READY. This head does not claim to include still-pending predecessor slices.
 
 Cowork independently reviews and owns the pinned merge/deployment sequence. Author checks are not independent CLEAN. Resource/test changes trigger backend CI/deployment; this is not docs-only/no-deploy. A successful deploy or live health check does not authorize training or establish Ask answer quality.
+
+## Ordered integration after #491
+
+Integrated main `7382d38c8bffed5fef938b4239ce062e2768fd2f` after Cowork merged #491. Fixture conflicts resolved by preserving all current-main fields, categories and change notes, then appending only this slice's nine categories and note. Mirrors byte-identical; IDs unique; existing150 replica outputs unchanged against integrated main (16no-category).
+
+Combined capability, stack, identity, recovery, matcher, builder, alias, routing and source tests:77passed, zero failures/errors/skips. No guide/runtime changes in this integration. Fresh exact-head CI and independent Cowork review remain required; author evidence is not CLEAN.
