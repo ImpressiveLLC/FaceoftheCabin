@@ -1798,6 +1798,86 @@
           "audience": "administrator"
         }
       ]
+    },
+    {
+      "id": "config_env_reference",
+      "description": "Administrator configuration reference for the environment names not covered elsewhere: Blink and camera, Vaultwarden, weather, Home Assistant/MQTT/Kafka/URLs, instance and ports (W-117 C2 slice 1)",
+      "keywordPatterns": [
+        "blink_camera_map",
+        "blink_motion_webhook_api_key",
+        "blink_password",
+        "blink_username",
+        "cabin_frontend_origin",
+        "cabin_instance_platform",
+        "cabin_instance_remote_access",
+        "camera_password",
+        "family_hub_url",
+        "grafana_external_host",
+        "ha_url",
+        "home_ha_deployed",
+        "home_ha_url",
+        "home_hub_deployed",
+        "image_tag",
+        "kafka_bootstrap",
+        "mqtt_url",
+        "resend_api_key",
+        "server_port",
+        "vaultwarden_admin_token",
+        "vaultwarden_client_id",
+        "vaultwarden_client_secret",
+        "vaultwarden_master_password",
+        "vaultwarden_url",
+        "weather_archive_dir",
+        "weather_backfill_days",
+        "weather_cron",
+        "weather_enabled",
+        "weather_stations",
+        "vaultwarden url",
+        "vaultwarden address",
+        "weather baseline",
+        "weather station",
+        "weather job",
+        "image tag",
+        "credential step"
+      ],
+      "questions": [],
+      "contextNodes": [
+        {
+          "entityRef": "platform.configuration",
+          "chunkType": "SETUP"
+        }
+      ],
+      "oracleRefs": [
+        "K09"
+      ],
+      "boost": 2,
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/configuration.md",
+          "section": "reference-blink-and-camera",
+          "audience": "administrator"
+        },
+        {
+          "path": "ai-assistant/user-guide/configuration.md",
+          "section": "reference-vaultwarden-and-credentials",
+          "audience": "administrator"
+        },
+        {
+          "path": "ai-assistant/user-guide/configuration.md",
+          "section": "reference-weather",
+          "audience": "administrator"
+        },
+        {
+          "path": "ai-assistant/user-guide/configuration.md",
+          "section": "reference-home-assistant-mqtt-kafka-and-urls",
+          "audience": "administrator"
+        },
+        {
+          "path": "ai-assistant/user-guide/configuration.md",
+          "section": "reference-instance-and-ports",
+          "audience": "administrator"
+        }
+      ]
     }
   ],
   "r2Changes": [
@@ -1812,6 +1892,7 @@
     "2026-10-27 K05: rules_workflows gains the rules-and-alerts trigger/action catalog section (administrator) and trigger/cooldown/retarget/vocabulary keywords.",
     "2026-10-27 C2 rewrite r1: answer-shaped leads under six guide headings plus a new live-values-and-ask section; presence-for-each-location moves from installation to the new installation_presence category; live_sensors gains live-values-and-ask first.",
     "2026-10-29 C2 revert (HOLD per RUN-2 decision rule 3 and 4): Edits 3a and 3b (ask-and-helpdesk.md) and 4a with map change M2 (live-values-and-ask, first in live_sensors) removed; ask_helpdesk_behavior and live_sensors context restored to the RUN-1 text. RW-1, RW-2, RW-5, RW-6, K05 and K19 stay.",
-    "2026-11-05 W-151 matcher: keyword endings widened (s, es, ed, d, ing, ings, ly, er, ers, ation, ations); categories tied for the top score are all kept in declaration order instead of the first winning (later tied categories add only sections that fit whole in the remaining document budget, duplicates dropped). Keywords and sections unchanged."
+    "2026-11-05 W-151 matcher: keyword endings widened (s, es, ed, d, ing, ings, ly, er, ers, ation, ations); categories tied for the top score are all kept in declaration order instead of the first winning (later tied categories add only sections that fit whole in the remaining document budget, duplicates dropped). Keywords and sections unchanged.",
+    "2026-11-18 W-117 C2 slice 1: new administrator category config_env_reference for the 29 environment names the guide did not name (Blink and camera, Vaultwarden, weather, Home Assistant/MQTT/Kafka/URLs, instance and ports). Its keywords are those names plus a few plain phrases; phrases that name a credential (Blink login, Vaultwarden master password) are deliberately left out so credential-location questions keep reaching credential_redaction; boost 2 so it outranks credential_redaction on a named Vaultwarden setting. Existing categories unchanged."
   ]
 }
