@@ -13,6 +13,7 @@ import com.cabin.orchestrator.automation.AutomationRuleStatus;
 import com.cabin.orchestrator.security.GoogleAuthInterceptor;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -82,7 +83,12 @@ public class AlertController {
             .filter(ack -> policy.effective(ack, severities.get(ack.alertKey()), now)).toList();
     }
 
-    /** Snooze or ignore an alert. Google-token gated (see WebConfig) -- an anonymous caller must never be able to silence a safety-relevant alert. */
+    /**
+     * Snooze or ignore an alert. Google-token gated (see WebConfig) -- an anonymous caller must never be able to silence a safety-relevant alert.
+     * The acknowledgment and its history entry commit together: if the history insert fails, the transaction rolls the
+     * acknowledgment back too, so an alert is never silenced without its audit record (Codex design, #244 6970813730).
+     */
+    @Transactional
     @PostMapping("/acknowledgments")
     public ResponseEntity<?> acknowledge(@RequestBody AcknowledgeAlertRequest body, HttpServletRequest request) {
         if (body.alertKey() == null || body.alertKey().isBlank()) {
@@ -110,7 +116,11 @@ public class AlertController {
         return ResponseEntity.ok(Map.of("ok", true));
     }
 
-    /** Un-ignore/un-snooze -- brings the alert back to "new" immediately instead of waiting out a snooze timer. Google-token gated, same reasoning as acknowledge() above. */
+    /**
+     * Un-ignore/un-snooze -- brings the alert back to "new" immediately instead of waiting out a snooze timer. Google-token gated, same reasoning as acknowledge() above.
+     * Same transaction rule: a failed history insert keeps the original acknowledgment in place.
+     */
+    @Transactional
     @DeleteMapping("/acknowledgments/{alertKey}")
     public ResponseEntity<?> clearAcknowledgment(@PathVariable String alertKey, HttpServletRequest request) {
         acknowledgments.clear(alertKey);
