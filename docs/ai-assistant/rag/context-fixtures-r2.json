@@ -9,7 +9,7 @@
       "Q08"
     ],
     "rootCause": "context-not-used (70/72); safety violations Q03/Q10/Q18; governance failures Q18/Q24/Q25",
-    "runNote": "3 repeats × 24 executed questions (Q20 excluded); no-context word-overlap retrieval only"
+    "runNote": "3 repeats Ã— 24 executed questions (Q20 excluded); no-context word-overlap retrieval only"
   },
   "description": "Deterministic context injection map for C1a, revision r2 (supersedes r1; r1 stays frozen as the 2026-09-07 baseline record). Per category: keywordPatterns select it, contextNodes are DB KnowledgeNodes (unchanged from r1), contextDocuments are reviewed repository Markdown sections supplied as in-memory, never-persisted context. Selection (AskContextBuilder): each pattern matches only as a whole word or phrase (an optional ending is allowed: s, es, ed, d, ing, ings, ly, er, ers, ation, ations); a category scores the summed word count of its distinct matched patterns plus its optional boost when anything matched; the highest score wins, categories tied for it are all kept in declaration order (the first keeps the document budget; a later tied category adds only sections that fit whole in what is left, and a section already supplied is not repeated), zero means no category (standard word-overlap retrieval). Documents: path is relative to the docs root and must sit under the AskContextBuilder allowlist; section is a GitHub-style heading anchor; audience is household (any authenticated role) or administrator (ADMINISTRATOR only; every other role, including no role, receives nothing from that entry). The default audience is administrator.",
   "categories": [
@@ -1245,7 +1245,7 @@
     },
     {
       "id": "opportunity_status",
-      "description": "Opportunity listing vs. implemented/verified runtime outcome; recommendation ≠ release",
+      "description": "Opportunity listing vs. implemented/verified runtime outcome; recommendation â‰  release",
       "keywordPatterns": [
         "opportunity",
         "opportunities",
@@ -1938,7 +1938,7 @@
     {
       "id": "recovery_checks",
       "description": "W-117 C2 operations reference: recovery-checks-and-notices",
-      "boost": 2,
+      "boost": 0,
       "keywordPatterns": [
         "recovery check",
         "heartbeat stop",
@@ -1959,7 +1959,7 @@
     {
       "id": "recovery_install",
       "description": "W-117 C2 operations reference: recovery-installation-and-tuning",
-      "boost": 2,
+      "boost": 0,
       "keywordPatterns": [
         "install recovery",
         "recovery tuning",
@@ -1980,7 +1980,7 @@
     {
       "id": "recovery_deadman",
       "description": "W-117 C2 operations reference: external-dead-man-monitoring",
-      "boost": 2,
+      "boost": 0,
       "keywordPatterns": [
         "dead-man",
         "deadman",
@@ -2001,7 +2001,7 @@
     {
       "id": "recovery_key",
       "description": "W-117 C2 operations reference: monitoring-key-access",
-      "boost": 2,
+      "boost": 0,
       "keywordPatterns": [
         "monitoring key",
         "monitor key",
@@ -2022,7 +2022,7 @@
     {
       "id": "recovery_triage",
       "description": "W-117 C2 operations reference: incident-triage-for-the-household",
-      "boost": 2,
+      "boost": 0,
       "keywordPatterns": [
         "incident triage",
         "report a sync problem"
@@ -2041,7 +2041,7 @@
     {
       "id": "recovery_restore",
       "description": "W-117 C2 operations reference: restore-status-by-store",
-      "boost": 2,
+      "boost": 0,
       "keywordPatterns": [
         "restore status",
         "restore postgres",
@@ -2065,7 +2065,7 @@
     {
       "id": "recovery_nodered",
       "description": "W-117 C2 operations reference: node-red-login-recovery",
-      "boost": 2,
+      "boost": 0,
       "keywordPatterns": [
         "node-red login",
         "node red login",
@@ -2085,7 +2085,7 @@
     {
       "id": "recovery_grafana",
       "description": "W-117 C2 operations reference: grafana-login-outside-the-embedded-panel",
-      "boost": 2,
+      "boost": 0,
       "keywordPatterns": [
         "grafana login",
         "grafana blank",
@@ -2105,7 +2105,7 @@
     {
       "id": "recovery_prune",
       "description": "W-117 C2 operations reference: storage-pruning-boundaries",
-      "boost": 2,
+      "boost": 0,
       "keywordPatterns": [
         "storage prune",
         "storage pruning",
@@ -2125,7 +2125,7 @@
     {
       "id": "recovery_workflows",
       "description": "W-117 C2 operations reference: workflow-test-gates",
-      "boost": 2,
+      "boost": 0,
       "keywordPatterns": [
         "workflow gates",
         "workflow tests",

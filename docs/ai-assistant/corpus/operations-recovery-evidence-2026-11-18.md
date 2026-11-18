@@ -34,7 +34,7 @@ The new four tests are in `AskContextRecoveryReferenceTest`. They inspect actual
 
 Executed the existing script against baseline and changed maps:
 
-- New 20 questions: no-category count 4 before, 0 after; all 20 select the new intended categories after.
+- New 20 questions: no-category count 4 before, 0 after; 19 select the intended recovery category first; the Node-RED password-rotation question ties credential_redaction and recovery_nodered. The old script reports the first (credential) winner only; current Java delivers both complete sections, verified by the acceptance test.
 - Existing 150 phrasings: no-category count 16 before and after; complete output unchanged.
 
 Limitation: route.py implements the older plural-only matcher and first winner; current Java additionally supports more endings and tied-category union. These script counts are explicitly replica outputs, not proof of current runtime routing on arbitrary phrases. The actual Java tests above are the acceptance evidence for the new questions and tie behavior. The routing implementation itself is unchanged.
@@ -44,6 +44,12 @@ Limitation: route.py implements the older plural-only matcher and first winner; 
 Merged main `888dab9acb4a62761659a38d9b348127761e3834` after #485 and #482. Resolved the two append-only fixture conflicts by checking both original prefixes against the common base, preserving all five peer configuration categories and all ten recovery categories, and retaining both change notes. Both fixture copies remain byte-identical; category IDs are unique.
 
 On the integrated tree, 59 targeted tests passed with zero failures/errors/skips: matcher 9, builder 22, recovery reference 4, document source 9, platform-spec guard 7, platform-info service 8. The source-link/section-budget scan and route.py comparisons above were rerun with unchanged results. This fixes the two old-baseline platform-spec failures; local Docker remains unavailable, so the full integration suite was not rerun or represented as green. Remote exact-head CI remains a merge gate.
+
+## Credential-routing repair after independent review
+
+Cowork reproduced three credential-location regressions at `744f82d`: the recovery boost displaced credentials-and-access for Node-RED login passwords, Grafana login passwords and the external heartbeat token. A new delivered-content test fails before the repair. All recovery category boosts are now zero; phrase matches still locate operational guidance, while generic credential questions retain the credential category. Five credential negatives (the three reported plus monitoring-key secrets and storage-pruning passwords) retain the complete credential section. No generic credential keywords were added to recovery categories.
+
+Integrated main `e8b32bb2c5bcd4f2281a213c33456e89b955c873`. All 76 targeted tests pass: recovery5, builder22, matcher9, document9, alias3, routing-coverage13, platform guard7, platform-info8. All20 original delivered-section cases, non-admin denial, mixed-section budget, mirror parity and the existing150 route output still pass. The optional bare HB_DEADMAN_TOKEN wording remains unmatched as on the baseline; it is not claimed covered. Key disposal follows the deliberately conservative verify-rejection-before-disposal order already stated in the guide. No runtime/model/host action.
 
 ## Integration and release gates
 

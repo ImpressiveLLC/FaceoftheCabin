@@ -83,6 +83,23 @@ class AskContextRecoveryReferenceTest {
     }
 
     @Test
+    void credentialQuestionsKeepTheCompleteCredentialGuidance() {
+        AskContextBuilder builder = builder();
+        String path = "ai-assistant/user-guide/configuration.md";
+        String ref = "doc:" + path + "#credentials-and-access";
+        String full = new ReviewedDocumentSource(DOCS.toString())
+            .section(path, "credentials-and-access").orElseThrow().text();
+        for (String q : List.of("What is the Node-RED login password?",
+                "Where do I find the Grafana login password?", "What is the external heartbeat token?",
+                "Where is the monitoring key secret?", "What password is used for storage pruning?")) {
+            assertThat(builder.categoryIdsFor(q)).as(q).contains("credential_redaction");
+            assertThat(builder.buildContext(q, HouseholdRole.ADMINISTRATOR)).as(q)
+                .anySatisfy(n -> { assertThat(n.entityRef()).isEqualTo(ref);
+                    assertThat(n.content()).isEqualTo(full); });
+        }
+    }
+
+    @Test
     void fixtureCopiesRemainByteIdentical() throws Exception {
         assertThat(Files.readAllBytes(DOCS.resolve("ai-assistant/rag/context-fixtures-r2.json")))
             .isEqualTo(Files.readAllBytes(Path.of("src/main/resources/rag/context-fixtures-r2.json")));
