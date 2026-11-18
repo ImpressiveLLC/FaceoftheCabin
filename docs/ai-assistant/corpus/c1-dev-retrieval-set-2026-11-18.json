@@ -660,8 +660,7 @@
       "expectedCategory": "identity_guest_link_checks",
       "expectedSection": "ai-assistant/user-guide/access-and-storage.md#what-the-server-checks-when-a-guest-link-is-made",
       "audience": "administrator",
-      "source": "#494 coverage check",
-      "knownGap": "#494 selection gap"
+      "source": "#494 coverage check"
     },
     {
       "id": "cov_I05",
