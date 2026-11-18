@@ -28,13 +28,15 @@ When Cowork and Code are known to be active in the same ecosystem, including alo
 Use #244 for ownership and handoffs, and the PR for its verdict. Default to event-driven **READY -> ACK -> verdict -> merge**, bound to the full head SHA:
 
 1. Author posts `READY #<PR> <full head SHA>`, changed files, checks and remaining gates.
-2. Reviewer reads the current remote head and posts `ACK #<PR> <same full SHA>` before reviewing. A queued older READY is superseded if the head moved; request or acknowledge the new READY instead of reviewing stale work.
+2. An independent reviewer other than the authoring session reads the current remote head and posts `ACK #<PR> <same full SHA>` before reviewing. A queued older READY is superseded if the head moved; request or acknowledge the new READY instead of reviewing stale work.
 3. Reviewer posts `CLEAN <full SHA>` or `HOLD <full SHA>` with all known actionable findings together. Any push, including a docs-only delta or merge from main, needs a new READY/ACK and an exact-head delta verdict; do not carry CLEAN forward silently.
-4. The named merge owner rechecks the remote head against that verdict, queue position, checks, named holds and Nate's applicable authority, then performs a pinned merge under `fotc-peer-merge-sequencing`. ACK and CLEAN do not grant merge, deploy or training permission.
+4. The named merge owner rechecks the remote head against that verdict, queue position, checks, named holds and Nate's applicable authority, then performs a pinned merge under `fotc-peer-merge-sequencing`. READY, ACK and CLEAN do not grant merge, deploy or training permission. The authoring session may post a self-check, but it cannot supply its own independent review or CLEAN.
 
 Do not maintain scheduled polling merely because a collaboration cycle is active. A heartbeat requires Nate's current request; if he replaces it with READY/ACK, stop the timer. Event-driven handoffs do not imply agents receive GitHub notifications or wake automatically: report that limitation when relevant and continue when notified or prompted. Do not claim another agent's timer was changed.
 
 Count repair/review returns per PR. If the loop bounces **more than twice** (a third return), revisit the process: reconcile all outstanding findings and ownership into one bounded repair, agree the next exact head and acceptance checks, then resume review. Avoid another isolated wording round or restarting broad tests without a new reason. Do not waive genuine findings to reduce the count.
+
+The assigned branch author performs any merge-from-main repair in an isolated checkout, preserves peer changes, reruns the affected checks, and posts a new full-SHA READY. A different repair owner needs an explicit ownership handoff on #244 before changing the branch. The named merge owner performs deploying merges only under Nate's applicable authorization and watches the deployment health gate. If no merge owner is named, ask for one on #244 and hold the merge; do not infer ownership from READY, ACK, CLEAN or silence.
 
 Record branch ownership changes on #244 before touching the branch; inspect the remote head again before pushing. Silence is unknown, not agreement. Preserve isolated checkouts, no force-push, independent review, and all existing merge gates.
 
