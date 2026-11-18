@@ -4,7 +4,7 @@ Audience: installer/operator. Status: source-reviewed planning and prerequisite 
 
 ## Minimum inputs
 
-**Short answer.** Ask only for what the selected capabilities need. It needs: the capabilities and household needs, an authorized target host and operator access, the household's own repository and instance identity, its access model, domain and account ownership, and only the integrations or devices it enables. Camera, GPS or other site details are asked for only when that feature is selected, for example zone-based presence. Never collect SSH keys, tokens, OAuth secrets or vault passwords in chat (use secure setup and vault pointers), and never copy the existing cabin instance's credentials, seed data or deployed paths as defaults.
+**Short answer.** Ask only for inputs the selected capabilities need. Never collect secrets in chat or reuse source-instance credentials, seed data or deployed paths as defaults.
 
 Retain confirmed non-secret answers and show assumptions for correction.
 
@@ -47,7 +47,7 @@ Sources: [replication setup/acceptance][pres-1], [host provisioning role][pres-2
 
 ## Verified clean-host limitations
 
-**Short answers.** No: the M920q overlay assumes an existing support stack and an external `cabin_default` network (it disables base services and joins that network), and the production stack also uses host bind mounts and a locally built Blink bridge. A blank host needs an explicit, reviewed arrangement first. No: `bootstrap-ubuntu.sh` installs development packages only, not Docker or Compose and not the deployment, so running it is not a complete platform install. Host provisioning, the DNS, tunnel and OAuth account steps, and application deployment are separate procedures.
+**Short answers.** Neither the M920q overlay nor the development bootstrap is a complete blank-host install.
 
 | Source observation | Consequence for recreation |
 |---|---|

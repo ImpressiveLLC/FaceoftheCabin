@@ -91,7 +91,7 @@ class AskRecreateInstanceContextTest {
             String expected = source.section(GUIDE, section).orElseThrow().text();
             assertThat(nodes).anyMatch(n -> n.entityRef().endsWith("#" + section) && n.content().equals(expected));
         }
-        // The reviewed bundle is 5990 characters. Growth beyond its 10-character margin must fail, not hide a section.
+        // Source growth must fail visibly rather than silently hide a required section.
         int sourceBundle = sections.stream().mapToInt(section -> source.section(GUIDE, section).orElseThrow().text().length()).sum();
         assertThat(sourceBundle).isLessThanOrEqualTo(6000);
         assertThat(total(nodes)).isEqualTo(sourceBundle);
@@ -128,6 +128,13 @@ class AskRecreateInstanceContextTest {
                     .noneMatch(n -> n.entityRef().endsWith(GUIDE + "#acceptance-record"));
             }
         }
+    }
+
+    @Test
+    void installationPlanAndBothSetupSectionsPreserveFortyCharactersOfHeadroom() {
+        int sourceBundle = List.of("minimum-inputs", "verified-clean-host-limitations", "establish-the-actual-installation-plan")
+            .stream().mapToInt(section -> source.section(GUIDE, section).orElseThrow().text().length()).sum();
+        assertThat(sourceBundle).isLessThanOrEqualTo(5960);
     }
 
     private void assertWhole(String question, String category, String section) {
