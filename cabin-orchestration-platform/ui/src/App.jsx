@@ -1753,7 +1753,9 @@ function useLiveEventStream(active, apiBase, authToken) {
       source.current.addEventListener("cabin-event", (e) => {
         try {
           const data = JSON.parse(e.data);
-          setMessages(prev => [{ ts: Date.now(), ...data }, ...prev].slice(0, 50));
+          // seq is a per-message id so the log can key rows by message, not by position: a new message mounts one row
+          // and leaves the others alone instead of renumbering every row below it.
+          setMessages(prev => [{ ts: Date.now(), seq: (prev[0]?.seq ?? 0) + 1, ...data }, ...prev].slice(0, 50));
         } catch {}
       });
       source.current.onerror = () => {};
@@ -6556,7 +6558,9 @@ export function AlertHistoryLog({ devices = [], location, authedFetch = fetch, s
 // (none of which pass one) keeps working unchanged -- production callers
 // (MonitoringPanel) pass the real auth.authedFetch, required since
 // /api/events/** now requires a Google token (WebConfig.java, 2026-09-01).
-export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authedFetch = fetch, signedIn = false }) {
+// Memoized (Nate's delta-only rule, 2026-11-17): it re-renders only when one of its own props changes, not when a
+// sibling in the Monitoring section does. Callers must pass a stable `devices` array (see LocationMonitoringSection).
+export const SensorHistoryPanel = React.memo(function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authedFetch = fetch, signedIn = false }) {
   // null outside the app shell (direct-render tests); the Alert History link is simply omitted then.
   const setActivePanel = useApp()?.setActivePanel;
   const [reportedFields, setReportedFields] = useState({});
@@ -7082,6 +7086,46 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
       )}
     </div>
   );
+});
+
+// The live event log owns the SSE stream, so a message re-renders only this component and its one new row, never the
+// KPI tiles or Sensor History above it (Cowork trace 2026-11-17: the stream state used to live in
+// LocationMonitoringSection, so every message re-rendered the whole section). Nothing is throttled, batched or
+// debounced: every message is applied the moment it arrives and keeps the 50-message cap.
+const EventRow = React.memo(function EventRow({ m }) {
+  return (
+    <div className="event-row">
+      <span className="event-ts">{new Date(m.ts).toLocaleTimeString()}</span>
+      <span className="event-body">{JSON.stringify(m)}</span>
+    </div>
+  );
+});
+
+export function LiveEventLog({ locCfg, active, cabinSession, accessToken }) {
+  const liveMessages = useLiveEventStream(active, locCfg.apiBase, { cabinSession, accessToken });
+  const { isCollapsed: isLogCollapsed, toggle: toggleLog } = useCollapsedSections(`collapsed.eventLog.${locCfg.id}`);
+  const logCollapsed = isLogCollapsed("main");
+  return (
+    <div className="event-log">
+      <div className="event-log-header">
+        <span>Live Events — {locCfg.label}</span>
+        <button type="button" className="section-caret" onClick={() => toggleLog("main")}
+          aria-expanded={!logCollapsed}
+          aria-label={logCollapsed ? "Expand live events" : "Collapse live events"}>
+          {logCollapsed ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+        </button>
+      </div>
+      {!logCollapsed && (
+        <div className="event-log-body">
+          {liveMessages.length === 0 && (
+            <div className="event-log-empty">No live events yet from {locCfg.label}</div>
+          )}
+          <ExpandableList items={liveMessages} keyOf={m => m.seq} noun="events"
+            renderItem={m => <EventRow key={m.seq} m={m} />} />
+        </div>
+      )}
+    </div>
+  );
 }
 
 // 2026-08-25: devices is now the full, user-ordered list (from
@@ -7092,11 +7136,11 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
 // are undefined outside reorder mode, same as KpiTile's own defaults.
 function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragIdx, overIdx, pinnedCount,
     onDragStart, onDragOver, onDrop, onDragEnd, auth }) {
-  const liveMessages = useLiveEventStream(active, locCfg.apiBase,
-    { cabinSession: auth?.cabinSessionToken, accessToken: auth?.accessToken });
   const [tempUnit, toggleTempUnit] = useTempUnit();
-  const { isCollapsed: isLogCollapsed, toggle: toggleLog } = useCollapsedSections(`collapsed.eventLog.${locCfg.id}`);
-  const logCollapsed = isLogCollapsed("main");
+  // One array per (devices, location) so the memoized SensorHistoryPanel below sees an unchanged prop on every render
+  // that did not change this location's devices. A bare `devices.filter(...)` in the JSX was a new array every render.
+  const locDevices = useMemo(
+    () => devices.filter(d => !d.location || d.location === locCfg.id), [devices, locCfg.id]);
 
   // D13/bug #4: curated Service Entity display_labels for single-service
   // tile types (CO_SENSOR, HUMIDITY_SENSOR) -- see kpiTileFor's own comment.
@@ -7161,7 +7205,7 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
         }} />
       </div>
 
-      <SensorHistoryPanel devices={devices.filter(d => !d.location || d.location === locCfg.id)}
+      <SensorHistoryPanel devices={locDevices}
         apiBase={locCfg.apiBase} location={locCfg.id} tempUnit={tempUnit} authedFetch={auth?.authedFetch}
         signedIn={!!auth?.signedIn} />
 
@@ -7174,33 +7218,11 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
       )}
 
       {auth?.demo
-        ? <DemoCameraCards devices={devices.filter(d => !d.location || d.location === locCfg.id)} title={`Camera Health — ${locCfg.label}`} />
+        ? <DemoCameraCards devices={locDevices} title={`Camera Health — ${locCfg.label}`} />
         : <CameraHealthPanel locCfg={locCfg} />}
 
-      <div className="event-log">
-        <div className="event-log-header">
-          <span>Live Events — {locCfg.label}</span>
-          <button type="button" className="section-caret" onClick={() => toggleLog("main")}
-            aria-expanded={!logCollapsed}
-            aria-label={logCollapsed ? "Expand live events" : "Collapse live events"}>
-            {logCollapsed ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
-          </button>
-        </div>
-        {!logCollapsed && (
-          <>
-            {liveMessages.length === 0 && (
-              <div className="event-log-empty">No live events yet from {locCfg.label}</div>
-            )}
-            <ExpandableList items={liveMessages.map((m, i) => ({ m, i }))} keyOf={e => e.i} noun="events"
-              renderItem={({ m, i }) => (
-                <div key={i} className="event-row">
-                  <span className="event-ts">{new Date(m.ts).toLocaleTimeString()}</span>
-                  <span className="event-body">{JSON.stringify(m)}</span>
-                </div>
-              )} />
-          </>
-        )}
-      </div>
+      <LiveEventLog locCfg={locCfg} active={active}
+        cabinSession={auth?.cabinSessionToken} accessToken={auth?.accessToken} />
     </div>
   );
 }
