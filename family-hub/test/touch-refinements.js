@@ -16,6 +16,10 @@ module.exports = async function ({ browser, check, base }) {
   await page.waitForTimeout(500);
   check('all nine assignees begin collapsed', await page.locator('[data-landing-kid-compact]').count(), 9);
   check('latest note visible while notepad rests', await page.locator('#notepad-context .np-row').first().isVisible(), true);
+  // #notepad-panel animates to --np-w-collapsed with a 0.42s CSS width
+  // transition. A fixed sleep raced it on a loaded runner (303 vs 310 failed
+  // a deploy gate on 2026-11-18), so wait until the transition has finished.
+  await page.waitForFunction(() => document.getElementById('notepad-panel').getAnimations().length === 0, null, { timeout: 10000 });
   const widths = await page.evaluate(() => ['chores-card', 'notepad-panel'].map(id => Math.round(document.getElementById(id).getBoundingClientRect().width)));
   check('resting notes width matches chores', widths[0], widths[1]);
   const geometry = await page.locator('#chores-card').evaluate(el => ({ height: el.clientHeight, content: el.scrollHeight, overflow: getComputedStyle(el).overflowY, thumb: getComputedStyle(el, '::-webkit-scrollbar').width }));
