@@ -2796,6 +2796,24 @@
           "audience": "administrator"
         }
       ]
+    },
+    {
+      "id": "recovery_external_deadman",
+      "description": "C2 tail M04: external dead-man monitor wording, qualified to the external host monitor, reusing the existing external dead-man monitoring section",
+      "boost": 0,
+      "keywordPatterns": [
+        "external dead-man"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/operations-recovery-reference.md",
+          "section": "external-dead-man-monitoring",
+          "audience": "administrator"
+        }
+      ]
     }
   ],
   "r2Changes": [
@@ -2824,6 +2842,7 @@
     "2026-11-18 C2 tail M05: recovery heartbeat wording reuses the existing recovery-checks-and-notices section. No service action or behavior change.",
     "2026-11-18 C2 tail I04: zero-boost category identity_guest_link_scopes ('guest link have', guest-link-qualified, three words) reuses the existing administrator guest-link server-checks section. It outranks access_sharing's 'guest link' (2) only when the question asks what a guest link has; scope questions about other products (Google sign-in, Home Assistant accounts) are unaffected. Both sections are administrator-only, so other roles receive nothing, as before. No guide, boost, matcher or budget change.",
     "2026-11-18 C2 tail I02: isolated sign-in duration phrase reuses administrator session guidance. No lifetime, security policy or authentication behavior change.",
-    "2026-11-18 C2 tail installation phrasings (part 1 of 2): zero-boost categories recreation_instance_plan ('recreate the instance') and recreation_instance_acceptance ('recreating the instance'; both phrases are instance-qualified and three words, so credential password/token/secret wording only ties and stays first, and device, guest-link or rule recreating questions are not captured) reuse the existing administrator installation-plan and acceptance-record sections. The two clean-machine and blank-machine phrasings are not changed here: delivering their section beside the installation limits exceeds the 6000-character budget, so they await a budget ruling, like M04. No guide, boost, matcher or budget change."
+    "2026-11-18 C2 tail installation phrasings (part 1 of 2): zero-boost categories recreation_instance_plan ('recreate the instance') and recreation_instance_acceptance ('recreating the instance'; both phrases are instance-qualified and three words, so credential password/token/secret wording only ties and stays first, and device, guest-link or rule recreating questions are not captured) reuse the existing administrator installation-plan and acceptance-record sections. The two clean-machine and blank-machine phrasings are not changed here: delivering their section beside the installation limits exceeds the 6000-character budget, so they await a budget ruling, like M04. No guide, boost, matcher or budget change.",
+    "2026-11-18 C2 tail M04: zero-boost category recovery_external_deadman ('external dead-man', two words, qualified to the external host monitor) reuses the existing administrator external dead-man monitoring section. For an external dead-man question it scores 2 against self_healing_recovery's 1 ('dead-man'), so the dead-man section is delivered whole instead of being skipped behind the 4648-character self-healing section. Blink and other dead-man wordings are unaffected; credential wording (3) stays ahead. Per Cowork's ruling on #513. No guide, boost, matcher or budget change."
   ]
 }

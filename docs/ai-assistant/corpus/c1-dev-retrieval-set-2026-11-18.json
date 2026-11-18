@@ -603,8 +603,7 @@
       "expectedCategory": "recovery_deadman",
       "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#external-dead-man-monitoring",
       "audience": "administrator",
-      "source": "#494 coverage check",
-      "knownGap": "#494 delivery gap: tie kept, section does not fit the budget"
+      "source": "#494 coverage check"
     },
     {
       "id": "cov_M05",
