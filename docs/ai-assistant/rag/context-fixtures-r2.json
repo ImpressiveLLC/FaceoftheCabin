@@ -2760,6 +2760,42 @@
           "audience": "administrator"
         }
       ]
+    },
+    {
+      "id": "recreation_instance_plan",
+      "description": "C2 tail installation phrasing: 'recreate the instance' wording, reusing the existing installation-plan section",
+      "boost": 0,
+      "keywordPatterns": [
+        "recreate the instance"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/independent-installation.md",
+          "section": "establish-the-actual-installation-plan",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "recreation_instance_acceptance",
+      "description": "C2 tail installation phrasing: instance-qualified 'recreating the instance' wording, reusing the existing acceptance-record section",
+      "boost": 0,
+      "keywordPatterns": [
+        "recreating the instance"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/independent-installation.md",
+          "section": "acceptance-record",
+          "audience": "administrator"
+        }
+      ]
     }
   ],
   "r2Changes": [
@@ -2787,6 +2823,7 @@
     "2026-11-18 C2 tail M03: zero-boost category recovery_grafana_outside_panel ('grafana shows', Grafana-scoped, two words) reuses the existing household Grafana login recovery section. It ties generic 'sign in' rather than beating it, so the reported question keeps user_auth_role first and also receives the Grafana section whole; credential password/token/secret wording (3) stays ahead. Other products' 'embedded panel' sign-in questions are unaffected. No guide, boost, matcher or budget change.",
     "2026-11-18 C2 tail M05: recovery heartbeat wording reuses the existing recovery-checks-and-notices section. No service action or behavior change.",
     "2026-11-18 C2 tail I04: zero-boost category identity_guest_link_scopes ('guest link have', guest-link-qualified, three words) reuses the existing administrator guest-link server-checks section. It outranks access_sharing's 'guest link' (2) only when the question asks what a guest link has; scope questions about other products (Google sign-in, Home Assistant accounts) are unaffected. Both sections are administrator-only, so other roles receive nothing, as before. No guide, boost, matcher or budget change.",
-    "2026-11-18 C2 tail I02: isolated sign-in duration phrase reuses administrator session guidance. No lifetime, security policy or authentication behavior change."
+    "2026-11-18 C2 tail I02: isolated sign-in duration phrase reuses administrator session guidance. No lifetime, security policy or authentication behavior change.",
+    "2026-11-18 C2 tail installation phrasings (part 1 of 2): zero-boost categories recreation_instance_plan ('recreate the instance') and recreation_instance_acceptance ('recreating the instance'; both phrases are instance-qualified and three words, so credential password/token/secret wording only ties and stays first, and device, guest-link or rule recreating questions are not captured) reuse the existing administrator installation-plan and acceptance-record sections. The two clean-machine and blank-machine phrasings are not changed here: delivering their section beside the installation limits exceeds the 6000-character budget, so they await a budget ruling, like M04. No guide, boost, matcher or budget change."
   ]
 }
