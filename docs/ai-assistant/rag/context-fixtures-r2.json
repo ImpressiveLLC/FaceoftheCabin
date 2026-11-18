@@ -816,7 +816,8 @@
         "token",
         "password",
         "secret",
-        "retrieve the credential"
+        "retrieve the credential",
+        "login for the node-red editor"
       ],
       "questions": [
         "Q11",

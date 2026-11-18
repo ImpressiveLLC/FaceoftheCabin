@@ -122,6 +122,31 @@ class AskContextRecoveryReferenceTest {
     }
 
     @Test
+    void editorLoginLocationQuestionsKeepWholeCredentialGuidance() {
+        AskContextBuilder builder = builder();
+        String path = "ai-assistant/user-guide/configuration.md";
+        String ref = "doc:" + path + "#credentials-and-access";
+        String full = new ReviewedDocumentSource(DOCS.toString())
+            .section(path, "credentials-and-access").orElseThrow().text();
+        for (String question : List.of("Where is the login for the Node-RED editor?",
+                "What is the login for the Node-RED editor?",
+                "Which login for the Node-RED editor should I use?")) {
+            List<KnowledgeNode> context = builder.buildContext(question, HouseholdRole.ADMINISTRATOR);
+            assertThat(context).as(question).anySatisfy(n -> {
+                assertThat(n.entityRef()).isEqualTo(ref);
+                assertThat(n.content()).isEqualTo(full);
+            });
+            assertThat(context.stream().mapToInt(n -> n.content().length()).sum())
+                .as(question).isLessThanOrEqualTo(6000);
+            for (HouseholdRole role : new HouseholdRole[] {HouseholdRole.ADULT_HOUSEHOLD_MEMBER,
+                    HouseholdRole.CHILD, HouseholdRole.KIOSK_DISPLAY, HouseholdRole.SERVICE, null}) {
+                assertThat(builder.buildContext(question, role)).as(question + " / " + role)
+                    .extracting(KnowledgeNode::entityRef).doesNotContain(ref);
+            }
+        }
+    }
+
+    @Test
     void fixtureCopiesRemainByteIdentical() throws Exception {
         assertThat(Files.readAllBytes(DOCS.resolve("ai-assistant/rag/context-fixtures-r2.json")))
             .isEqualTo(Files.readAllBytes(Path.of("src/main/resources/rag/context-fixtures-r2.json")));
