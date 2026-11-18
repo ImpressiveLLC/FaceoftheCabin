@@ -2651,6 +2651,24 @@
           "audience": "administrator"
         }
       ]
+    },
+    {
+      "id": "recovery_nodered_editor",
+      "description": "C2 tail M02: editor wording reuses Node-RED login recovery without accumulating scores with existing login or rotation phrases",
+      "boost": 0,
+      "keywordPatterns": [
+        "node-red editor"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/operations-recovery-reference.md",
+          "section": "node-red-login-recovery",
+          "audience": "administrator"
+        }
+      ]
     }
   ],
   "r2Changes": [
@@ -2672,6 +2690,7 @@
     "2026-11-18 W-117 C2 slice 4: seven bounded administrator stack-map sections, source declarations only. No live topology, model execution, training or infrastructure change.",
     "2026-11-18 W-117 C2 slice 5: bounded administrator feature prerequisites, browser API bases and backend caller boundaries. Source review only; no model, device or host execution.",
     "2026-11-18 W-117 C2 slice 8: three stack and two capability phrasing aliases; existing zero boosts unchanged. Delivered-content and credential-priority regressions; no matcher/runtime/model change.",
-    "2026-11-18 W-117 C2 slice 6: map the existing installation plan and acceptance record as bounded administrator sections. Existing inputs, limitations and presence mappings unchanged; no duplicate installer or execution."
+    "2026-11-18 W-117 C2 slice 6: map the existing installation plan and acceptance record as bounded administrator sections. Existing inputs, limitations and presence mappings unchanged; no duplicate installer or execution.",
+    "2026-11-18 C2 tail M02: isolated zero-boost Node-RED editor wording reuses reviewed login recovery; old login/rotation patterns and credential guidance preserved. No authentication, host or guide change."
   ]
 }
