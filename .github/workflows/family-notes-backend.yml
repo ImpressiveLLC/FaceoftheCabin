@@ -1,7 +1,7 @@
 name: Family notes backend PR checks
 on:
   pull_request:
-    paths: ['cabin-orchestration-platform/backend/**', '.github/workflows/family-notes-backend.yml']
+    paths: ['cabin-orchestration-platform/contracts/**', 'cabin-orchestration-platform/backend/**', '.github/workflows/family-notes-backend.yml']
 permissions:
   contents: read
 jobs:

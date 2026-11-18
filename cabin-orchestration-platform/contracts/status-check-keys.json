@@ -1,0 +1,51 @@
+[
+  {
+    "payload": {
+      "ruleId": "FREEZE_RISK"
+    },
+    "sourceDeviceId": "sensor",
+    "key": "automation:FREEZE_RISK:sensor"
+  },
+  {
+    "payload": {
+      "ruleId": null
+    },
+    "sourceDeviceId": null,
+    "key": "automation:undefined:none"
+  },
+  {
+    "payload": {},
+    "sourceDeviceId": "",
+    "key": "automation:undefined:none"
+  },
+  {
+    "payload": {
+      "ruleId": 42
+    },
+    "sourceDeviceId": "sensor",
+    "key": "automation:undefined:sensor"
+  },
+  {
+    "payload": {
+      "ruleId": {
+        "name": "bad"
+      }
+    },
+    "sourceDeviceId": "sensor",
+    "key": "automation:undefined:sensor"
+  },
+  {
+    "payload": {
+      "ruleId": ""
+    },
+    "sourceDeviceId": "sensor",
+    "key": "automation::sensor"
+  },
+  {
+    "payload": {
+      "ruleId": "WORKFLOW_UNCONFIRMED_123"
+    },
+    "sourceDeviceId": "sensor",
+    "key": "automation:WORKFLOW_UNCONFIRMED_123:sensor"
+  }
+]

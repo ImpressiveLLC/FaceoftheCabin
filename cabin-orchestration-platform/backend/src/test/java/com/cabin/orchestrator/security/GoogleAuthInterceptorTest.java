@@ -53,6 +53,16 @@ class GoogleAuthInterceptorTest {
         interceptor = new GoogleAuthInterceptor(accessTokens, managedUsers, cabinSessions);
     }
 
+    @Test
+    void statusCheckEventsRequireAuthentication() throws Exception {
+        var request = new MockHttpServletRequest("GET", "/api/events/status-checks");
+        var response = new MockHttpServletResponse();
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(401, response.getStatus());
+        assertEquals(com.cabin.orchestrator.security.demo.DemoAccessPolicy.RouteClass.DENY,
+            com.cabin.orchestrator.security.demo.DemoAccessPolicy.classify("/api/events/status-checks"));
+    }
+
     /** Real end-to-end create -> invite -> click -> consume, same path a real managed user goes through, returning the resulting session's bearer token. */
     private String issueManagedSessionToken(ManagedUserRole role) {
         ManagedUser user = managedUsers.create("member@example.com", "Household Member", role, "nate@example.com");
