@@ -595,9 +595,10 @@
       "question": "Grafana shows a blank page outside the embedded panel; how do I sign in?",
       "expectedCategory": "recovery_grafana",
       "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#grafana-login-outside-the-embedded-panel",
-      "audience": "administrator",
+      "audience": "household",
       "source": "#494 coverage check",
-      "knownGap": "#494 selection gap"
+      "knownGap": "#494 selection gap",
+      "audienceNote": "household per the routing map and #487 review; #494 measured this question as administrator"
     },
     {
       "id": "cov_M04",
