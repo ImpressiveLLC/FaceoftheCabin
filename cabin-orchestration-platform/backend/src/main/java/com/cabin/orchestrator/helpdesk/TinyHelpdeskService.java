@@ -120,10 +120,18 @@ public class TinyHelpdeskService {
 
     private static String buildPrompt(String question, List<KnowledgeNode> context) {
         boolean hasDocuments = context.stream().anyMatch(n -> n.source() == KnowledgeSource.REVIEWED_DOCUMENT);
-        StringBuilder sb = new StringBuilder(
-            "You are a helpdesk assistant for a cabin home-automation system. "
-            + "Answer the question using ONLY the facts below. If the facts don't "
-            + "answer the question, say you don't know -- never guess.");
+        StringBuilder sb = new StringBuilder("You are a helpdesk assistant for a cabin home-automation system. ");
+        if (hasDocuments) {
+            // Answer-first wording, only when documents are present (E1 variant V4, offline replay evidence on
+            // the development sets; the plain KnowledgeNode path below keeps its original wording unchanged).
+            sb.append("Read the facts below, then answer the question directly in two to four sentences, using only "
+                + "those facts and citing the [source: ...] label of the fact you used. If the facts answer only "
+                + "part of the question, give that part. Only if the facts contain nothing relevant to the "
+                + "question, say that the guides do not cover it. Never guess.");
+        } else {
+            sb.append("Answer the question using ONLY the facts below. If the facts don't "
+                + "answer the question, say you don't know -- never guess.");
+        }
         if (hasDocuments) {
             // Only when documents are present, so the prompt for the plain KnowledgeNode path is unchanged.
             sb.append(" Facts labelled [source: ...] come from documentation: cite that label for claims taken "
