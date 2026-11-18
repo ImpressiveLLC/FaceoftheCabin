@@ -4,7 +4,7 @@ Status: **design only; nothing implemented.** Requested by Cowork on #244 ([6992
 
 ## Result in one line
 
-**No measured candidate passes every gate. Recommend keeping ruling A's pinned limitation and not implementing option 2 with phrase matching alone.**
+**None of the three measured candidates passes every gate. Recommend keeping ruling A's pinned limitation and implementing none of these candidates.** Other phrase designs are unmeasured.
 
 ## The problem
 
@@ -13,7 +13,7 @@ Three mixed guest-link plus installation wordings deliver only the installation 
 - "What is the installation plan for a guest link?" (and "for the guest link?")
 - "Did the installation acceptance pass for the guest link?"
 
-All of them are pinned today by `knownLimitationMixedGuestLinkPlanOmitsSharingContext` (#516).
+Only the first, "What is the installation plan for a guest link?", is pinned, by `knownLimitationMixedGuestLinkPlanOmitsSharingContext` (#516). The "the guest link" variant and the acceptance wording are measured examples of the same behavior. No test pins them.
 
 ## Gates
 
@@ -34,21 +34,20 @@ Each candidate is one separate zero-boost category that maps the same two sharin
 | B | "for a guest link", "for the guest link" (4) | **Fails.** It beats the installation phrase, so the installation section is lost instead | Unchanged | **Fails.** It beats credential wording: "Where is the token for a guest link?" loses credentials-and-access | Not captured | 0 | Rejected: reverses the loss and displaces credential guidance |
 | E | "for a guest", "for the guest" (3) | Fixed: 5225 / 4318 | Unchanged, including I04 and "Who can see the guest link activity?" | Kept first and whole; sharing sections added (4759) | **Fails.** "Is there a heater setting for the guest room?" loses both device categories' sections (four sections) to the sharing sections. "What is the Wi-Fi password for the guest room?" gains sharing sections. "Is the dashboard available for a guest?" goes from no category to sharing | **0** | Rejected: clean in the measured sets, but it captures "guest room" questions outside them |
 
-### Why phrase matching cannot meet every gate
+### What the measurements show, and what they do not
 
-To keep the installation section, the guest-link phrase must **tie** the three-word installation phrases. That means it needs three words of its own.
+The three candidates fail for different reasons:
+- **A** contains "link" and scores 3 on plain guest-link questions, which beats existing two-way ties ("who can", export).
+- **E** omits "link" and matches unrelated "guest" questions.
+- **B** has four words, so it wins outright, displacing both the installation phrase and credential wording.
 
-- A three-word phrase that contains "guest link" (A) also scores 3 on plain guest-link questions. There it beats the two-way ties `access_sharing` already forms with other categories ("who can", export), so it removes their sections.
-- A three-word phrase without "link" (E) matches unrelated "guest" questions.
-- Four words (B) win outright and displace both the installation phrase and credential wording.
-
-Every option either drops someone's section or captures unrelated questions. Fixing this properly would need a matcher or tie-policy change, for example keeping lower-scoring categories that share a matched span. That is outside the C1 rulings, which exclude matcher, budget and boost changes.
+These results apply to these three candidates only. They do **not** show that every phrase-only design fails. `AskContextBuilder` sums the word counts of distinct matched pattern spans (`CompiledCategory.score`), so a score of 3 can come from several shorter phrases rather than one three-word phrase. Combinations like that are unmeasured. They also do not show that a matcher or tie-policy change is necessary. Such a change is one possible route, and it is outside the current C1 rulings, which exclude matcher, budget and boost changes.
 
 ## Recommendation
 
 1. **Keep ruling A as is.** The pinned limitation test stays, and the three mixed wordings remain a documented, administrator-only limitation outside the measured sets.
-2. **Do not implement A, B or E.** A and E each introduce a regression that is worse than the limitation they fix: A in-corpus (the export question), E for plausible household "guest room" wording.
-3. **Record the data for later.** If a matcher or tie-policy change is ever authorized, as a separate design with its own ruling, these three mixed wordings, plus the "who can" and export ties, are the first regression set it should satisfy.
+2. **Do not implement A, B or E.** A and E each introduce a regression that is worse than the limitation they fix: A in-corpus (the export question), E for plausible household "guest room" wording. B reverses the loss and displaces credential guidance.
+3. **Record the data for later.** Any later design, whether another phrase combination or a separately ruled matcher or tie-policy change, should use the three mixed wordings plus the "who can" and export ties as its first regression set. Two of the mixed wordings are not pinned by a test today.
 
 ## Reproduce
 
