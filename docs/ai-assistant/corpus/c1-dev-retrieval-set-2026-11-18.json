@@ -596,7 +596,6 @@
       "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#grafana-login-outside-the-embedded-panel",
       "audience": "household",
       "source": "#494 coverage check",
-      "knownGap": "#494 selection gap",
       "audienceNote": "household per the routing map and #487 review; #494 measured this question as administrator"
     },
     {
