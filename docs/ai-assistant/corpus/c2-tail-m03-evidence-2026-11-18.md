@@ -12,14 +12,16 @@ Status: offline routing and delivery evidence only. No model call, no live Ask, 
 
 ## Delta (harness, `AskDeliveryHarnessTest`)
 
-| Audience | Frozen baseline fd1f8676 | main c05e9a00 (after #500) | This change |
+| Audience | Frozen baseline fd1f8676 | main 0b0fa651 (after #500 and #502) | This change, integrated |
 |---|---|---|---|
-| administrator, delivered whole | 88 of 98 | 89 of 98 | 89 of 98 |
+| administrator, delivered whole | 88 of 98 | 90 of 98 | 90 of 98 |
 | household, delivered whole | 4 of 5 | 4 of 5 | **5 of 5** |
 
-- **Rows changed against main:** only `cov_M03`. First category goes from `user_auth_role` to `recovery_grafana_outside_panel`, the section is delivered whole (900 characters, previously 1901 of an unrelated section), and `knownGap` is cleared. First-category agreement is unchanged by design, because the new category delivers the same expected section, as with C07.
+Measured on the integrated head: main 0b0fa651, which carries C07 (#500) and M02 (#502), merged into this branch with this change on top. The main fixture is kept byte for byte, and only this category and note are appended. The first measurement, against main c05e9a00 before #502, gave the same single-row delta.
+
+- **Rows changed against main 0b0fa651:** only `cov_M03`. First category goes from `user_auth_role` to `recovery_grafana_outside_panel`, the section is delivered whole (900 characters, previously 1901 of an unrelated section), and `knownGap` is cleared. First-category agreement is unchanged by design, because the new category delivers the same expected section, as with C07.
 - **Other checks:** audience leaks 0; over budget 0; largest context 5143. The 150 coverage-map phrasings still have 16 with no category, with the same ids.
-- **All roles:** in a throwaway probe I compared the selected categories and delivered context for all 253 questions (the 150 phrasings plus the 103 development rows), under all six roles (the five `HouseholdRole` values plus no role), between `origin/main` c05e9a00 and this change. Exactly 6 role/question pairs differ, all of them the M03 question.
+- **All roles:** in a throwaway probe I compared the selected categories and delivered context for all 253 questions (the 150 phrasings plus the 103 development rows), under all six roles (the five `HouseholdRole` values plus no role), between `origin/main` 0b0fa651 and the integrated head. Exactly 6 role/question pairs differ, all of them the M03 question (the same result as against c05e9a00 before integration).
 
 ## Tests
 
@@ -28,4 +30,4 @@ New `AskGrafanaOutsidePanelContextTest` (3 tests):
 - Generic sign-in questions keep their category ("How do I sign in?" stays `user_auth_role`).
 - Four Grafana credential questions (password, admin password, token, secret) select `credential_redaction` and deliver credentials-and-access whole, within budget.
 
-All Ask test classes: 95 passed, 0 failed, including the harness gates and the 120 pins.
+All Ask test classes on the integrated head: 97 passed, 0 failed, including the harness gates, the 120 pins and #502's recovery tests.
