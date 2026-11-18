@@ -570,8 +570,7 @@
       "expectedCategory": "config_env_instance",
       "expectedSection": "ai-assistant/user-guide/configuration.md#reference-instance-ports-and-image-settings",
       "audience": "administrator",
-      "source": "#494 coverage check",
-      "knownGap": "#494 selection gap"
+      "source": "#494 coverage check"
     },
     {
       "id": "cov_M01",
