@@ -1,0 +1,127 @@
+{
+  "suite": "W-117 C2 coverage check, slice 7",
+  "date": "2026-11-18",
+  "notes": "Plain-language config and maintenance questions written by the Code session from the merged slice sections; not drawn from usage logs, any sealed or held-out set, or the eval gold.",
+  "questions": [
+    {
+      "id": "C01",
+      "question": "What are BLINK_USERNAME and BLINK_PASSWORD used for?",
+      "expectedCategory": "config_env_blink_camera",
+      "source": "slice 1 (#482)"
+    },
+    {
+      "id": "C02",
+      "question": "A Blink camera's live view does not start; how is the Blink camera map set?",
+      "expectedCategory": "config_env_blink_camera",
+      "source": "slice 1 (#482)"
+    },
+    {
+      "id": "C03",
+      "question": "SmartThings import fails; is VAULTWARDEN_URL set correctly?",
+      "expectedCategory": "config_env_vaultwarden",
+      "source": "slice 1 (#482)"
+    },
+    {
+      "id": "C04",
+      "question": "I changed WEATHER_ENABLED in .env and nothing happened. Why?",
+      "expectedCategory": "config_env_weather",
+      "source": "slice 1 (#482)"
+    },
+    {
+      "id": "C05",
+      "question": "How do I change the MQTT URL the backend uses?",
+      "expectedCategory": "config_env_addresses",
+      "source": "slice 1 (#482)"
+    },
+    {
+      "id": "C06",
+      "question": "What does IMAGE_TAG control?",
+      "expectedCategory": "config_env_instance",
+      "source": "slice 1 (#482)"
+    },
+    {
+      "id": "C07",
+      "question": "Where do invite links point, and which setting controls it?",
+      "expectedCategory": "config_env_instance",
+      "source": "slice 1 (#482)"
+    },
+    {
+      "id": "M01",
+      "question": "How do I restore Postgres after a disk failure?",
+      "expectedCategory": "recovery_restore",
+      "source": "slice 2 (#487)"
+    },
+    {
+      "id": "M02",
+      "question": "I can't log in to the Node-RED editor. What now?",
+      "expectedCategory": "recovery_nodered",
+      "source": "slice 2 (#487)"
+    },
+    {
+      "id": "M03",
+      "question": "Grafana shows a blank page outside the embedded panel; how do I sign in?",
+      "expectedCategory": "recovery_grafana",
+      "source": "slice 2 (#487)"
+    },
+    {
+      "id": "M04",
+      "question": "What does the external dead-man monitor do if the hub goes silent?",
+      "expectedCategory": "recovery_deadman",
+      "source": "slice 2 (#487)"
+    },
+    {
+      "id": "M05",
+      "question": "How do I stop and restart the recovery heartbeat?",
+      "expectedCategory": "recovery_checks",
+      "source": "slice 2 (#487)"
+    },
+    {
+      "id": "M06",
+      "question": "What does storage pruning delete and what does it keep?",
+      "expectedCategory": "recovery_prune",
+      "source": "slice 2 (#487)"
+    },
+    {
+      "id": "M07",
+      "question": "What can the monitoring key do over SSH?",
+      "expectedCategory": "recovery_key",
+      "source": "slice 2 (#487)"
+    },
+    {
+      "id": "I01",
+      "question": "How do I make someone an administrator?",
+      "expectedCategory": "identity_admin",
+      "source": "slice 3 (#490)"
+    },
+    {
+      "id": "I02",
+      "question": "How long does a sign-in last before I have to sign in again?",
+      "expectedCategory": "identity_sessions",
+      "source": "slice 3 (#490)"
+    },
+    {
+      "id": "I03",
+      "question": "Why does the managed sign-in link work without signing in?",
+      "expectedCategory": "identity_sign_in_link",
+      "source": "slice 3 (#490)"
+    },
+    {
+      "id": "I04",
+      "question": "What scopes can a guest link have?",
+      "expectedCategory": "identity_guest_link_checks",
+      "source": "slice 3 (#490)"
+    },
+    {
+      "id": "I05",
+      "question": "Where is each credential kept and how do I rotate a secret?",
+      "expectedCategory": "credential_inventory",
+      "source": "slice 3 (#490)"
+    },
+    {
+      "id": "I06",
+      "question": "Where is the Home Assistant password?",
+      "expectedCategory": "credential_redaction",
+      "source": "slice 3 (#490)"
+    }
+  ]
+}
