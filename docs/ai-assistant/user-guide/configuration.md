@@ -154,6 +154,27 @@ Where Compose fixes a value, the `.env` file cannot override it. Change the Comp
 
 Names Compose passes through from `.env` take effect on recreating the service; those marked as build arguments need the image rebuilt first. `SERVER_PORT` is the exception: Compose fixes it, so change the Compose line.
 
+## Where each credential lives and how it changes
+
+Audience: administrator. Source review only at `main` e8b32bb2; nothing was run on the host. Names only: no value appears here, and Ask never returns one.
+
+| Credential | Kept in | Changed by | If it goes blank or wrong |
+|---|---|---|---|
+| `POSTGRES_PASSWORD` | Ansible Vault, templated into `infra/.env` | The monthly `rotate-secrets` run (automatic) | The backend cannot reach its database |
+| `GRAFANA_PASSWORD` | Ansible Vault | A manual vault edit plus the matching change in Grafana | Grafana admin sign-in fails |
+| `HA_TOKEN` | Ansible Vault | A manual vault edit plus a new long-lived token in Home Assistant | Backend health goes DOWN on the next recreate |
+| `CAMERA_PASSWORD`, `TECH_ID_API_KEY` | Ansible Vault | A manual vault edit | Camera streams fail; Tech ID submissions get 503 |
+| Vaultwarden admin token and the backend's vault login (client ID, client secret, master password) | Ansible Vault | A manual vault edit; the login is created once in Vaultwarden itself | SmartThings and Ring imports fail loudly at the credential step |
+| ntfy topic (`CABIN_ALERT_NTFY_TOPIC`) | `infra/.env` | Editing `.env`, then recreating `cabin-backend` | No phone pushes from the backend |
+
+- **Rotation is not recovery.** Rotation replaces a working secret on schedule. Recovery restores one that was lost or blanked, from the vault or its source system.
+- **After any vault edit,** template `.env` with the `secrets` tag and recreate the containers that read it. Verify the edit by decrypting and comparing a hash before committing: a successful re-encrypt proves nothing (the 2026-10-01 rotation blanked `HA_TOKEN` this way). Never compare secrets by printing them.
+- **The ntfy topic works like a password:** anyone who knows it can read and send to that phone channel. It was blank on 2026-10-12 (W-51); the current value is not known here.
+- **Vaultwarden runs or not: unknown.** MAINTENANCE.md says both "not deployed yet" (its ESPHome note) and describes it as deployed, and the M920q Compose file declares the service. Check the host before relying on it.
+- Node-RED editor sign-in is covered in MAINTENANCE.md's Node-RED editor authentication section; this table does not repeat it.
+
+Evidence: [MAINTENANCE](../../MAINTENANCE.md) Secrets, Vaultwarden and Overnight Camera Alerts sections; `ansible/group_vars/cabin/vars.yml`; [`rotate-secrets.yml`](../../../.github/workflows/rotate-secrets.yml).
+
 ## Explicit source disagreement
 
 Two existing incident runbooks answer common configuration failures. A successfully rebuilt Family Hub may still receive old `host-config.js` from an edge cache; inspect the browser-served nonsecret configuration and use the authorized cache correction described in [MAINTENANCE](../../MAINTENANCE.md#cloudflare-edge-caching-a-build-time-config-file-found-2026-08-01). Frigate's configuration substitutions require its `FRIGATE_` namespace, distinct from Compose interpolation; see the [existing two-stage mapping](../../REPLICATION.md#frigate-environment-substitution-is-prefix-restricted). Neither problem is resolved merely by proving a setting exists.

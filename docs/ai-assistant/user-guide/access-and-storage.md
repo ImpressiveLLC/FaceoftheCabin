@@ -108,6 +108,54 @@ Only administrators manage share links and managed users. Managed accounts, gues
 
 Evidence: `ManagedUsersCard` in `App.jsx`; `ManagedUsersController`; `ManagedUserService` (`createSignInLink` builds the copied link; the route answers `Cache-Control: no-store`; `MAGIC_LINK_TTL` 30 minutes, `SESSION_TTL` 90 days, `validateSession` ends a deactivated user's sessions); `ResendEmailSender` refuses to send when its key is not configured; `GoogleAuthInterceptor.handleManagedSession` returns 403 for `/api/managed-users` and `/api/access-tokens`.
 
+## How someone becomes an administrator
+
+Audience: administrator. Source review only at `main` e8b32bb2; the live list is not shown here.
+
+**Short answer.** A person is an administrator when they sign in with Google and their email is on the hub's `ADMIN_EMAILS` list. There is no button for it in the app. To add or remove one, change `ADMIN_EMAILS` in the host's deployment secrets, then recreate `cabin-backend` (and rebuild Family Hub, which reads the same list at build time).
+
+- The match is the whole email, ignoring case. Anyone else who signs in with Google is a household member.
+- A managed user is never an administrator, even when their email is on the list. Only a Google sign-in, or the 30-day session issued for one, carries the administrator role.
+- The same list also decides who may sign in to Grafana.
+
+Evidence: `GoogleAuthInterceptor` (`cabin.admin.emails`, `resolveHouseholdRole`, `handleManagedSession`); `application.yml` `cabin.admin.emails: ${ADMIN_EMAILS:}`; M920q Compose passes it as `CABIN_ADMIN_EMAILS`, as Grafana's allowed emails and as a Family Hub build argument.
+
+## Sign-in sessions: Google, 30-day sessions and managed sessions
+
+Audience: administrator. Source review only at `main` e8b32bb2.
+
+| Kind | How you get it | How long | Ends when |
+|---|---|---|---|
+| Google sign-in | Signing in with Google | About an hour (Google's token) | It expires; the app then uses the 30-day session below |
+| 30-day session | The app exchanges a fresh Google sign-in for it (`POST /api/auth/session`) | 30 days, extended each time it is used | Sign out (`POST /api/auth/session/revoke`), or 30 days unused |
+| Managed session | Opening a managed user's sign-in link | Up to 90 days on that browser | **Deactivate** in Managed Users ends it everywhere at once |
+
+- A managed session cannot be swapped for a 30-day session: the server answers 403. This keeps a read-only Viewer read-only, and keeps Deactivate immediate.
+- Sign-out revokes only the session it is given. It does not sign that person out on other devices.
+- A 30-day session has the same trust as the Google sign-in it came from.
+
+Evidence: `AuthController` (`issueSession`, `revokeSession`); `CabinSessionService` (`SESSION_TTL` 30 days, `validateAndExtend`); `ManagedUserService` (`SESSION_TTL` 90 days, `validateSession`).
+
+## What the server checks when a guest link is made
+
+Audience: administrator. Source review only at `main` e8b32bb2.
+
+**Short answer.** A guest link needs a label, and its scope must include at least one of `dashboard`, `device_states` or `alerts_read`; otherwise the server refuses to create it. Every guest link is read-only, whatever its scope.
+
+Evidence: `CabinAccessTokensController` (label and scope checks). Making and revoking links is described in [Share read-only access with a link](#share-read-only-access-with-a-link-guest-access).
+
+## Why the sign-in link opens without signing in
+
+Audience: administrator. Source review only at `main` e8b32bb2.
+
+**Short answer.** The managed user's sign-in link is the one route that accepts no sign-in, because the link itself is the credential: a managed user has no Google account to sign in with. To keep that safe, the link works only once and only for 30 minutes, and the first browser that uses it gets the session.
+
+- A used, expired or deactivated user's link is refused; make a new one with **Copy sign-in link** or **Invite**.
+- Anyone holding an unused link can sign in as that person, so hand it over privately.
+- A test checks that this is the only route administrators do not guard.
+
+Evidence: `GoogleAuthInterceptor` (the magic-link consume route, matched on the raw and normalised path); `ManagedUserService.consumeMagicLink` (`consumeIfUnused`, `MAGIC_LINK_TTL` 30 minutes); `AdministratorRouteAuditTest` (its single exemption).
+
 ## Disk space warnings
 
 Audience: administrator.
