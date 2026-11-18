@@ -258,6 +258,12 @@ class AskContextBuilderTest {
         assertThat(refs("How do I change the MQTT URL?")).contains(cfg + "reference-home-assistant-mqtt-and-kafka-addresses");
         assertThat(refs("What is the Vaultwarden master password setting?"))
             .contains(cfg + "reference-vaultwarden-and-credential-settings");
+        // Credential-location questions keep their credential guidance, not the settings reference.
+        for (String q : new String[] {"Where is the Vaultwarden master password?", "Where is the Vaultwarden admin token?",
+                "Where is the Vaultwarden client secret?"}) {
+            assertThat(refs(q)).contains(cfg + "credentials-and-access")
+                .doesNotContain(cfg + "reference-vaultwarden-and-credential-settings");
+        }
         assertThat(refs("What does BLINK_USERNAME do?")).contains(cfg + "reference-blink-and-camera-settings");
         assertThat(refs("What does SERVER_PORT do?")).contains(cfg + "reference-instance-ports-and-image-settings");
         for (HouseholdRole role : new HouseholdRole[] {HouseholdRole.ADULT_HOUSEHOLD_MEMBER, HouseholdRole.CHILD,

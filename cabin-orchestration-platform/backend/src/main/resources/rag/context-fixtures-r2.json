@@ -1837,9 +1837,9 @@
         "vaultwarden_admin_token",
         "resend_api_key",
         "vaultwarden url",
-        "vaultwarden master password",
-        "vaultwarden client secret",
-        "vaultwarden admin token",
+        "vaultwarden master password setting",
+        "vaultwarden client secret setting",
+        "vaultwarden admin token setting",
         "resend api key"
       ],
       "questions": [],
