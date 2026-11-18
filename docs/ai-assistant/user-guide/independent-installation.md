@@ -6,7 +6,7 @@ Audience: installer/operator. Status: source-reviewed planning and prerequisite 
 
 **Short answer.** Ask only for what the selected capabilities need. It needs: the capabilities and household needs, an authorized target host and operator access, the household's own repository and instance identity, its access model, domain and account ownership, and only the integrations or devices it enables. Camera, GPS or other site details are asked for only when that feature is selected, for example zone-based presence. Never collect SSH keys, tokens, OAuth secrets or vault passwords in chat (use secure setup and vault pointers), and never copy the existing cabin instance's credentials, seed data or deployed paths as defaults.
 
-Ask only for choices required by selected capabilities, retain confirmed non-secret answers and show assumptions for correction.
+Retain confirmed non-secret answers and show assumptions for correction.
 
 | Input | When needed | What should not be collected in chat |
 |---|---|---|
