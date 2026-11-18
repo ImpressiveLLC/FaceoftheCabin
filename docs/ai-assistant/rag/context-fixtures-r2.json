@@ -2288,6 +2288,149 @@
           "audience": "administrator"
         }
       ]
+    },
+    {
+      "id": "stack_ownership",
+      "description": "W-117 C2 source stack map: stack-ownership-and-networks",
+      "boost": 0,
+      "keywordPatterns": [
+        "stack ownership",
+        "compose ownership",
+        "stack map"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/stack-map.md",
+          "section": "stack-ownership-and-networks",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "stack_app_ports",
+      "description": "W-117 C2 source stack map: application-ports-and-internal-listeners",
+      "boost": 0,
+      "keywordPatterns": [
+        "application ports",
+        "backend port",
+        "discovery port"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/stack-map.md",
+          "section": "application-ports-and-internal-listeners",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "stack_device_ports",
+      "description": "W-117 C2 source stack map: device-stack-ports",
+      "boost": 0,
+      "keywordPatterns": [
+        "device ports",
+        "support ports",
+        "frigate port",
+        "homeassistant networking"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/stack-map.md",
+          "section": "device-stack-ports",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "stack_browser",
+      "description": "W-117 C2 source stack map: browser-requests-and-api-proxy",
+      "boost": 0,
+      "keywordPatterns": [
+        "browser route",
+        "api proxy",
+        "nginx routing",
+        "browser requests",
+        "streaming proxy"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/stack-map.md",
+          "section": "browser-requests-and-api-proxy",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "stack_telemetry",
+      "description": "W-117 C2 source stack map: telemetry-and-camera-connections",
+      "boost": 0,
+      "keywordPatterns": [
+        "telemetry path",
+        "mqtt kafka",
+        "event path"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/stack-map.md",
+          "section": "telemetry-and-camera-connections",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "stack_model",
+      "description": "W-117 C2 source stack map: model-runtime-connections",
+      "boost": 0,
+      "keywordPatterns": [
+        "model connection",
+        "ollama port",
+        "model network"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/stack-map.md",
+          "section": "model-runtime-connections",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "stack_home",
+      "description": "W-117 C2 source stack map: home-collector-and-cabin-host",
+      "boost": 1,
+      "keywordPatterns": [
+        "home collector",
+        "collector host",
+        "collector network"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/stack-map.md",
+          "section": "home-collector-and-cabin-host",
+          "audience": "administrator"
+        }
+      ]
     }
   ],
   "r2Changes": [
@@ -2305,6 +2448,7 @@
     "2026-11-05 W-151 matcher: keyword endings widened (s, es, ed, d, ing, ings, ly, er, ers, ation, ations); categories tied for the top score are all kept in declaration order instead of the first winning (later tied categories add only sections that fit whole in the remaining document budget, duplicates dropped). Keywords and sections unchanged.",
     "2026-11-18 W-117 C2 slice 1: five administrator categories (config_env_blink_camera, config_env_vaultwarden, config_env_weather, config_env_addresses, config_env_instance), one per reference section in configuration.md, so tied categories stay inside the 6000-character document budget. Source review only; no frozen question declares them, nothing is ingested or trained.",
     "2026-11-18 W-117 C2 slice 2: source-reviewed operations/recovery reference mapped in bounded role-gated sections. Offline routing/context checks only; no model run, training or restore rehearsal.",
-    "2026-11-18 W-117 C2 slice 3 (identity and credentials): four new administrator categories, one section each: identity_admin, identity_sessions, identity_guest_link_checks, identity_sign_in_link (split after the #490 review so a tie with credential_redaction still delivers the asked-for section); the credential inventory is its own administrator category, credential_inventory (boost 1), so credential_redaction is unchanged and credential-location questions keep only credentials-and-access within budget (after #487, adding the inventory to credential_redaction pushed recovery sections out of a tied bundle). Credential-location questions keep credentials-and-access."
+    "2026-11-18 W-117 C2 slice 3 (identity and credentials): four new administrator categories, one section each: identity_admin, identity_sessions, identity_guest_link_checks, identity_sign_in_link (split after the #490 review so a tie with credential_redaction still delivers the asked-for section); the credential inventory is its own administrator category, credential_inventory (boost 1), so credential_redaction is unchanged and credential-location questions keep only credentials-and-access within budget (after #487, adding the inventory to credential_redaction pushed recovery sections out of a tied bundle). Credential-location questions keep credentials-and-access.",
+    "2026-11-18 W-117 C2 slice 4: seven bounded administrator stack-map sections, source declarations only. No live topology, model execution, training or infrastructure change."
   ]
 }
