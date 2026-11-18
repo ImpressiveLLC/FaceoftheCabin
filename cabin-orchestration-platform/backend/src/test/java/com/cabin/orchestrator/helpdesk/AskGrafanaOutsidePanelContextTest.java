@@ -39,14 +39,29 @@ class AskGrafanaOutsidePanelContextTest {
 
     @Test
     void theReportedQuestionDeliversTheGrafanaSectionWholeToEveryRole() {
-        assertThat(builder.categoryIdFor(QUESTION)).isEqualTo("recovery_grafana_outside_panel");
+        // "grafana shows" ties generic "sign in", so both categories are kept; whole delivery is the requirement, not first place.
+        assertThat(builder.categoryIdsFor(QUESTION)).contains("recovery_grafana_outside_panel");
         String expected = source.section(GUIDE, SECTION).orElseThrow().text();
         for (HouseholdRole role : Arrays.asList(HouseholdRole.values())) {
             assertDelivered(builder.buildContext(QUESTION, role), expected, String.valueOf(role));
         }
         assertDelivered(builder.buildContext(QUESTION, null), expected, "no role");
-        assertThat(builder.categoryIdFor("Why is Grafana blank outside the embedded panel?")).as("short wording")
-            .isEqualTo("recovery_grafana_outside_panel");
+        assertDelivered(builder.buildContext("Why is Grafana blank outside the embedded panel?", HouseholdRole.ADULT_HOUSEHOLD_MEMBER),
+            expected, "short wording");
+    }
+
+    /** #503 review (Codex HOLD 6982208154): "embedded panel" wording about other products must not pull in the Grafana section. */
+    @Test
+    void otherProductsEmbeddedPanelSignInIsNotCaptured() {
+        for (String q : List.of("How do I sign in to Home Assistant in the embedded panel?",
+                "How do I sign in to Node-RED in the embedded panel?",
+                "How do I sign in to Frigate in the embedded panel?")) {
+            assertThat(builder.categoryIdsFor(q)).as(q).doesNotContain("recovery_grafana_outside_panel", "recovery_grafana");
+            for (HouseholdRole role : Arrays.asList(HouseholdRole.values())) {
+                assertThat(builder.buildContext(q, role)).as(q + " " + role).noneMatch(n -> n.entityRef().endsWith("#" + SECTION));
+            }
+        }
+        assertThat(builder.categoryIdFor("How do I sign in to Home Assistant in the embedded panel?")).isEqualTo("user_auth_role");
     }
 
     @Test
