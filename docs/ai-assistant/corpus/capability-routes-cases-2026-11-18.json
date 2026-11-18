@@ -145,6 +145,22 @@
       "audience": "administrator",
       "question": "Do acknowledgment permissions waive explicit CRITICAL confirmation?",
       "expectedText": "POST returns 409"
+    },
+    {
+      "id": "cap_helpdesk_natural",
+      "category": "cap_helpdesk",
+      "section": "ask-routes-and-proposal-prerequisites",
+      "audience": "administrator",
+      "question": "What does the propose route need?",
+      "expectedText": "/api/helpdesk/propose"
+    },
+    {
+      "id": "cap_devices_natural",
+      "category": "cap_devices",
+      "section": "device-routes-and-home-assistant-actions",
+      "audience": "administrator",
+      "question": "Who can call POST /api/ha/services?",
+      "expectedText": "switch"
     }
   ]
 }

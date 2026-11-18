@@ -84,7 +84,10 @@ class AskCapabilityRoutesContextTest {
             .orElseThrow().text();
         for (String q : List.of("What is the helpdesk endpoint password?", "Where is the API base secret?",
                 "What token do camera routes use?",
-                "Can a new API base redirect my credentials to another origin?")) {
+                "Can a new API base redirect my credentials to another origin?",
+                "What password does the propose route require?", "What token does the propose route require?",
+                "What secret does the propose route require?", "What password lets me call POST /api/ha/services?",
+                "What token lets me call POST /api/ha/services?", "What secret lets me call POST /api/ha/services?")) {
             assertThat(builder.categoryIdsFor(q)).as(q).contains("credential_redaction");
             assertThat(builder.buildContext(q, HouseholdRole.ADMINISTRATOR)).as(q).anySatisfy(n -> {
                 assertThat(n.entityRef()).isEqualTo(ref); assertThat(n.content()).isEqualTo(full);

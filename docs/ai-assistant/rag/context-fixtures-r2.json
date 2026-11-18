@@ -2316,7 +2316,8 @@
       "keywordPatterns": [
         "application ports",
         "backend port",
-        "discovery port"
+        "discovery port",
+        "backend use"
       ],
       "questions": [],
       "contextNodes": [],
@@ -2337,7 +2338,8 @@
         "device ports",
         "support ports",
         "frigate port",
-        "homeassistant networking"
+        "homeassistant networking",
+        "home assistant port"
       ],
       "questions": [],
       "contextNodes": [],
@@ -2379,7 +2381,8 @@
       "keywordPatterns": [
         "telemetry path",
         "mqtt kafka",
-        "event path"
+        "event path",
+        "mqtt to kafka"
       ],
       "questions": [],
       "contextNodes": [],
@@ -2497,7 +2500,8 @@
       "keywordPatterns": [
         "helpdesk endpoint",
         "proposal prerequisites",
-        "ask routes"
+        "ask routes",
+        "propose route"
       ],
       "questions": [],
       "contextNodes": [],
@@ -2517,7 +2521,8 @@
       "keywordPatterns": [
         "device routes",
         "ha actions",
-        "ha prerequisites"
+        "ha prerequisites",
+        "call post /api/ha/services"
       ],
       "questions": [],
       "contextNodes": [],
@@ -2626,6 +2631,7 @@
     "2026-11-18 W-117 C2 slice 2: source-reviewed operations/recovery reference mapped in bounded role-gated sections. Offline routing/context checks only; no model run, training or restore rehearsal.",
     "2026-11-18 W-117 C2 slice 3 (identity and credentials): four new administrator categories, one section each: identity_admin, identity_sessions, identity_guest_link_checks, identity_sign_in_link (split after the #490 review so a tie with credential_redaction still delivers the asked-for section); the credential inventory is its own administrator category, credential_inventory (boost 1), so credential_redaction is unchanged and credential-location questions keep only credentials-and-access within budget (after #487, adding the inventory to credential_redaction pushed recovery sections out of a tied bundle). Credential-location questions keep credentials-and-access.",
     "2026-11-18 W-117 C2 slice 4: seven bounded administrator stack-map sections, source declarations only. No live topology, model execution, training or infrastructure change.",
-    "2026-11-18 W-117 C2 slice 5: bounded administrator feature prerequisites, browser API bases and backend caller boundaries. Source review only; no model, device or host execution."
+    "2026-11-18 W-117 C2 slice 5: bounded administrator feature prerequisites, browser API bases and backend caller boundaries. Source review only; no model, device or host execution.",
+    "2026-11-18 W-117 C2 slice 8: three stack and two capability phrasing aliases; existing zero boosts unchanged. Delivered-content and credential-priority regressions; no matcher/runtime/model change."
   ]
 }

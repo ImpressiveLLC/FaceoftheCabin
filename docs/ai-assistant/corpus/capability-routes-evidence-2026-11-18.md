@@ -14,7 +14,7 @@ Source verification specifically distinguishes actual checks from stale comments
 |---|---|
 | Focused Maven suite | 61 passed, zero failures/errors/skips: capability5, matcher9, builder22, guide-alias3, routing-coverage13, document-source9 |
 | Final wording and negative-case update | All five capability tests rerun and passed |
-| Eighteen authored positive/failure questions | Every requested section delivered whole in actual Java, no truncation, document context at most6000characters |
+| Eighteen authored positive/failure questions | Every requested section delivered whole in actual Java, no truncation, document context at most 6000 characters |
 | Audience | Every case denies the new sections to adult household, child, kiosk, service and null roles |
 | Mixed caller/helpdesk question | Both complete sections fit the existing budget |
 | Credential priority | Four credential-bearing route/API questions retain complete credentials-and-access |
