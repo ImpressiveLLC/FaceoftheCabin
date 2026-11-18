@@ -2730,7 +2730,7 @@
       "description": "C2 tail I02: sign-in duration wording reuses the session guidance without adding scores to existing session aliases",
       "boost": 0,
       "keywordPatterns": [
-        "sign-in last"
+        "a sign-in last"
       ],
       "questions": [],
       "contextNodes": [],

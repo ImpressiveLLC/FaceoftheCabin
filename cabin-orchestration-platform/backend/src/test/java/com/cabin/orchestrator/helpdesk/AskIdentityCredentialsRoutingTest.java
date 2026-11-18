@@ -155,13 +155,29 @@ class AskIdentityCredentialsRoutingTest {
     }
 
     @Test
+    void namedProductSignInDurationsDoNotGetPlatformSessionGuidance() {
+        for (String product : List.of("Home Assistant", "Node-RED", "Grafana", "Frigate", "guest link")) {
+            for (String question : List.of("How long does a " + product + " sign-in last?",
+                    "How long does a " + product + " sign-in last before I have to sign in again?")) {
+                assertThat(builder.categoryIdsFor(question)).as(question).doesNotContain("identity_session_duration");
+                for (HouseholdRole role : new HouseholdRole[] {HouseholdRole.ADMINISTRATOR,
+                        HouseholdRole.ADULT_HOUSEHOLD_MEMBER, HouseholdRole.CHILD,
+                        HouseholdRole.KIOSK_DISPLAY, HouseholdRole.SERVICE, null}) {
+                    assertThat(refs(question, role)).as(question + " / " + role)
+                        .noneMatch(r -> r.endsWith(SESSIONS));
+                }
+            }
+        }
+    }
+
+    @Test
     void signInDurationCredentialOverlapsKeepWholeGuidance() {
         String full = new ReviewedDocumentSource(REPO_DOCS.toString())
             .section("ai-assistant/user-guide/configuration.md", "credentials-and-access").orElseThrow().text();
         for (String credential : List.of("password", "token", "secret")) {
-            for (String question : List.of("Which " + credential + " makes my sign-in last?",
-                    "Where is the " + credential + " for making my sign-in last and stay signed in?",
-                    "Which " + credential + " makes my sign-in last until the session expires?")) {
+            for (String question : List.of("Which " + credential + " makes a sign-in last?",
+                    "Where is the " + credential + " for making a sign-in last and stay signed in?",
+                    "Which " + credential + " makes a sign-in last until the session expires?")) {
                 List<KnowledgeNode> nodes = builder.buildContext(question, HouseholdRole.ADMINISTRATOR);
                 assertThat(nodes).as(question).anySatisfy(n -> {
                     assertThat(n.entityRef()).endsWith("#credentials-and-access");
