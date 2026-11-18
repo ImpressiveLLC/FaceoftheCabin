@@ -147,6 +147,28 @@ class AskContextRecoveryReferenceTest {
     }
 
     @Test
+    void recoveryHeartbeatOverlapsKeepWholeCredentialGuidance() {
+        AskContextBuilder builder = builder();
+        String path = "ai-assistant/user-guide/configuration.md";
+        String ref = "doc:" + path + "#credentials-and-access";
+        String full = new ReviewedDocumentSource(DOCS.toString())
+            .section(path, "credentials-and-access").orElseThrow().text();
+        for (String credential : List.of("password", "token", "secret")) {
+            for (String question : List.of("Where is the " + credential + " for the recovery heartbeat?",
+                    "Which " + credential + " is used for recovery heartbeat restart?",
+                    "Where is the " + credential + " for a recovery check of the recovery heartbeat?")) {
+                List<KnowledgeNode> context = builder.buildContext(question, HouseholdRole.ADMINISTRATOR);
+                assertThat(context).as(question).anySatisfy(n -> {
+                    assertThat(n.entityRef()).isEqualTo(ref);
+                    assertThat(n.content()).isEqualTo(full);
+                });
+                assertThat(context.stream().mapToInt(n -> n.content().length()).sum())
+                    .as(question).isLessThanOrEqualTo(6000);
+            }
+        }
+    }
+
+    @Test
     void fixtureCopiesRemainByteIdentical() throws Exception {
         assertThat(Files.readAllBytes(DOCS.resolve("ai-assistant/rag/context-fixtures-r2.json")))
             .isEqualTo(Files.readAllBytes(Path.of("src/main/resources/rag/context-fixtures-r2.json")));

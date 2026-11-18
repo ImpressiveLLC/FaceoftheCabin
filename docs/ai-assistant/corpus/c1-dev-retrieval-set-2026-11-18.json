@@ -595,7 +595,6 @@
       "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#grafana-login-outside-the-embedded-panel",
       "audience": "household",
       "source": "#494 coverage check",
-      "knownGap": "#494 selection gap",
       "audienceNote": "household per the routing map and #487 review; #494 measured this question as administrator"
     },
     {
@@ -613,8 +612,7 @@
       "expectedCategory": "recovery_checks",
       "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#recovery-checks-and-notices",
       "audience": "administrator",
-      "source": "#494 coverage check",
-      "knownGap": "#494 selection gap"
+      "source": "#494 coverage check"
     },
     {
       "id": "cov_M06",

@@ -2690,6 +2690,42 @@
       ]
     },
     {
+      "id": "recovery_grafana_outside_panel",
+      "description": "C2 tail M03: Grafana-scoped 'grafana shows' wording, reusing the existing Grafana login recovery section without summing with its login aliases",
+      "boost": 0,
+      "keywordPatterns": [
+        "grafana shows"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/operations-recovery-reference.md",
+          "section": "grafana-login-outside-the-embedded-panel",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "recovery_heartbeat_commands",
+      "description": "C2 tail M05: recovery heartbeat stop/restart wording without additive scores from existing recovery aliases",
+      "boost": 0,
+      "keywordPatterns": [
+        "recovery heartbeat"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/operations-recovery-reference.md",
+          "section": "recovery-checks-and-notices",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
       "id": "identity_session_duration",
       "description": "C2 tail I02: sign-in duration wording reuses the session guidance without adding scores to existing session aliases",
       "boost": 0,
@@ -2730,6 +2766,8 @@
     "2026-11-18 W-117 C2 slice 6: map the existing installation plan and acceptance record as bounded administrator sections. Existing inputs, limitations and presence mappings unchanged; no duplicate installer or execution.",
     "2026-11-18 C2 tail C07: bounded invite-destination phrase reuses the reviewed instance-settings section with zero boost; preserves credential ties and baseline expectations. No runtime action or guide change.",
     "2026-11-18 C2 tail M02: isolated zero-boost Node-RED editor wording reuses reviewed login recovery; old login/rotation patterns and credential guidance preserved. No authentication, host or guide change.",
+    "2026-11-18 C2 tail M03: zero-boost category recovery_grafana_outside_panel ('grafana shows', Grafana-scoped, two words) reuses the existing household Grafana login recovery section. It ties generic 'sign in' rather than beating it, so the reported question keeps user_auth_role first and also receives the Grafana section whole; credential password/token/secret wording (3) stays ahead. Other products' 'embedded panel' sign-in questions are unaffected. No guide, boost, matcher or budget change.",
+    "2026-11-18 C2 tail M05: recovery heartbeat wording reuses the existing recovery-checks-and-notices section. No service action or behavior change.",
     "2026-11-18 C2 tail I02: isolated sign-in duration phrase reuses administrator session guidance. No lifetime, security policy or authentication behavior change."
   ]
 }

@@ -169,6 +169,14 @@
       "section": "node-red-login-recovery",
       "audience": "administrator",
       "expectedText": "Node-RED"
+    },
+    {
+      "id": "recovery_heartbeat_m05",
+      "question": "How do I stop and restart the recovery heartbeat?",
+      "category": "recovery_heartbeat_commands",
+      "section": "recovery-checks-and-notices",
+      "audience": "administrator",
+      "expectedText": "restart"
     }
   ]
 }
