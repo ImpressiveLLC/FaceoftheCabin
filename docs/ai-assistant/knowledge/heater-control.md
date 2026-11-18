@@ -7,7 +7,7 @@
 > reviewed-map entry (and an eval run) before the helpdesk can answer from
 > it. The Home Assistant automations referenced below (freeze protection,
 > preheat on `input_boolean.on_the_way_to_cabin`) live in HA /
-> `ImpressiveLLC/CabinAutomations`, not this repo.
+> `ImpressiveLLC/CabinAutomations`, not this repo. (2026-11-16: the preheat helper and automation are not in CabinAutomations either; a source-of-truth package, not yet applied to the live host, is `cabin-orchestration-platform/infra/cabin-security/homeassistant/cabin_on_the_way.yaml`, see `ON_THE_WAY.md` there.)
 
 ## Q: How do I manually turn on the cabin heater?
 A: Two ways. (1) Dashboard: go to cabin.unicornpingpong.com → Device Manager → See → find heater_mech_room → tap its On/Off power button. You must be signed in; the button sends the command through Home Assistant. (2) HA directly: http://100.77.44.113:8123 → Developer Tools → States → search heater_mech_room → toggle. The heater is a THIRDREALITY smart plug (switch.heater_mech_room) controlling a plug-in electric heater in the mechanical room.
