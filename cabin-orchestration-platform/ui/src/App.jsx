@@ -1753,7 +1753,9 @@ function useLiveEventStream(active, apiBase, authToken) {
       source.current.addEventListener("cabin-event", (e) => {
         try {
           const data = JSON.parse(e.data);
-          setMessages(prev => [{ ts: Date.now(), ...data }, ...prev].slice(0, 50));
+          // seq is a per-message id so the log can key rows by message, not by position: a new message mounts one row
+          // and leaves the others alone instead of renumbering every row below it.
+          setMessages(prev => [{ ts: Date.now(), ...data, seq: (prev[0]?.seq ?? 0) + 1 }, ...prev].slice(0, 50));
         } catch {}
       });
       source.current.onerror = () => {};
@@ -6556,9 +6558,12 @@ export function AlertHistoryLog({ devices = [], location, authedFetch = fetch, s
 // (none of which pass one) keeps working unchanged -- production callers
 // (MonitoringPanel) pass the real auth.authedFetch, required since
 // /api/events/** now requires a Google token (WebConfig.java, 2026-09-01).
-export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authedFetch = fetch, signedIn = false }) {
-  // null outside the app shell (direct-render tests); the Alert History link is simply omitted then.
-  const setActivePanel = useApp()?.setActivePanel;
+// Memoized (Nate's delta-only rule, 2026-11-17): it re-renders only when one of its own props changes, not when a
+// sibling in the Monitoring section does. Callers must pass a stable `devices` array (see LocationMonitoringSection).
+// Test seam: lets a render-count test see how often the memoized body really renders (set only in tests).
+export const renderProbes = {};
+const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devices, apiBase, location, tempUnit, authedFetch = fetch, signedIn = false, setActivePanel }) {
+  renderProbes.sensorHistory?.();
   const [reportedFields, setReportedFields] = useState({});
   useEffect(() => {
     if (devices.length === 0) return; // nothing to look up yet
@@ -7051,7 +7056,13 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
                   {partialDates.size > 0 && " A day marked (partial) covers less than a full 24 hours -- its average is over fewer hours than the other rows, not a stronger or weaker reading."}
                 </p>
                 <div className="sensor-history-table-wrap">
-                  <table className="sensor-history-table">
+                  <table className="sensor-history-table sensor-history-table--fixed"
+                    style={{ minWidth: `calc(13em + ${selectedIds.length} * 11em + ${outdoorSeries.length} * 30em)` }}>
+                    <colgroup>
+                      <col className="sh-col-date" />
+                      {selectedIds.map(id => <col key={id} className="sh-col-device" />)}
+                      {outdoorSeries.map(sr => <col key={sr.key} className="sh-col-outdoor" />)}
+                    </colgroup>
                     <thead><tr><th>Date</th>{selectedIds.map(id => <th key={id}>{nameFor(id)}</th>)}{outdoorSeries.map(sr => <th key={sr.key}>{sr.label}</th>)}</tr></thead>
                     <tbody>
                       {[...allDates].reverse().map(day => (
@@ -7064,11 +7075,13 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
                             // average per cell hides whether a reading came from dozens of
                             // samples or one stray point, which is exactly the kind of
                             // question an insurance inspector would ask.
-                            return <td key={id}>{p?.avg != null ? `${toDisplay(p.avg).toFixed(1)}${unit} (n=${p.sampleCount})` : "—"}</td>;
+                            const text = p?.avg != null ? `${toDisplay(p.avg).toFixed(1)}${unit} (n=${p.sampleCount})` : "—";
+                            return <td key={id} title={text}>{text}</td>;
                           })}
                           {outdoorSeries.map(sr => {
                             const o = sr.byDay[String(day).slice(0, 10)];
-                            return <td key={sr.key}>{o ? outdoorCellText(o, toDisplay, unit) : "—"}</td>;
+                            const text = o ? outdoorCellText(o, toDisplay, unit) : "—";
+                            return <td key={sr.key} className="sh-cell-outdoor" title={text}>{text}</td>;
                           })}
                         </tr>
                       ))}
@@ -7082,6 +7095,55 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
       )}
     </div>
   );
+});
+
+// The app context is rebuilt as a new object on every App render, so a panel that reads it directly re-renders each time
+// whatever its props are. This thin wrapper is the only part that reads it; it passes the one value the body needs
+// (a stable useState setter, null outside the app shell so the Alert History link is omitted) and the memoized body
+// skips unless its own props changed.
+export function SensorHistoryPanel(props) {
+  const setActivePanel = useApp()?.setActivePanel;
+  return <SensorHistoryPanelBody {...props} setActivePanel={setActivePanel} />;
+}
+
+// The live event log owns the SSE stream, so a message re-renders only this component and its one new row, never the
+// KPI tiles or Sensor History above it (Cowork trace 2026-11-17: the stream state used to live in
+// LocationMonitoringSection, so every message re-rendered the whole section). Nothing is throttled, batched or
+// debounced: every message is applied the moment it arrives and keeps the 50-message cap.
+const EventRow = React.memo(function EventRow({ m }) {
+  return (
+    <div className="event-row">
+      <span className="event-ts">{new Date(m.ts).toLocaleTimeString()}</span>
+      <span className="event-body">{JSON.stringify(m)}</span>
+    </div>
+  );
+});
+
+export function LiveEventLog({ locCfg, active, cabinSession, accessToken }) {
+  const liveMessages = useLiveEventStream(active, locCfg.apiBase, { cabinSession, accessToken });
+  const { isCollapsed: isLogCollapsed, toggle: toggleLog } = useCollapsedSections(`collapsed.eventLog.${locCfg.id}`);
+  const logCollapsed = isLogCollapsed("main");
+  return (
+    <div className="event-log">
+      <div className="event-log-header">
+        <span>Live Events — {locCfg.label}</span>
+        <button type="button" className="section-caret" onClick={() => toggleLog("main")}
+          aria-expanded={!logCollapsed}
+          aria-label={logCollapsed ? "Expand live events" : "Collapse live events"}>
+          {logCollapsed ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+        </button>
+      </div>
+      {!logCollapsed && (
+        <div className="event-log-body">
+          {liveMessages.length === 0 && (
+            <div className="event-log-empty">No live events yet from {locCfg.label}</div>
+          )}
+          <ExpandableList items={liveMessages} keyOf={m => m.seq} noun="events"
+            renderItem={m => <EventRow key={m.seq} m={m} />} />
+        </div>
+      )}
+    </div>
+  );
 }
 
 // 2026-08-25: devices is now the full, user-ordered list (from
@@ -7092,11 +7154,11 @@ export function SensorHistoryPanel({ devices, apiBase, location, tempUnit, authe
 // are undefined outside reorder mode, same as KpiTile's own defaults.
 function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragIdx, overIdx, pinnedCount,
     onDragStart, onDragOver, onDrop, onDragEnd, auth }) {
-  const liveMessages = useLiveEventStream(active, locCfg.apiBase,
-    { cabinSession: auth?.cabinSessionToken, accessToken: auth?.accessToken });
   const [tempUnit, toggleTempUnit] = useTempUnit();
-  const { isCollapsed: isLogCollapsed, toggle: toggleLog } = useCollapsedSections(`collapsed.eventLog.${locCfg.id}`);
-  const logCollapsed = isLogCollapsed("main");
+  // One array per (devices, location) so the memoized SensorHistoryPanel below sees an unchanged prop on every render
+  // that did not change this location's devices. A bare `devices.filter(...)` in the JSX was a new array every render.
+  const locDevices = useMemo(
+    () => devices.filter(d => !d.location || d.location === locCfg.id), [devices, locCfg.id]);
 
   // D13/bug #4: curated Service Entity display_labels for single-service
   // tile types (CO_SENSOR, HUMIDITY_SENSOR) -- see kpiTileFor's own comment.
@@ -7161,7 +7223,7 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
         }} />
       </div>
 
-      <SensorHistoryPanel devices={devices.filter(d => !d.location || d.location === locCfg.id)}
+      <SensorHistoryPanel devices={locDevices}
         apiBase={locCfg.apiBase} location={locCfg.id} tempUnit={tempUnit} authedFetch={auth?.authedFetch}
         signedIn={!!auth?.signedIn} />
 
@@ -7174,33 +7236,11 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
       )}
 
       {auth?.demo
-        ? <DemoCameraCards devices={devices.filter(d => !d.location || d.location === locCfg.id)} title={`Camera Health — ${locCfg.label}`} />
+        ? <DemoCameraCards devices={locDevices} title={`Camera Health — ${locCfg.label}`} />
         : <CameraHealthPanel locCfg={locCfg} />}
 
-      <div className="event-log">
-        <div className="event-log-header">
-          <span>Live Events — {locCfg.label}</span>
-          <button type="button" className="section-caret" onClick={() => toggleLog("main")}
-            aria-expanded={!logCollapsed}
-            aria-label={logCollapsed ? "Expand live events" : "Collapse live events"}>
-            {logCollapsed ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
-          </button>
-        </div>
-        {!logCollapsed && (
-          <>
-            {liveMessages.length === 0 && (
-              <div className="event-log-empty">No live events yet from {locCfg.label}</div>
-            )}
-            <ExpandableList items={liveMessages.map((m, i) => ({ m, i }))} keyOf={e => e.i} noun="events"
-              renderItem={({ m, i }) => (
-                <div key={i} className="event-row">
-                  <span className="event-ts">{new Date(m.ts).toLocaleTimeString()}</span>
-                  <span className="event-body">{JSON.stringify(m)}</span>
-                </div>
-              )} />
-          </>
-        )}
-      </div>
+      <LiveEventLog locCfg={locCfg} active={active}
+        cabinSession={auth?.cabinSessionToken} accessToken={auth?.accessToken} />
     </div>
   );
 }
@@ -7413,10 +7453,14 @@ export function MnSeeView({ devices, activeLocation, active, reorderMode, auth }
 
   const isAlarm = useCallback((d) => d.state === "ALARM" || d.state === "CRITICAL", []);
   // D13 A1: one card per physical device; an HA entity repeating its Zigbee parent's reading is not a second card.
-  const monitored = collapseDuplicateZigbeeServices(electricalMonitoringDevices(devices));
-  const locDevices = activeLocation === "both"
-    ? monitored
-    : monitored.filter(d => !d.location || d.location === activeLocation);
+  // Memoized on its real inputs so useDraggableOrder and the sections below get the same array until devices or the
+  // location actually change (a fresh array every render defeated every memo downstream).
+  const locDevices = useMemo(() => {
+    const monitored = collapseDuplicateZigbeeServices(electricalMonitoringDevices(devices));
+    return activeLocation === "both"
+      ? monitored
+      : monitored.filter(d => !d.location || d.location === activeLocation);
+  }, [devices, activeLocation]);
 
   const { ordered, pinnedCount, reorder } = useDraggableOrder(
     `order.monitoring.${activeLocation}`, locDevices, isAlarm
