@@ -156,12 +156,13 @@ class PlatformInfoServiceTest {
     }
 
     @Test
-    void npmEntriesCarryTheLockedVersionAndFloatingOnesSaySo() {
+    void npmEntriesCarryTheLockedVersionAndPinnedOnesSaySo() {
         Map<String, Map<String, Object>> items = specItemsById(newService(prompt -> Optional.empty()).get());
 
-        assertEquals("latest", items.get("fe.react").get("declared"));
-        assertEquals("floating", items.get("fe.react").get("track"));
-        assertTrue(items.get("fe.react").get("locked") != null, "the version package-lock.json actually builds is shown next to the floating range");
+        // PR 473 pinned react to an exact version, so it is no longer a floating range.
+        assertEquals("19.2.8", items.get("fe.react").get("declared"));
+        assertEquals("pinned", items.get("fe.react").get("track"));
+        assertEquals("19.2.8", items.get("fe.react").get("locked"), "the version package-lock.json actually builds is shown next to the declared pin");
     }
 
     /** W-127 item 6: versions() and specs() used to probe Ollama twice; a wedged one held the page for twice its timeout. */
