@@ -83,7 +83,12 @@ class AskStackMapContextTest {
         String full = new ReviewedDocumentSource(DOCS.toString()).section(path, "credentials-and-access")
             .orElseThrow().text();
         for (String q : List.of("What is the backend port password?", "Where is the Home collector secret?",
-                "What token does the model connection use?")) {
+                "What token does the model connection use?",
+                "Which password does the backend use?", "Which token does the backend use?",
+                "Which secret does the backend use?", "What password does the Home Assistant port require?",
+                "What token does the Home Assistant port require?", "What secret does the Home Assistant port require?",
+                "What password is used from MQTT to Kafka?", "What token is used from MQTT to Kafka?",
+                "What secret is used from MQTT to Kafka?")) {
             assertThat(builder.categoryIdsFor(q)).as(q).contains("credential_redaction");
             assertThat(builder.buildContext(q, HouseholdRole.ADMINISTRATOR)).as(q).anySatisfy(n -> {
                 assertThat(n.entityRef()).isEqualTo(ref); assertThat(n.content()).isEqualTo(full);

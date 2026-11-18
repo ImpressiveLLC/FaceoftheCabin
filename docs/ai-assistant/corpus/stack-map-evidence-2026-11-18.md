@@ -52,3 +52,13 @@ Cowork owns independent review and merge/deployment sequencing. Author checks ar
 Integrated main `f7459bd68e91c8b1e26fc206fec90899c0ecbefd` after Cowork merged #490. The two fixture conflicts were resolved by preserving all current-main JSON fields/categories/change notes and appending only this slice's seven categories and one note. Mirrored bytes remain identical and IDs unique. No source-reference or runtime change in this integration.
 
 Combined recovery, identity, stack, matcher, builder, guide-alias, routing and document-source suite: 72 passed, zero failures/errors/skips. The original20 recovery cases and identity credential regressions are included. Existing150 replica output is byte-for-byte identical against this integrated main baseline (16no-category). Fresh exact-head CI and independent Cowork review are required; prior author checks are not CLEAN.
+
+## Slice 8: everyday stack phrasing follow-up
+
+Assigned by Cowork on #244 comment6977777870; baseline `7382d38c8bffed5fef938b4239ce062e2768fd2f`. Adds exactly three phrases to existing zero-boost categories: `backend use`, `home assistant port`, `mqtt to kafka`. No new category, source section, matcher or execution behavior. Existing phrase lists and all unrelated fixture fields remain unchanged.
+
+The three assigned questions now deliver their entire existing section: which port the backend uses, the Home Assistant port, and telemetry from MQTT to Kafka. The authored stack suite expands from14 to17 cases. Twelve credential-bearing negatives (three existing plus nine password/token/secret variants) retain complete credentials-and-access; the three-word phrases may tie credential guidance but do not displace it or exceed the6000-character budget. These are bounded lexical aliases, not general semantic understanding; untested phrasings are not claimed covered.
+
+72combined tests passed, zero failures/errors/skips: stack5, identity6, recovery5, matcher9, builder22, guide-alias3, routing13, source9. Existing150 replica output unchanged (16no-category). Mechanical comparison confirms only the three aliases and appended change note changed in fixtures; mirrors byte-identical. The guide's original baseline date is verified by git author and committer timestamps: e8b32bb2c5bcd4f2281a213c33456e89b955c873,2026-11-18T03:34:17-06:00. No guide date correction required.
+
+Pending #492/#493 are not in this baseline. Ordered integration and renewed exact-head review/CI are required before merge. No model run, training, live Ask request or host change. A1 NOT_MEASURED; release_eligible remains false. Author checks are not independent CLEAN.

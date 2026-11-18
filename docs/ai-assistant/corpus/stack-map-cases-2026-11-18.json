@@ -113,6 +113,30 @@
       "audience": "administrator",
       "question": "Does the Home collector stop when HOME_HA_DEPLOYED is false?",
       "expectedText": "does not disable the Home collector"
+    },
+    {
+      "id": "stack_app_ports_natural",
+      "category": "stack_app_ports",
+      "section": "application-ports-and-internal-listeners",
+      "audience": "administrator",
+      "question": "Which port does the backend use?",
+      "expectedText": "8090"
+    },
+    {
+      "id": "stack_device_ports_natural",
+      "category": "stack_device_ports",
+      "section": "device-stack-ports",
+      "audience": "administrator",
+      "question": "What is the Home Assistant port?",
+      "expectedText": "8123"
+    },
+    {
+      "id": "stack_telemetry_natural",
+      "category": "stack_telemetry",
+      "section": "telemetry-and-camera-connections",
+      "audience": "administrator",
+      "question": "How does telemetry get from MQTT to Kafka?",
+      "expectedText": "cabin.events.raw"
     }
   ]
 }

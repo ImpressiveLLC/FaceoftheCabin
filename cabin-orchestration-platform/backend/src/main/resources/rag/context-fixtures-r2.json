@@ -2316,7 +2316,8 @@
       "keywordPatterns": [
         "application ports",
         "backend port",
-        "discovery port"
+        "discovery port",
+        "backend use"
       ],
       "questions": [],
       "contextNodes": [],
@@ -2337,7 +2338,8 @@
         "device ports",
         "support ports",
         "frigate port",
-        "homeassistant networking"
+        "homeassistant networking",
+        "home assistant port"
       ],
       "questions": [],
       "contextNodes": [],
@@ -2379,7 +2381,8 @@
       "keywordPatterns": [
         "telemetry path",
         "mqtt kafka",
-        "event path"
+        "event path",
+        "mqtt to kafka"
       ],
       "questions": [],
       "contextNodes": [],
@@ -2449,6 +2452,7 @@
     "2026-11-18 W-117 C2 slice 1: five administrator categories (config_env_blink_camera, config_env_vaultwarden, config_env_weather, config_env_addresses, config_env_instance), one per reference section in configuration.md, so tied categories stay inside the 6000-character document budget. Source review only; no frozen question declares them, nothing is ingested or trained.",
     "2026-11-18 W-117 C2 slice 2: source-reviewed operations/recovery reference mapped in bounded role-gated sections. Offline routing/context checks only; no model run, training or restore rehearsal.",
     "2026-11-18 W-117 C2 slice 3 (identity and credentials): four new administrator categories, one section each: identity_admin, identity_sessions, identity_guest_link_checks, identity_sign_in_link (split after the #490 review so a tie with credential_redaction still delivers the asked-for section); the credential inventory is its own administrator category, credential_inventory (boost 1), so credential_redaction is unchanged and credential-location questions keep only credentials-and-access within budget (after #487, adding the inventory to credential_redaction pushed recovery sections out of a tied bundle). Credential-location questions keep credentials-and-access.",
-    "2026-11-18 W-117 C2 slice 4: seven bounded administrator stack-map sections, source declarations only. No live topology, model execution, training or infrastructure change."
+    "2026-11-18 W-117 C2 slice 4: seven bounded administrator stack-map sections, source declarations only. No live topology, model execution, training or infrastructure change.",
+    "2026-11-18 W-117 C2 slice 8: three bounded stack phrasing aliases; zero boost unchanged. Delivered-content and credential-priority regression checks; no runtime or model change."
   ]
 }
