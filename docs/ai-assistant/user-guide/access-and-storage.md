@@ -140,9 +140,9 @@ Evidence: `AuthController` (`issueSession`, `revokeSession`); `CabinSessionServi
 
 Audience: administrator. Source review only at `main` e8b32bb2.
 
-**Short answer.** The server refuses a new link with no label or an empty scope list. It does not check the scope names themselves. The scopes it honours when a link is used are `dashboard`, `device_states` and `alerts_read` (the guest views), `roof_spec` (the Roof Monitoring page link) and `demo` (a demo link, which must hold `demo` alone and expires after 30 days unless a lifetime is set). A link carrying only other names opens nothing. Every link is read-only.
+**Short answer.** The server refuses a new link with no label or an empty scope list. It does not check the scope names themselves. The scopes it honours when a link is used are `dashboard`, `device_states`, `alerts_read` and `observations_read` (sensor history for a device and field) for the guest views, `roof_spec` (the Roof Monitoring page link) and `demo` (a demo link, which must hold `demo` alone and expires after 30 days unless a lifetime is set). A link carrying only other names opens nothing. Links are read-only with one narrow exception: a `roof_spec` link may post a comment or a requested input to the Roof Monitoring page (`POST /api/roof-spec/entries`) and nothing else.
 
-Evidence: `CabinAccessTokensController.create` (label required, scope not empty); `CabinAccessTokenService.create` (the demo rule); `GoogleAuthInterceptor` (the scopes each read path accepts). Making and revoking links is described in [Share read-only access with a link](#share-read-only-access-with-a-link-guest-access).
+Evidence: `CabinAccessTokensController.create` (label required, scope not empty); `CabinAccessTokenService.create` (the demo rule); `GoogleAuthInterceptor` (`SCOPE_PATH_PREFIXES`, the scopes each read path accepts, and the single roof comment write in `handleGuestToken`). Making and revoking links is described in [Share read-only access with a link](#share-read-only-access-with-a-link-guest-access).
 
 ## Why the sign-in link opens without signing in
 
