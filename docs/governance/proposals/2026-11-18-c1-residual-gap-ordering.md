@@ -19,7 +19,7 @@ Question: "What does the external dead-man monitor do if the hub goes silent?"
 
 **Ranked candidate options (each needs Cowork's ruling; none is implemented):**
 
-1. **A qualified selection phrase in its own zero-boost category** mapping the existing dead-man section, for example "dead-man monitor" (two words). It would score 2 against 1, so the dead-man section (1760) is delivered whole and the general self-healing section is no longer selected for this question. This follows the C07, M02 and M03 pattern. Cost: about 20 minutes plus the usual delivered-content, six-role, credential and cross-product checks. It needs a ruling on whether dropping the general detect-and-recover section is acceptable for a question that names the external monitor specifically. Unlike the installation case, that section does not hold setup limits.
+1. **A qualified selection phrase in its own zero-boost category** mapping the existing dead-man section. Use a phrase qualified to the **external** monitor, for example "external dead-man" (two words). It would score 2 against 1 for this question, so the dead-man section (1760) is delivered whole and the general self-healing section is no longer selected for it. An unqualified "dead-man monitor" is **rejected** (Codex review of #513): it would also match "What does the Blink dead-man monitor do?" and score 2 against 1, replacing the section that documents Blink's separate motion dead-man alert (`maintenance.md`, the "Blink motion dead-man alert" row) with external-host guidance. Any implementation must pin Blink and other non-external dead-man wordings as negatives, along with the usual delivered-content, six-role and credential checks. This follows the C07, M02 and M03 pattern. Cost: about 20 minutes plus those checks. It needs a ruling on whether dropping the general detect-and-recover section is acceptable for a question that names the external monitor specifically. Unlike the installation case, that section does not hold setup limits.
 2. **Narrow `self_healing_recovery` by removing its "dead-man" keyword.** `recovery_deadman` would then win alone at 1. This is simpler, but it edits an existing category, and every other dead-man wording would stop receiving the self-healing section. It needs a check of those wordings first.
 3. **Condense the 4648-character maintenance section by at least 408 characters**, so the tie delivers both sections (at most 4240 + 1760 = 6000). This changes text that 3 measured questions receive. 408 characters is about 9 % of the section, so it needs a full preservation matrix like #510's. The margin would be 0, so not recommended.
 4. **Split the maintenance section** into anchored subsections and remap `self_healing_recovery`. This changes what its other questions receive and adds anchor ownership. Not recommended for this gap.
@@ -42,17 +42,18 @@ Question: "What is the installation plan for a clean machine?"
 
 **Ranked candidate options (each needs Cowork's ruling; none is implemented):**
 
-1. **Keep it a known gap until the acceptance work lands** (#512 plus its separately ruled selection candidate). Then re-measure. Recommended: no change can close this gap without a structural edit to a guide section.
-2. **Split the plan section into anchored subsections** and map a tie-selected category only to the part a person needs first. After #512 there are 1496 characters free; today there are 1440. This changes the frozen row's expected section, so the development set's expectation would need a recorded amendment, and the split needs a preservation matrix. Highest effort here; worth designing only if Cowork wants this row closed in C1.
-3. **A tie-selection phrase alone**, as designed for the acceptance row. It does not close this gap: the plan section would be selected and then skipped, 897 over even after #512. Not recommended on its own.
-4. **Plan wins outright.** This drops the setup limits. Rejected by ruling.
-5. **A global budget raise.** Ruled out.
+1. **Keep it a known gap until the acceptance work lands** (#512 plus its separately ruled selection candidate). Then re-measure. Recommended: closing it needs both a selection change and at least 897 characters of capacity, and neither has a measured design yet.
+2. **Condense, unmeasured candidate.** Ruling 6984259185, recorded in the C2 tail plan, permits a reviewed split **or** condensation. No preservation study has yet tested whether the setup sections and the plan section could together lose at least 897 characters (after #512) without dropping a requirement, so condensation is neither shown feasible nor ruled out. It would need a full preservation matrix like #510's.
+3. **Split the plan section into anchored subsections**, also unmeasured. A tie-selected category would map only to the part a person needs first. After #512 there are 1496 characters free; today there are 1440. This changes the frozen row's expected section, so the development set's expectation would need a recorded amendment, and the split needs a preservation matrix. Neither split nor condensation is shown to be necessary or sufficient yet.
+4. **A tie-selection phrase alone**, as designed for the acceptance row. It does not close this gap: the plan section would be selected and then skipped, 897 over even after #512. Not recommended on its own.
+5. **Plan wins outright.** This drops the setup limits. Rejected by ruling.
+6. **A global budget raise.** Ruled out.
 
 ## Proposed order
 
 1. **Acceptance row (46):** #512, plus the separately ruled selection candidate from #510. Smallest deficit; the design is already accepted.
-2. **cov_M04 (408):** option 1 above, a qualified zero-boost dead-man phrase. The selection already exists, the fix needs no guide text change, and it follows four merged precedents. It needs the one ruling on dropping the general section for this question.
-3. **install_gap_1 (953 / 897):** stays a known gap. Revisit only if Cowork wants it closed in C1, through a split design (option 2).
+2. **cov_M04 (408):** option 1 above, a zero-boost "external dead-man" phrase qualified to the external monitor, with Blink and other dead-man wordings pinned as negatives. The selection already exists, the fix needs no guide text change, and it follows merged precedents. It needs the one ruling on dropping the general section for this question.
+3. **install_gap_1 (953 / 897):** stays a known gap. Revisit only if Cowork wants it closed in C1. The first step would be a measured feasibility and preservation study comparing condensation (option 2) and a split (option 3), not an implementation.
 
 ## Reproduce
 
