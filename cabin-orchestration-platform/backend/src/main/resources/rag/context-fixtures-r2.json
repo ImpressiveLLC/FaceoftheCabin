@@ -2612,6 +2612,45 @@
           "audience": "administrator"
         }
       ]
+    },
+    {
+      "id": "recreation_plan",
+      "description": "W-117 C2 recreation coverage: existing establish-the-actual-installation-plan section",
+      "boost": 0,
+      "keywordPatterns": [
+        "installation plan",
+        "recreation plan"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/independent-installation.md",
+          "section": "establish-the-actual-installation-plan",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "recreation_acceptance",
+      "description": "W-117 C2 recreation coverage: existing acceptance-record section",
+      "boost": 0,
+      "keywordPatterns": [
+        "installation acceptance",
+        "clean-host acceptance",
+        "recreation evidence"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/independent-installation.md",
+          "section": "acceptance-record",
+          "audience": "administrator"
+        }
+      ]
     }
   ],
   "r2Changes": [
@@ -2632,6 +2671,7 @@
     "2026-11-18 W-117 C2 slice 3 (identity and credentials): four new administrator categories, one section each: identity_admin, identity_sessions, identity_guest_link_checks, identity_sign_in_link (split after the #490 review so a tie with credential_redaction still delivers the asked-for section); the credential inventory is its own administrator category, credential_inventory (boost 1), so credential_redaction is unchanged and credential-location questions keep only credentials-and-access within budget (after #487, adding the inventory to credential_redaction pushed recovery sections out of a tied bundle). Credential-location questions keep credentials-and-access.",
     "2026-11-18 W-117 C2 slice 4: seven bounded administrator stack-map sections, source declarations only. No live topology, model execution, training or infrastructure change.",
     "2026-11-18 W-117 C2 slice 5: bounded administrator feature prerequisites, browser API bases and backend caller boundaries. Source review only; no model, device or host execution.",
-    "2026-11-18 W-117 C2 slice 8: three stack and two capability phrasing aliases; existing zero boosts unchanged. Delivered-content and credential-priority regressions; no matcher/runtime/model change."
+    "2026-11-18 W-117 C2 slice 8: three stack and two capability phrasing aliases; existing zero boosts unchanged. Delivered-content and credential-priority regressions; no matcher/runtime/model change.",
+    "2026-11-18 W-117 C2 slice 6: map the existing installation plan and acceptance record as bounded administrator sections. Existing inputs, limitations and presence mappings unchanged; no duplicate installer or execution."
   ]
 }

@@ -28,7 +28,7 @@ The existing replication guide distinguishes own repository, domain, accounts an
 5. **Provision independent secrets.** Follow the reviewed Ansible/Vaultwarden procedures with new-instance values. Validate by safe status/presence checks, never by copying the source instance's secret store into the assistant.
 6. **Prepare selected services and persistent state.** Ensure required bind-mount content, networks and device access exist. Select only the services actually needed, with reviewed overrides; do not blindly start every declaration.
 7. **Build and deploy to the authorized target.** Follow the reviewed workflow/manual path for that instance. Browser build settings and runtime settings are different. Record source commit, built artifacts and resulting runtime identity.
-8. **Complete integration setup.** Sign in, enroll supported users, commission selected devices and verify data flow. A candidate record or green container is not a successful integration.
+8. **Complete integration setup.** Sign in, enroll supported users, commission selected devices and verify data flow. A candidate record or green container is not a successful integration. If Node-RED is selected, enable its editor and HTTP-node authentication before household access. This is separate manual setup, not part of ordinary host provisioning: use the [existing replication guidance](../../REPLICATION.md) and [first-time authentication playbook](../../../ansible/playbooks/enable-nodered-auth.yml), reviewed and adapted to the approved new host rather than its cabin-target defaults.
 9. **Verify real user journeys and recovery.** Use the acceptance record below, then leave an operator runbook, backup/restore procedure and remaining manual-step list.
 
 ## Presence for each location
