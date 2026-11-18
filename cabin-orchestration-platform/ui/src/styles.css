@@ -769,18 +769,21 @@ body {
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
-  /* Fixed layout and tabular figures (Nate's go 2026-11-17): column widths come from the table, not from the cell text,
-     so a new average or sample count changes only its own text and never shifts a neighbouring column. */
-  table-layout: fixed;
   font-variant-numeric: tabular-nums;
 }
-.sensor-history-table th:first-child, .sensor-history-table td:first-child { width: 9.5em; }
-.sensor-history-table th, .sensor-history-table td { overflow-wrap: anywhere; }
 .sensor-history-table th, .sensor-history-table td {
   text-align: left;
   padding: 4px 8px;
   border-bottom: 1px solid var(--border);
 }
+/* Sensor History data table only (the presence "Day by day" table shares .sensor-history-table and keeps its own
+   auto layout). Fixed layout (Nate's go 2026-11-17): column widths come from the table, not the cell text, so a new
+   average or sample count changes only its own text. Each column has a floor and cells never wrap, so a narrow phone
+   scrolls the wrap sideways instead of crushing columns or changing row heights. */
+.sensor-history-table--fixed { table-layout: fixed; min-width: calc(13em + var(--sh-cols, 2) * 11em); }
+.sensor-history-table--fixed th:first-child, .sensor-history-table--fixed td:first-child { width: 13em; }
+.sensor-history-table--fixed th, .sensor-history-table--fixed td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sensor-history-table-wrap { overflow-x: auto; }
 .sensor-history-table th {
   color: var(--table-head, var(--text-dim));
   font-weight: 600;
@@ -903,8 +906,8 @@ body {
   border-bottom: 1px solid var(--border);
 }
 /* Space for the known update cycle is reserved up front, so the first message does not grow the box. The box keeps
-   its 200 px cap above; header (about 31 px) plus this body stays under it. */
-.event-log-body { min-height: 150px; }
+   its 200 px cap above; header (about 31 px) plus this body fills it exactly. */
+.event-log-body { min-height: 169px; }
 .event-log-empty { padding: 16px 12px; color: var(--text-dim); font-size: 12px; }
 .event-row { display: flex; gap: 10px; padding: 4px 12px; border-bottom: 1px solid var(--bg-secondary); font-size: 12px; }
 .event-ts { color: var(--text-muted); flex-shrink: 0; font-family: monospace; }

@@ -1755,7 +1755,7 @@ function useLiveEventStream(active, apiBase, authToken) {
           const data = JSON.parse(e.data);
           // seq is a per-message id so the log can key rows by message, not by position: a new message mounts one row
           // and leaves the others alone instead of renumbering every row below it.
-          setMessages(prev => [{ ts: Date.now(), seq: (prev[0]?.seq ?? 0) + 1, ...data }, ...prev].slice(0, 50));
+          setMessages(prev => [{ ts: Date.now(), ...data, seq: (prev[0]?.seq ?? 0) + 1 }, ...prev].slice(0, 50));
         } catch {}
       });
       source.current.onerror = () => {};
@@ -7055,7 +7055,7 @@ export const SensorHistoryPanel = React.memo(function SensorHistoryPanel({ devic
                   {partialDates.size > 0 && " A day marked (partial) covers less than a full 24 hours -- its average is over fewer hours than the other rows, not a stronger or weaker reading."}
                 </p>
                 <div className="sensor-history-table-wrap">
-                  <table className="sensor-history-table">
+                  <table className="sensor-history-table sensor-history-table--fixed" style={{ "--sh-cols": selectedIds.length + outdoorSeries.length }}>
                     <thead><tr><th>Date</th>{selectedIds.map(id => <th key={id}>{nameFor(id)}</th>)}{outdoorSeries.map(sr => <th key={sr.key}>{sr.label}</th>)}</tr></thead>
                     <tbody>
                       {[...allDates].reverse().map(day => (
