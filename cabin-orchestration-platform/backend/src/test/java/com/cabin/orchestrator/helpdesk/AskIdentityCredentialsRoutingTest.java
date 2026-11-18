@@ -82,7 +82,7 @@ class AskIdentityCredentialsRoutingTest {
     @Test
     void inventoryQuestionsGetTheInventoryWhole() {
         for (String question : List.of("Where is each credential kept and how do I rotate a secret?",
-                "How do I do an Ansible Vault edit safely?")) {
+                "What is the difference between rotation versus recovery for our secrets?")) {
             assertThat(builder.categoryIdFor(question)).as(question).isEqualTo("credential_inventory");
             KnowledgeNode hit = builder.buildContext(question, HouseholdRole.ADMINISTRATOR).stream()
                 .filter(n -> n.entityRef().endsWith("#where-each-credential-lives-and-how-it-changes")).findFirst().orElse(null);
@@ -90,6 +90,25 @@ class AskIdentityCredentialsRoutingTest {
             assertThat(hit.content()).as(question).doesNotContain("section truncated");
         }
         assertThat(builder.categoryIdsFor("Where is the Vaultwarden master password?")).doesNotContain("credential_inventory");
+    }
+
+    /**
+     * #490 review (HOLD 6976572246): a credential-location question that mentions Ansible Vault must still get the
+     * credential guidance. The overlapping "vault edit" alias once let the inventory outrank credential_redaction and
+     * drop credentials-and-access entirely.
+     */
+    @Test
+    void ansibleVaultCredentialQuestionsKeepTheCredentialGuidance() {
+        for (String question : List.of("Where is the password for an Ansible Vault edit?",
+                "Where is the token for an Ansible Vault edit?",
+                "Where is the secret for an Ansible Vault edit?")) {
+            assertThat(builder.categoryIdFor(question)).as(question).isEqualTo("credential_redaction");
+            List<KnowledgeNode> nodes = builder.buildContext(question, HouseholdRole.ADMINISTRATOR);
+            KnowledgeNode access = nodes.stream().filter(n -> n.entityRef().endsWith("#credentials-and-access")).findFirst().orElse(null);
+            assertThat(access).as(question + " delivers credentials-and-access").isNotNull();
+            assertThat(access.content()).as(question).doesNotContain("section truncated");
+            assertThat(nodes).as(question).noneMatch(n -> n.entityRef().endsWith("#where-each-credential-lives-and-how-it-changes"));
+        }
     }
 
     @Test

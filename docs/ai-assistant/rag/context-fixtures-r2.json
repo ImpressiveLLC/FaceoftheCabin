@@ -2156,7 +2156,6 @@
         "where each credential",
         "each credential",
         "ansible vault",
-        "vault edit",
         "rotation versus recovery"
       ],
       "questions": [],
