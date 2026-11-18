@@ -1,0 +1,844 @@
+{
+  "suite": "C1-S1 development retrieval set",
+  "status": "DEVELOPMENT, spent by design: authors and reviewers have seen every row. Never reported as acceptance. Not gold, not sealed, not held-out.",
+  "pinnedCommit": "82f836f38f5ad19f9c4204f9ff64f05b718fd613",
+  "ruling": "Cowork #244 6979177326: freeze first; known gaps recorded as known; M04 measured only",
+  "rows": [
+    {
+      "id": "recovery_checks_1",
+      "question": "How do I run a recovery check without sending a push?",
+      "expectedCategory": "recovery_checks",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#recovery-checks-and-notices",
+      "audience": "administrator",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "recovery_checks_2",
+      "question": "Does a heartbeat restart send the stopped notice?",
+      "expectedCategory": "recovery_checks",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#recovery-checks-and-notices",
+      "audience": "administrator",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "recovery_install_1",
+      "question": "What does heartbeat installation require before enabling it?",
+      "expectedCategory": "recovery_install",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#recovery-installation-and-tuning",
+      "audience": "administrator",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "recovery_install_2",
+      "question": "Why does heartbeat installation not prove my phone gets pushes?",
+      "expectedCategory": "recovery_install",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#recovery-installation-and-tuning",
+      "audience": "administrator",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "recovery_deadman_1",
+      "question": "How does the external heartbeat distinguish host alive from platform healthy?",
+      "expectedCategory": "recovery_deadman",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#external-dead-man-monitoring",
+      "audience": "administrator",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "recovery_deadman_2",
+      "question": "Does STOP_MAX_MINUTES hide a deliberate stop forever?",
+      "expectedCategory": "recovery_deadman",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#external-dead-man-monitoring",
+      "audience": "administrator",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "recovery_key_1",
+      "question": "What can the monitoring key read?",
+      "expectedCategory": "recovery_key",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#monitoring-key-access",
+      "audience": "administrator",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "recovery_key_2",
+      "question": "Why does the monitoring key say permission denied?",
+      "expectedCategory": "recovery_key",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#monitoring-key-access",
+      "audience": "administrator",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "recovery_triage_1",
+      "question": "What should the family record for incident triage?",
+      "expectedCategory": "recovery_triage",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#incident-triage-for-the-household",
+      "audience": "household",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "recovery_triage_2",
+      "question": "During incident triage does a green container prove the feature works?",
+      "expectedCategory": "recovery_triage",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#incident-triage-for-the-household",
+      "audience": "household",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "recovery_restore_1",
+      "question": "What is the restore status for the application database?",
+      "expectedCategory": "recovery_restore",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#restore-status-by-store",
+      "audience": "administrator",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "recovery_restore_2",
+      "question": "Can I restore Kafka and assume replay cannot repeat physical actions?",
+      "expectedCategory": "recovery_restore",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#restore-status-by-store",
+      "audience": "administrator",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "recovery_nodered_1",
+      "question": "How do I verify Node-RED login after an authentication change?",
+      "expectedCategory": "recovery_nodered",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#node-red-login-recovery",
+      "audience": "administrator",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "recovery_nodered_2",
+      "question": "Does Node-RED password rotation work by rerunning the enablement role?",
+      "expectedCategory": "recovery_nodered",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#node-red-login-recovery",
+      "audience": "administrator",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "recovery_grafana_1",
+      "question": "How do I renew Grafana login from the Monitoring panel?",
+      "expectedCategory": "recovery_grafana",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#grafana-login-outside-the-embedded-panel",
+      "audience": "household",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "recovery_grafana_2",
+      "question": "Why does Grafana login fail inside the embedded frame?",
+      "expectedCategory": "recovery_grafana",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#grafana-login-outside-the-embedded-panel",
+      "audience": "household",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "recovery_prune_1",
+      "question": "How do I plan storage pruning before deletion?",
+      "expectedCategory": "recovery_prune",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#storage-pruning-boundaries",
+      "audience": "administrator",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "recovery_prune_2",
+      "question": "Can storage pruning remove the only telemetry archive?",
+      "expectedCategory": "recovery_prune",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#storage-pruning-boundaries",
+      "audience": "administrator",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "recovery_workflows_1",
+      "question": "Which workflow gates run tests without deploying production?",
+      "expectedCategory": "recovery_workflows",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#workflow-test-gates",
+      "audience": "administrator",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "recovery_workflows_2",
+      "question": "If workflow gates pass after a retry is the intermittent cause proven?",
+      "expectedCategory": "recovery_workflows",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#workflow-test-gates",
+      "audience": "administrator",
+      "source": "slice 2 #487 cases"
+    },
+    {
+      "id": "stack_ownership_1",
+      "question": "Which Compose files define stack ownership?",
+      "expectedCategory": "stack_ownership",
+      "expectedSection": "ai-assistant/user-guide/stack-map.md#stack-ownership-and-networks",
+      "audience": "administrator",
+      "source": "slice 4 #491 and slice 8 #495 cases"
+    },
+    {
+      "id": "stack_ownership_2",
+      "question": "Does the stack map mean I should start base Compose alone?",
+      "expectedCategory": "stack_ownership",
+      "expectedSection": "ai-assistant/user-guide/stack-map.md#stack-ownership-and-networks",
+      "audience": "administrator",
+      "source": "slice 4 #491 and slice 8 #495 cases"
+    },
+    {
+      "id": "stack_app_ports_1",
+      "question": "What are the application ports for the UI and backend?",
+      "expectedCategory": "stack_app_ports",
+      "expectedSection": "ai-assistant/user-guide/stack-map.md#application-ports-and-internal-listeners",
+      "audience": "administrator",
+      "source": "slice 4 #491 and slice 8 #495 cases"
+    },
+    {
+      "id": "stack_app_ports_2",
+      "question": "Does the discovery port have the same host and container number?",
+      "expectedCategory": "stack_app_ports",
+      "expectedSection": "ai-assistant/user-guide/stack-map.md#application-ports-and-internal-listeners",
+      "audience": "administrator",
+      "source": "slice 4 #491 and slice 8 #495 cases"
+    },
+    {
+      "id": "stack_device_ports_1",
+      "question": "Which support ports belong to the device stack?",
+      "expectedCategory": "stack_device_ports",
+      "expectedSection": "ai-assistant/user-guide/stack-map.md#device-stack-ports",
+      "audience": "administrator",
+      "source": "slice 4 #491 and slice 8 #495 cases"
+    },
+    {
+      "id": "stack_device_ports_2",
+      "question": "Does Homeassistant networking use a host-to-container mapping?",
+      "expectedCategory": "stack_device_ports",
+      "expectedSection": "ai-assistant/user-guide/stack-map.md#device-stack-ports",
+      "audience": "administrator",
+      "source": "slice 4 #491 and slice 8 #495 cases"
+    },
+    {
+      "id": "stack_browser_1",
+      "question": "Where does the API proxy send requests?",
+      "expectedCategory": "stack_browser",
+      "expectedSection": "ai-assistant/user-guide/stack-map.md#browser-requests-and-api-proxy",
+      "audience": "administrator",
+      "source": "slice 4 #491 and slice 8 #495 cases"
+    },
+    {
+      "id": "stack_browser_2",
+      "question": "Does the browser route prove that API access is authorized?",
+      "expectedCategory": "stack_browser",
+      "expectedSection": "ai-assistant/user-guide/stack-map.md#browser-requests-and-api-proxy",
+      "audience": "administrator",
+      "source": "slice 4 #491 and slice 8 #495 cases"
+    },
+    {
+      "id": "stack_telemetry_1",
+      "question": "What is the telemetry path from MQTT to stored events?",
+      "expectedCategory": "stack_telemetry",
+      "expectedSection": "ai-assistant/user-guide/stack-map.md#telemetry-and-camera-connections",
+      "audience": "administrator",
+      "source": "slice 4 #491 and slice 8 #495 cases"
+    },
+    {
+      "id": "stack_telemetry_2",
+      "question": "Does a working telemetry path prove camera frames are arriving?",
+      "expectedCategory": "stack_telemetry",
+      "expectedSection": "ai-assistant/user-guide/stack-map.md#telemetry-and-camera-connections",
+      "audience": "administrator",
+      "source": "slice 4 #491 and slice 8 #495 cases"
+    },
+    {
+      "id": "stack_model_1",
+      "question": "Is the Ollama port published on the host?",
+      "expectedCategory": "stack_model",
+      "expectedSection": "ai-assistant/user-guide/stack-map.md#model-runtime-connections",
+      "audience": "administrator",
+      "source": "slice 4 #491 and slice 8 #495 cases"
+    },
+    {
+      "id": "stack_model_2",
+      "question": "Does a model connection prove the required model is installed?",
+      "expectedCategory": "stack_model",
+      "expectedSection": "ai-assistant/user-guide/stack-map.md#model-runtime-connections",
+      "audience": "administrator",
+      "source": "slice 4 #491 and slice 8 #495 cases"
+    },
+    {
+      "id": "stack_home_1",
+      "question": "Is the Home collector a second cabin backend?",
+      "expectedCategory": "stack_home",
+      "expectedSection": "ai-assistant/user-guide/stack-map.md#home-collector-and-cabin-host",
+      "audience": "administrator",
+      "source": "slice 4 #491 and slice 8 #495 cases"
+    },
+    {
+      "id": "stack_home_2",
+      "question": "Does the Home collector stop when HOME_HA_DEPLOYED is false?",
+      "expectedCategory": "stack_home",
+      "expectedSection": "ai-assistant/user-guide/stack-map.md#home-collector-and-cabin-host",
+      "audience": "administrator",
+      "source": "slice 4 #491 and slice 8 #495 cases"
+    },
+    {
+      "id": "stack_app_ports_natural",
+      "question": "Which port does the backend use?",
+      "expectedCategory": "stack_app_ports",
+      "expectedSection": "ai-assistant/user-guide/stack-map.md#application-ports-and-internal-listeners",
+      "audience": "administrator",
+      "source": "slice 4 #491 and slice 8 #495 cases"
+    },
+    {
+      "id": "stack_device_ports_natural",
+      "question": "What is the Home Assistant port?",
+      "expectedCategory": "stack_device_ports",
+      "expectedSection": "ai-assistant/user-guide/stack-map.md#device-stack-ports",
+      "audience": "administrator",
+      "source": "slice 4 #491 and slice 8 #495 cases"
+    },
+    {
+      "id": "stack_telemetry_natural",
+      "question": "How does telemetry get from MQTT to Kafka?",
+      "expectedCategory": "stack_telemetry",
+      "expectedSection": "ai-assistant/user-guide/stack-map.md#telemetry-and-camera-connections",
+      "audience": "administrator",
+      "source": "slice 4 #491 and slice 8 #495 cases"
+    },
+    {
+      "id": "cap_dependencies_1",
+      "question": "What are the feature prerequisites for camera media?",
+      "expectedCategory": "cap_dependencies",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#feature-prerequisites-and-evidence",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "cap_dependencies_2",
+      "question": "Do feature dependencies prove that a visible button works end to end?",
+      "expectedCategory": "cap_dependencies",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#feature-prerequisites-and-evidence",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "cap_api_base_1",
+      "question": "How does the API base differ from the route?",
+      "expectedCategory": "cap_api_base",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#api-bases-and-browser-destinations",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "cap_api_base_2",
+      "question": "Can a new API base redirect a signed-in request to another origin?",
+      "expectedCategory": "cap_api_base",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#api-bases-and-browser-destinations",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "cap_access_1",
+      "question": "Do route permissions make every GET public?",
+      "expectedCategory": "cap_access",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#caller-boundaries-and-read-exceptions",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "cap_access_2",
+      "question": "Do caller boundaries let a managed Viewer send POST requests?",
+      "expectedCategory": "cap_access",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#caller-boundaries-and-read-exceptions",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "cap_helpdesk_1",
+      "question": "Which helpdesk endpoint returns documentation answers?",
+      "expectedCategory": "cap_helpdesk",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#ask-routes-and-proposal-prerequisites",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "cap_helpdesk_2",
+      "question": "Do proposal prerequisites mean that a proposal executes a device action?",
+      "expectedCategory": "cap_helpdesk",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#ask-routes-and-proposal-prerequisites",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "cap_devices_1",
+      "question": "What do device routes require before sending a command?",
+      "expectedCategory": "cap_devices",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#device-routes-and-home-assistant-actions",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "cap_devices_2",
+      "question": "Do HA prerequisites make a timeout proof that nothing happened?",
+      "expectedCategory": "cap_devices",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#device-routes-and-home-assistant-actions",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "cap_events_1",
+      "question": "Which event routes are open numeric history reads?",
+      "expectedCategory": "cap_events",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#event-routes-and-telemetry-prerequisites",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "cap_events_2",
+      "question": "Do export permissions allow a guest link to export all history?",
+      "expectedCategory": "cap_events",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#event-routes-and-telemetry-prerequisites",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "cap_cameras_1",
+      "question": "Which camera routes start and stop live view?",
+      "expectedCategory": "cap_cameras",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#camera-routes-and-media-prerequisites",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "cap_cameras_2",
+      "question": "Do camera routes include pan tilt zoom controls?",
+      "expectedCategory": "cap_cameras",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#camera-routes-and-media-prerequisites",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "cap_family_1",
+      "question": "What do notes routes need for server synchronization?",
+      "expectedCategory": "cap_family",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#family-notes-routes-and-synchronization",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "cap_family_2",
+      "question": "Does notes synchronization bind authorId to the signed-in principal?",
+      "expectedCategory": "cap_family",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#family-notes-routes-and-synchronization",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "cap_rules_1",
+      "question": "What do workflow routes require before a manual fire?",
+      "expectedCategory": "cap_rules",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#workflow-routes-and-alert-acknowledgments",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "cap_rules_2",
+      "question": "Do acknowledgment permissions waive explicit CRITICAL confirmation?",
+      "expectedCategory": "cap_rules",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#workflow-routes-and-alert-acknowledgments",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "cap_helpdesk_natural",
+      "question": "What does the propose route need?",
+      "expectedCategory": "cap_helpdesk",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#ask-routes-and-proposal-prerequisites",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "cap_devices_natural",
+      "question": "Who can call POST /api/ha/services?",
+      "expectedCategory": "cap_devices",
+      "expectedSection": "ai-assistant/user-guide/capability-routes.md#device-routes-and-home-assistant-actions",
+      "audience": "administrator",
+      "source": "slice 5 #492 cases"
+    },
+    {
+      "id": "recreation_plan_1",
+      "question": "Which steps form the installation plan?",
+      "expectedCategory": "recreation_plan",
+      "expectedSection": "ai-assistant/user-guide/independent-installation.md#establish-the-actual-installation-plan",
+      "audience": "administrator",
+      "source": "slice 6 #493 cases"
+    },
+    {
+      "id": "recreation_plan_2",
+      "question": "Does the recreation plan treat a candidate as a successful integration?",
+      "expectedCategory": "recreation_plan",
+      "expectedSection": "ai-assistant/user-guide/independent-installation.md#establish-the-actual-installation-plan",
+      "audience": "administrator",
+      "source": "slice 6 #493 cases"
+    },
+    {
+      "id": "recreation_plan_3",
+      "question": "Does the recreation plan authorize changes on an unidentified host?",
+      "expectedCategory": "recreation_plan",
+      "expectedSection": "ai-assistant/user-guide/independent-installation.md#establish-the-actual-installation-plan",
+      "audience": "administrator",
+      "source": "slice 6 #493 cases"
+    },
+    {
+      "id": "recreation_acceptance_1",
+      "question": "What should installation acceptance record for each step?",
+      "expectedCategory": "recreation_acceptance",
+      "expectedSection": "ai-assistant/user-guide/independent-installation.md#acceptance-record",
+      "audience": "administrator",
+      "source": "slice 6 #493 cases"
+    },
+    {
+      "id": "recreation_acceptance_2",
+      "question": "Does installation acceptance allow destructive tests on the live cabin?",
+      "expectedCategory": "recreation_acceptance",
+      "expectedSection": "ai-assistant/user-guide/independent-installation.md#acceptance-record",
+      "audience": "administrator",
+      "source": "slice 6 #493 cases"
+    },
+    {
+      "id": "recreation_acceptance_3",
+      "question": "Has clean-host acceptance been rehearsed?",
+      "expectedCategory": "recreation_acceptance",
+      "expectedSection": "ai-assistant/user-guide/independent-installation.md#acceptance-record",
+      "audience": "administrator",
+      "source": "slice 6 #493 cases"
+    },
+    {
+      "id": "recreation_plan_4",
+      "question": "Does the installation plan require Node-RED authentication before household access?",
+      "expectedCategory": "recreation_plan",
+      "expectedSection": "ai-assistant/user-guide/independent-installation.md#establish-the-actual-installation-plan",
+      "audience": "administrator",
+      "source": "slice 6 #493 cases"
+    },
+    {
+      "id": "cov_C01",
+      "question": "What are BLINK_USERNAME and BLINK_PASSWORD used for?",
+      "expectedCategory": "config_env_blink_camera",
+      "expectedSection": "ai-assistant/user-guide/configuration.md#reference-blink-and-camera-settings",
+      "audience": "administrator",
+      "source": "#494 coverage check"
+    },
+    {
+      "id": "cov_C02",
+      "question": "A Blink camera's live view does not start; how is the Blink camera map set?",
+      "expectedCategory": "config_env_blink_camera",
+      "expectedSection": "ai-assistant/user-guide/configuration.md#reference-blink-and-camera-settings",
+      "audience": "administrator",
+      "source": "#494 coverage check"
+    },
+    {
+      "id": "cov_C03",
+      "question": "SmartThings import fails; is VAULTWARDEN_URL set correctly?",
+      "expectedCategory": "config_env_vaultwarden",
+      "expectedSection": "ai-assistant/user-guide/configuration.md#reference-vaultwarden-and-credential-settings",
+      "audience": "administrator",
+      "source": "#494 coverage check"
+    },
+    {
+      "id": "cov_C04",
+      "question": "I changed WEATHER_ENABLED in .env and nothing happened. Why?",
+      "expectedCategory": "config_env_weather",
+      "expectedSection": "ai-assistant/user-guide/configuration.md#reference-weather-settings",
+      "audience": "administrator",
+      "source": "#494 coverage check"
+    },
+    {
+      "id": "cov_C05",
+      "question": "How do I change the MQTT URL the backend uses?",
+      "expectedCategory": "config_env_addresses",
+      "expectedSection": "ai-assistant/user-guide/configuration.md#reference-home-assistant-mqtt-and-kafka-addresses",
+      "audience": "administrator",
+      "source": "#494 coverage check"
+    },
+    {
+      "id": "cov_C06",
+      "question": "What does IMAGE_TAG control?",
+      "expectedCategory": "config_env_instance",
+      "expectedSection": "ai-assistant/user-guide/configuration.md#reference-instance-ports-and-image-settings",
+      "audience": "administrator",
+      "source": "#494 coverage check"
+    },
+    {
+      "id": "cov_C07",
+      "question": "Where do invite links point, and which setting controls it?",
+      "expectedCategory": "config_env_instance",
+      "expectedSection": "ai-assistant/user-guide/configuration.md#reference-instance-ports-and-image-settings",
+      "audience": "administrator",
+      "source": "#494 coverage check",
+      "knownGap": "#494 selection gap"
+    },
+    {
+      "id": "cov_M01",
+      "question": "How do I restore Postgres after a disk failure?",
+      "expectedCategory": "recovery_restore",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#restore-status-by-store",
+      "audience": "administrator",
+      "source": "#494 coverage check"
+    },
+    {
+      "id": "cov_M02",
+      "question": "I can't log in to the Node-RED editor. What now?",
+      "expectedCategory": "recovery_nodered",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#node-red-login-recovery",
+      "audience": "administrator",
+      "source": "#494 coverage check",
+      "knownGap": "#494 selection gap"
+    },
+    {
+      "id": "cov_M03",
+      "question": "Grafana shows a blank page outside the embedded panel; how do I sign in?",
+      "expectedCategory": "recovery_grafana",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#grafana-login-outside-the-embedded-panel",
+      "audience": "household",
+      "source": "#494 coverage check",
+      "knownGap": "#494 selection gap",
+      "audienceNote": "household per the routing map and #487 review; #494 measured this question as administrator"
+    },
+    {
+      "id": "cov_M04",
+      "question": "What does the external dead-man monitor do if the hub goes silent?",
+      "expectedCategory": "recovery_deadman",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#external-dead-man-monitoring",
+      "audience": "administrator",
+      "source": "#494 coverage check",
+      "knownGap": "#494 delivery gap: tie kept, section does not fit the budget"
+    },
+    {
+      "id": "cov_M05",
+      "question": "How do I stop and restart the recovery heartbeat?",
+      "expectedCategory": "recovery_checks",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#recovery-checks-and-notices",
+      "audience": "administrator",
+      "source": "#494 coverage check",
+      "knownGap": "#494 selection gap"
+    },
+    {
+      "id": "cov_M06",
+      "question": "What does storage pruning delete and what does it keep?",
+      "expectedCategory": "recovery_prune",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#storage-pruning-boundaries",
+      "audience": "administrator",
+      "source": "#494 coverage check"
+    },
+    {
+      "id": "cov_M07",
+      "question": "What can the monitoring key do over SSH?",
+      "expectedCategory": "recovery_key",
+      "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#monitoring-key-access",
+      "audience": "administrator",
+      "source": "#494 coverage check"
+    },
+    {
+      "id": "cov_I01",
+      "question": "How do I make someone an administrator?",
+      "expectedCategory": "identity_admin",
+      "expectedSection": "ai-assistant/user-guide/access-and-storage.md#how-someone-becomes-an-administrator",
+      "audience": "administrator",
+      "source": "#494 coverage check"
+    },
+    {
+      "id": "cov_I02",
+      "question": "How long does a sign-in last before I have to sign in again?",
+      "expectedCategory": "identity_sessions",
+      "expectedSection": "ai-assistant/user-guide/access-and-storage.md#sign-in-sessions-google-30-day-sessions-and-managed-sessions",
+      "audience": "administrator",
+      "source": "#494 coverage check",
+      "knownGap": "#494 selection gap"
+    },
+    {
+      "id": "cov_I03",
+      "question": "Why does the managed sign-in link work without signing in?",
+      "expectedCategory": "identity_sign_in_link",
+      "expectedSection": "ai-assistant/user-guide/access-and-storage.md#why-the-sign-in-link-opens-without-signing-in",
+      "audience": "administrator",
+      "source": "#494 coverage check"
+    },
+    {
+      "id": "cov_I04",
+      "question": "What scopes can a guest link have?",
+      "expectedCategory": "identity_guest_link_checks",
+      "expectedSection": "ai-assistant/user-guide/access-and-storage.md#what-the-server-checks-when-a-guest-link-is-made",
+      "audience": "administrator",
+      "source": "#494 coverage check",
+      "knownGap": "#494 selection gap"
+    },
+    {
+      "id": "cov_I05",
+      "question": "Where is each credential kept and how do I rotate a secret?",
+      "expectedCategory": "credential_inventory",
+      "expectedSection": "ai-assistant/user-guide/configuration.md#where-each-credential-lives-and-how-it-changes",
+      "audience": "administrator",
+      "source": "#494 coverage check"
+    },
+    {
+      "id": "cov_I06",
+      "question": "Where is the Home Assistant password?",
+      "expectedCategory": "credential_redaction",
+      "expectedSection": "ai-assistant/user-guide/configuration.md#credentials-and-access",
+      "audience": "administrator",
+      "source": "#494 coverage check"
+    },
+    {
+      "id": "identity_admin_1",
+      "question": "How do I make someone an administrator?",
+      "expectedCategory": "identity_admin",
+      "expectedSection": "ai-assistant/user-guide/access-and-storage.md#how-someone-becomes-an-administrator",
+      "audience": "administrator",
+      "source": "slice 3 #490 tests"
+    },
+    {
+      "id": "identity_admin_2",
+      "question": "What does ADMIN_EMAILS do?",
+      "expectedCategory": "identity_admin",
+      "expectedSection": "ai-assistant/user-guide/access-and-storage.md#how-someone-becomes-an-administrator",
+      "audience": "administrator",
+      "source": "slice 3 #490 tests"
+    },
+    {
+      "id": "identity_sessions_1",
+      "question": "How long does the 30-day session last and what ends it?",
+      "expectedCategory": "identity_sessions",
+      "expectedSection": "ai-assistant/user-guide/access-and-storage.md#sign-in-sessions-google-30-day-sessions-and-managed-sessions",
+      "audience": "administrator",
+      "source": "slice 3 #490 tests"
+    },
+    {
+      "id": "identity_sessions_2",
+      "question": "How long does my token keep me signed in for?",
+      "expectedCategory": "identity_sessions",
+      "expectedSection": "ai-assistant/user-guide/access-and-storage.md#sign-in-sessions-google-30-day-sessions-and-managed-sessions",
+      "audience": "administrator",
+      "source": "slice 3 #490 tests"
+    },
+    {
+      "id": "identity_sign_in_link_1",
+      "question": "Why does the managed sign-in link work without signing in?",
+      "expectedCategory": "identity_sign_in_link",
+      "expectedSection": "ai-assistant/user-guide/access-and-storage.md#why-the-sign-in-link-opens-without-signing-in",
+      "audience": "administrator",
+      "source": "slice 3 #490 tests"
+    },
+    {
+      "id": "identity_guest_link_checks_1",
+      "question": "What guest link scope does the server require?",
+      "expectedCategory": "identity_guest_link_checks",
+      "expectedSection": "ai-assistant/user-guide/access-and-storage.md#what-the-server-checks-when-a-guest-link-is-made",
+      "audience": "administrator",
+      "source": "slice 3 #490 tests"
+    },
+    {
+      "id": "credential_inventory_1",
+      "question": "Where is each credential kept and how do I rotate a secret?",
+      "expectedCategory": "credential_inventory",
+      "expectedSection": "ai-assistant/user-guide/configuration.md#where-each-credential-lives-and-how-it-changes",
+      "audience": "administrator",
+      "source": "slice 3 #490 tests"
+    },
+    {
+      "id": "credential_inventory_2",
+      "question": "What is the difference between rotation versus recovery for our secrets?",
+      "expectedCategory": "credential_inventory",
+      "expectedSection": "ai-assistant/user-guide/configuration.md#where-each-credential-lives-and-how-it-changes",
+      "audience": "administrator",
+      "source": "slice 3 #490 tests"
+    },
+    {
+      "id": "credential_location_1",
+      "question": "Where is the Vaultwarden master password?",
+      "expectedCategory": "credential_redaction",
+      "expectedSection": "ai-assistant/user-guide/configuration.md#credentials-and-access",
+      "audience": "administrator",
+      "source": "credential-location negatives (#482, #487, #490 reviews)"
+    },
+    {
+      "id": "credential_location_2",
+      "question": "Where is the Home Assistant password?",
+      "expectedCategory": "credential_redaction",
+      "expectedSection": "ai-assistant/user-guide/configuration.md#credentials-and-access",
+      "audience": "administrator",
+      "source": "credential-location negatives (#482, #487, #490 reviews)"
+    },
+    {
+      "id": "credential_location_3",
+      "question": "Where is the password for an Ansible Vault edit?",
+      "expectedCategory": "credential_redaction",
+      "expectedSection": "ai-assistant/user-guide/configuration.md#credentials-and-access",
+      "audience": "administrator",
+      "source": "credential-location negatives (#482, #487, #490 reviews)"
+    },
+    {
+      "id": "credential_location_4",
+      "question": "Where is the token for an Ansible Vault edit?",
+      "expectedCategory": "credential_redaction",
+      "expectedSection": "ai-assistant/user-guide/configuration.md#credentials-and-access",
+      "audience": "administrator",
+      "source": "credential-location negatives (#482, #487, #490 reviews)"
+    },
+    {
+      "id": "credential_location_5",
+      "question": "Where is the secret for an Ansible Vault edit?",
+      "expectedCategory": "credential_redaction",
+      "expectedSection": "ai-assistant/user-guide/configuration.md#credentials-and-access",
+      "audience": "administrator",
+      "source": "credential-location negatives (#482, #487, #490 reviews)"
+    },
+    {
+      "id": "credential_location_6",
+      "question": "What is the Node-RED login password?",
+      "expectedCategory": "credential_redaction",
+      "expectedSection": "ai-assistant/user-guide/configuration.md#credentials-and-access",
+      "audience": "administrator",
+      "source": "credential-location negatives (#482, #487, #490 reviews)"
+    },
+    {
+      "id": "credential_location_7",
+      "question": "Where do I find the Grafana login password?",
+      "expectedCategory": "credential_redaction",
+      "expectedSection": "ai-assistant/user-guide/configuration.md#credentials-and-access",
+      "audience": "administrator",
+      "source": "credential-location negatives (#482, #487, #490 reviews)"
+    },
+    {
+      "id": "install_gap_1",
+      "question": "What is the installation plan for a clean machine?",
+      "expectedCategory": "recreation_plan",
+      "expectedSection": "ai-assistant/user-guide/independent-installation.md#establish-the-actual-installation-plan",
+      "audience": "administrator",
+      "source": "#493 advisory 6978458407",
+      "knownGap": "installation phrasing gap"
+    },
+    {
+      "id": "install_gap_2",
+      "question": "What goes in the installation acceptance record when I install on a blank machine?",
+      "expectedCategory": "recreation_acceptance",
+      "expectedSection": "ai-assistant/user-guide/independent-installation.md#acceptance-record",
+      "audience": "administrator",
+      "source": "#493 advisory 6978458407",
+      "knownGap": "installation phrasing gap"
+    },
+    {
+      "id": "install_gap_3",
+      "question": "How do I recreate the instance on a new machine?",
+      "expectedCategory": "recreation_plan",
+      "expectedSection": "ai-assistant/user-guide/independent-installation.md#establish-the-actual-installation-plan",
+      "audience": "administrator",
+      "source": "#493 Cowork review 6979193217",
+      "knownGap": "installation phrasing gap"
+    },
+    {
+      "id": "install_gap_4",
+      "question": "What are the acceptance checks for recreating the instance?",
+      "expectedCategory": "recreation_acceptance",
+      "expectedSection": "ai-assistant/user-guide/independent-installation.md#acceptance-record",
+      "audience": "administrator",
+      "source": "#493 Cowork review 6979193217",
+      "knownGap": "installation phrasing gap"
+    }
+  ]
+}
