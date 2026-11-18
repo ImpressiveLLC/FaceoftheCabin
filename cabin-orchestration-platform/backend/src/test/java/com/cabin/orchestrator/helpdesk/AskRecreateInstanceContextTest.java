@@ -42,6 +42,22 @@ class AskRecreateInstanceContextTest {
         assertWhole("What are the acceptance checks for recreating the instance?", "recreation_instance_acceptance", "acceptance-record");
     }
 
+    /** #507 review (Codex HOLD 6985833440): recreating something other than the instance must not get installation guidance. */
+    @Test
+    void recreatingADeviceGuestLinkOrRuleIsNotCaptured() {
+        for (String q : List.of("What are the acceptance checks for recreating a Zigbee device?",
+                "What are the checks for recreating a guest link?",
+                "What are the checks for recreating a rule?",
+                "How do I recreate a workflow after deleting it?")) {
+            assertThat(builder.categoryIdsFor(q)).as(q).doesNotContain("recreation_instance_plan", "recreation_instance_acceptance");
+            for (HouseholdRole role : HouseholdRole.values()) {
+                assertThat(builder.buildContext(q, role)).as(q + " " + role)
+                    .noneMatch(n -> n.entityRef().endsWith("#acceptance-record") || n.entityRef().endsWith("#establish-the-actual-installation-plan"));
+            }
+        }
+        assertThat(builder.categoryIdFor("What are the acceptance checks for recreating a Zigbee device?")).isEqualTo("device_import_lifecycle");
+    }
+
     @Test
     void ordinaryAcceptanceAndInstallQuestionsKeepTheirCategory() {
         for (String q : List.of("What does acceptance mean for an imported device?", "How do I install on a clean machine?")) {

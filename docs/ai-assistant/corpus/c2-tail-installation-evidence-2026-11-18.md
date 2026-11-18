@@ -13,9 +13,12 @@ Status: offline routing and delivery evidence only. No model call, no live Ask, 
 
 - **Two zero-boost categories**, each reusing an existing administrator section of `independent-installation.md`:
   - `recreation_instance_plan`, phrase "recreate the instance";
-  - `recreation_instance_acceptance`, phrase "checks for recreating".
+  - `recreation_instance_acceptance`, phrase "recreating the instance".
 - No guide, boost, matcher or budget change.
-- **Why three words each:** a three-word phrase beats the generic matches here ("acceptance" scores 1; the first phrasing matched nothing). It only ties credential password, token and secret wording (1 + boost 2), so `credential_redaction` stays first and delivers credentials-and-access whole. The first draft of the acceptance phrase, "acceptance checks for recreating" (four words), outscored credential wording and was dropped.
+- **Why these phrases:** both are instance-qualified and three words. They beat the generic matches here ("acceptance" scores 1; the first phrasing matched nothing). They only tie credential password, token and secret wording (1 + boost 2), so `credential_redaction` stays first and delivers credentials-and-access whole.
+- **Acceptance phrases tried and dropped:**
+  - "acceptance checks for recreating" (four words) outscored credential wording.
+  - "checks for recreating" (#507 at 0f9d1e48) was not instance-qualified. Codex HOLD 6985833440 found that "What are the acceptance checks for recreating a Zigbee device?" moved from device onboarding to installation acceptance. That question, and guest-link, rule and workflow recreating questions, are now pinned as negatives.
 
 ## Why install_gap_1 and install_gap_2 are left for a ruling
 
@@ -33,7 +36,7 @@ This is the same budget-and-tie question as M04. **Cowork ruled on #244 ([698425
 | administrator, delivered whole | 88 of 98 | 93 of 98 | **95 of 98** |
 | household, delivered whole | 4 of 5 | 5 of 5 | 5 of 5 |
 
-Measured on the integrated head: main 608b1101 merged into this branch, with main's fixture kept byte for byte and only these two categories and their note appended. The pre-integration measurement against d4296aec gave the same two-row delta (91 to 93). After this change, the only known gaps left in the development set are `cov_M04`, `install_gap_1` and `install_gap_2`, all budget-limited.
+Measured on the integrated head: main 608b1101 merged into this branch (and later 0d4cd74f, #508, which is docs-only and leaves the fixture unchanged), with main's fixture kept byte for byte and only these two categories and their note appended. The pre-integration measurement against d4296aec gave the same two-row delta (91 to 93). After this change, the only known gaps left in the development set are `cov_M04`, `install_gap_1` and `install_gap_2`, all budget-limited.
 
 - **Rows changed against main 608b1101:** only install_gap_3 and install_gap_4. Their knownGap markers are cleared. install_gap_1 and 2 change only their marker text, which now records the budget reason.
 - **Other checks:** audience leaks 0; over budget 0; largest context 5143. The 150 phrasings still have 16 with no category, with the same ids.
@@ -41,9 +44,10 @@ Measured on the integrated head: main 608b1101 merged into this branch, with mai
 
 ## Tests
 
-New `AskRecreateInstanceContextTest` (3 tests):
+New `AskRecreateInstanceContextTest` (4 tests):
 - Both questions deliver their section with exact text equality, within budget, to an administrator only.
+- Recreating a Zigbee device, a guest link, a rule or a workflow selects neither new category and never receives the plan or acceptance section, for any role. The Zigbee question stays `device_import_lifecycle`.
 - Ordinary device-import acceptance and clean-machine install questions keep their categories.
 - Credential questions that use the same wording keep credentials-and-access whole.
 
-All Ask test classes on the integrated head: 108 passed, 0 failed.
+All Ask test classes on the integrated head: 109 passed, 0 failed.
