@@ -46,3 +46,9 @@ The replica script uses older plural matching and only the first winner. Current
 Proposed queue: #487, #490, then this slice, subject to Cowork's recorded order. The fixture is shared: the later author merges fetched main, preserves all independently authored categories and change notes, runs affected context/role/credential/budget tests, then posts a new full-head READY. This source-baseline branch does not claim to include the still-open preceding slices.
 
 Cowork owns independent review and merge/deployment sequencing. Author checks are not an independent CLEAN. Resource/test paths trigger backend CI/deployment; this is not represented as a docs-only no-deploy change. Live health verification after merge does not establish Ask answer quality or authorize model training.
+
+## Ordered integration after #490
+
+Integrated main `f7459bd68e91c8b1e26fc206fec90899c0ecbefd` after Cowork merged #490. The two fixture conflicts were resolved by preserving all current-main JSON fields/categories/change notes and appending only this slice's seven categories and one note. Mirrored bytes remain identical and IDs unique. No source-reference or runtime change in this integration.
+
+Combined recovery, identity, stack, matcher, builder, guide-alias, routing and document-source suite: 72 passed, zero failures/errors/skips. The original20 recovery cases and identity credential regressions are included. Existing150 replica output is byte-for-byte identical against this integrated main baseline (16no-category). Fresh exact-head CI and independent Cowork review are required; prior author checks are not CLEAN.
