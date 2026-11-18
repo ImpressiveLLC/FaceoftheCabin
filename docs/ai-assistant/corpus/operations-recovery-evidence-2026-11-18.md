@@ -39,6 +39,12 @@ Executed the existing script against baseline and changed maps:
 
 Limitation: route.py implements the older plural-only matcher and first winner; current Java additionally supports more endings and tied-category union. These script counts are explicitly replica outputs, not proof of current runtime routing on arbitrary phrases. The actual Java tests above are the acceptance evidence for the new questions and tie behavior. The routing implementation itself is unchanged.
 
+## Integrated-main validation (2026-11-18)
+
+Merged main `888dab9acb4a62761659a38d9b348127761e3834` after #485 and #482. Resolved the two append-only fixture conflicts by checking both original prefixes against the common base, preserving all five peer configuration categories and all ten recovery categories, and retaining both change notes. Both fixture copies remain byte-identical; category IDs are unique.
+
+On the integrated tree, 59 targeted tests passed with zero failures/errors/skips: matcher 9, builder 22, recovery reference 4, document source 9, platform-spec guard 7, platform-info service 8. The source-link/section-budget scan and route.py comparisons above were rerun with unchanged results. This fixes the two old-baseline platform-spec failures; local Docker remains unavailable, so the full integration suite was not rerun or represented as green. Remote exact-head CI remains a merge gate.
+
 ## Integration and release gates
 
 #482 and this slice both append to the fixture map. Merge #482 first after its repair and #485; this slice's author merges current main, preserves both category sets, reruns parity and affected checks, and posts a new full-head READY. Cowork independently reviews this authored slice and owns the pinned merge/deploy gate. No author self-CLEAN.
