@@ -96,7 +96,7 @@ Audience: installer/operator. Evidence: source review only at `main` (`b9eea9cd`
 |---|---|---|---|---|
 | `BLINK_USERNAME` | Yes for the `blinkbridge` service; Compose substitutes a blank with a warning when unset | none | Production stack line 141, passed to `blinkbridge` | Account name for Blink's cloud. Blink sign-in fails while blank |
 | `BLINK_PASSWORD` | Same | none | Production stack line 142 | Secret. Check presence only |
-| `BLINK_CAMERA_MAP` | No | App line 120 and Compose line 250 each set a default pair list | `cabin.devices.blinkCameraMap`; comma-separated `cabinCameraName:blinkDeviceName` pairs | Not secret. A camera not in the map gets no live view start or stop (a harmless no-op). Source disagreement: the App comment says "Empty by default" but the value on that line is not empty |
+| `BLINK_CAMERA_MAP` | No | App line 120 and Compose line 250 each set a default pair list | `cabin.devices.cameras.blinkCameraMap`; comma-separated `cabinCameraName:blinkDeviceName` pairs | Not secret. A camera not in the map gets no live view start or stop (a harmless no-op). Source disagreement: the App comment says "Empty by default" but the value on that line is not empty |
 | `BLINK_MOTION_WEBHOOK_API_KEY` | Only to accept Blink motion posts | blank | App line 181; Compose line 256 | Secret. While blank, `POST /api/webhooks/blink-motion` answers 503; a wrong key answers 401 |
 | `CAMERA_PASSWORD` | Yes for Frigate's RTSP login | none | Production stack lines 87 and 88; the example file for that stack uses the same name as `infra/.env.m920q.example` but is a separate file | Secret. Check presence only |
 
@@ -120,7 +120,7 @@ The one-time Vaultwarden Organization and API key setup is in the maintenance gu
 | Name | Required? | Code default | Binding path | Visibility and effect |
 |---|---|---|---|---|
 | `WEATHER_ENABLED` | No | `true` | App line 208 | `false` switches the daily airport weather pull off; the chart then shows no outdoor baseline for new days |
-| `WEATHER_STATIONS` | No | one entry per location, primary station first, then fallbacks | App line 209 | A location with no entry gets no baseline |
+| `WEATHER_STATIONS` | No | the code default lists the cabin location only | App line 209 | Not secret. Format is `location=primary,fallback,...`, one entry per location, primary station first. A location with no entry gets no baseline, so another location needs its own entry |
 | `WEATHER_BACKFILL_DAYS` | No | `60` | App line 210 | How far back a first run fills |
 | `WEATHER_ARCHIVE_DIR` | No | the container path of the weather archive mount | App line 211 | Where the raw and monthly CSV logs go (cold tier) |
 | `WEATHER_CRON` | No | daily, early morning | App line 212 | Six-field Spring cron, evaluated in the JVM time zone |
@@ -144,7 +144,7 @@ Where Compose fixes a value, the `.env` file cannot override it. Change the Comp
 
 | Name | Required? | Code default | Binding path | Visibility and effect |
 |---|---|---|---|---|
-| `SERVER_PORT` | No | `8090` | App line 2; Compose line 184 | Not secret. Must match the port the UI and proxy expect |
+| `SERVER_PORT` | No | `8090` | App line 2; Compose line 184 sets it as a fixed value | Not secret. Compose fixes it, so `.env` and recreating the service cannot change it. Change the Compose value, and the UI and proxy settings that name the port, together |
 | `IMAGE_TAG` | No | `latest` | Compose lines 178, 353, 564 | Not secret. The backend deploy sets it to the git short SHA so the previous image can be redeployed on failure |
 | `CABIN_FRONTEND_ORIGIN` | Yes for managed-user sign-in links | a local dev address | App line 95; Compose line 264 | Not secret. Must be where `cabin-ui` is really served, or the emailed link points to the wrong place |
 | `FAMILY_HUB_URL` | No | an instance public address | Compose lines 297 and 442 | Not secret. Line 442 is a build argument: change needs a `cabin-ui` rebuild |
@@ -152,7 +152,7 @@ Where Compose fixes a value, the `.env` file cannot override it. Change the Comp
 | `CABIN_INSTANCE_PLATFORM` | No | the App says "Not configured"; Compose supplies a description | App line 59; Compose line 272 | Not secret. Shown in Config, Platform |
 | `CABIN_INSTANCE_REMOTE_ACCESS` | No | `Tailscale` in App; Compose adds a second entry | App line 60; Compose line 273 | Not secret. Comma-separated. Shown in Config, Remote Access |
 
-All names in this group take effect on recreating the service; those marked as build arguments need the image rebuilt first.
+Names Compose passes through from `.env` take effect on recreating the service; those marked as build arguments need the image rebuilt first. `SERVER_PORT` is the exception: Compose fixes it, so change the Compose line.
 
 ## Explicit source disagreement
 

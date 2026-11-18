@@ -250,6 +250,40 @@ class AskContextBuilderTest {
             "system.cameras", "doc:ai-assistant/user-guide/operations.md#capability-map");
     }
 
+    @Test
+    void environmentReferenceQuestionsReachTheirSectionForAdministratorsOnly() {
+        requireRepoDocs();
+        String cfg = "doc:ai-assistant/user-guide/configuration.md#";
+        assertThat(refs("How do I change the weather stations?")).contains(cfg + "reference-weather-settings");
+        assertThat(refs("How do I change the MQTT URL?")).contains(cfg + "reference-home-assistant-mqtt-and-kafka-addresses");
+        assertThat(refs("What is the Vaultwarden master password setting?"))
+            .contains(cfg + "reference-vaultwarden-and-credential-settings");
+        assertThat(refs("What does BLINK_USERNAME do?")).contains(cfg + "reference-blink-and-camera-settings");
+        assertThat(refs("What does SERVER_PORT do?")).contains(cfg + "reference-instance-ports-and-image-settings");
+        for (HouseholdRole role : new HouseholdRole[] {HouseholdRole.ADULT_HOUSEHOLD_MEMBER, HouseholdRole.CHILD,
+                HouseholdRole.KIOSK_DISPLAY, HouseholdRole.SERVICE}) {
+            assertThat(withDocs.buildContext("How do I change the MQTT URL?", role)).isEmpty();
+        }
+    }
+
+    @Test
+    void aMixedEnvironmentQuestionKeepsBothSectionsInsideTheBudget() {
+        requireRepoDocs();
+        List<KnowledgeNode> result = withDocs.buildContext(
+            "What do SERVER_PORT and BLINK_USERNAME do?", HouseholdRole.ADMINISTRATOR);
+
+        assertThat(result).extracting(KnowledgeNode::entityRef).contains(
+            "doc:ai-assistant/user-guide/configuration.md#reference-instance-ports-and-image-settings",
+            "doc:ai-assistant/user-guide/configuration.md#reference-blink-and-camera-settings");
+        assertThat(result.stream().mapToInt(n -> n.content().length()).sum()).isLessThanOrEqualTo(6000);
+        assertThat(result).noneMatch(n -> n.content().contains("[section truncated"));
+    }
+
+    private List<String> refs(String question) {
+        return withDocs.buildContext(question, HouseholdRole.ADMINISTRATOR).stream()
+            .map(KnowledgeNode::entityRef).toList();
+    }
+
     // ---------------------------------------------------------------------------------------------
 
     private static void addNode(FakeKnowledgeNodeRepository repository, String entityRef,
