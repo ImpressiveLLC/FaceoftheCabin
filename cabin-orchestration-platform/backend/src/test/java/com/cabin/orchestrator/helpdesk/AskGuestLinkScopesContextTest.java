@@ -14,10 +14,11 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * C2 tail I04 (#498 plan). "What scopes can a guest link have?" used to select only general sharing guidance. "scopes can"
- * ties access_sharing's "guest link", so access_sharing stays first and an administrator also receives the guest-link
- * server-checks section whole. Both categories' sections are administrator-only, so other roles receive none of them, as
- * before. Credential questions keep credentials-and-access whole.
+ * C2 tail I04 (#498 plan). "What scopes can a guest link have?" used to select only general sharing guidance. The
+ * guest-link-qualified phrase "guest link have" now selects the guest-link server-checks section, delivered whole to an
+ * administrator. The section is administrator-only, as are the sharing sections, so other roles receive nothing, as before.
+ * Scope questions about other products are not captured (#505 advisory, the #503 boundary), and credential questions keep
+ * credentials-and-access whole.
  */
 class AskGuestLinkScopesContextTest {
 
@@ -38,7 +39,7 @@ class AskGuestLinkScopesContextTest {
 
     @Test
     void anAdministratorGetsTheScopeSectionWholeAndNoOtherRoleDoes() {
-        assertThat(builder.categoryIdsFor(QUESTION)).containsExactly("access_sharing", "identity_guest_link_scopes");
+        assertThat(builder.categoryIdFor(QUESTION)).isEqualTo("identity_guest_link_scopes");
         String expected = source.section(GUIDE, SECTION).orElseThrow().text();
         List<KnowledgeNode> admin = builder.buildContext(QUESTION, HouseholdRole.ADMINISTRATOR);
         assertThat(admin).anyMatch(n -> n.entityRef().endsWith(GUIDE + "#" + SECTION) && n.content().equals(expected));
@@ -50,11 +51,13 @@ class AskGuestLinkScopesContextTest {
     }
 
     @Test
-    void scopeWordingAboutOtherThingsDoesNotGetTheGuestLinkSectionFirst() {
-        // "scopes can" alone may add the section beside another topic's answer, but must never displace it.
-        for (String q : List.of("What scopes can the monitoring key use?", "What scopes can Home Assistant tokens have?")) {
-            String first = builder.categoryIdFor(q);
-            assertThat(first).as(q).isNotEqualTo("identity_guest_link_scopes");
+    void scopeQuestionsAboutOtherProductsAreNotCaptured() {
+        for (String q : List.of("What scopes can a Google sign-in have?", "What scopes can a Home Assistant account have?",
+                "What scopes can the monitoring key use?", "What scopes can Home Assistant tokens have?")) {
+            assertThat(builder.categoryIdsFor(q)).as(q).doesNotContain("identity_guest_link_scopes", "identity_guest_link_checks");
+            for (HouseholdRole role : HouseholdRole.values()) {
+                assertThat(builder.buildContext(q, role)).as(q + " " + role).noneMatch(n -> n.entityRef().endsWith("#" + SECTION));
+            }
         }
         assertThat(builder.categoryIdFor("How do I make a guest link?")).isEqualTo("access_sharing");
         assertThat(builder.categoryIdsFor("How do I make a guest link?")).doesNotContain("identity_guest_link_scopes");
