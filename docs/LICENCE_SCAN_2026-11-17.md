@@ -41,13 +41,13 @@ The five dependencies that were `latest` are now pinned to the versions the lock
 | Public domain, per CC0 (one with BSD-2-Clause) | 2 |
 | Eclipse Public License 1.0 or 2.0, alone or dual with LGPL / GPL2 with Classpath Exception | 4 |
 
-The four EPL-family jars, none modified here, each declare more than one licence in their POM. A declared alternative is an option, not a clearance: the alternatives are listed so a person can decide which one the project relies on.
+The four EPL-family jars are none modified here. The table lists what each jar's POM declares; not every jar declares alternatives. A declared alternative is an option, not a clearance: where alternatives are declared they are listed so a person can decide which one the project relies on.
 
-| Jar | Alternatives declared in the POM | What this scan does and does not say |
+| Jar | Declared in the POM | What this scan does and does not say |
 |---|---|---|
 | `logback-classic`, `logback-core` | EPL-1.0 or LGPL-2.1 | Both alternatives carry obligations (EPL-1.0 is weak copyleft; LGPL-2.1 has its own terms). The project has not chosen one. Not checked against the current upstream statement at <https://logback.qos.ch/license.html>, which may differ from the historical POM of the version in use. |
 | `jakarta.annotation-api` | EPL-2.0 or GPL-2.0 with the Classpath Exception | The EPL-2.0 alternative carries weak-copyleft obligations; the second alternative is the GPL with the Classpath Exception. No choice recorded. |
-| `org.eclipse.paho.client.mqttv3` | EPL-2.0 or EDL-1.0 (the POM names EPL-2.0) | EDL-1.0 is a BSD-style licence; the POM text names EPL-2.0. No choice recorded. |
+| `org.eclipse.paho.client.mqttv3` 1.2.5 | EPL-2.0 only (the artifact declares none of its own; its parent `java-parent` 1.2.5 declares EPL-2.0, lines 56 to 61) | Whether the jar is also offered under EDL-1.0 is not shown by this metadata and is outside this scan; unverified. No choice recorded. |
 
 No GPL-only or AGPL jar appeared in the runtime list. The Spring Boot starters are Apache-2.0 as declared. All of this is metadata read from the POMs of the resolved versions (parent POM when an artifact declares none); no licence file or upstream page was read, and it is not legal clearance.
 
