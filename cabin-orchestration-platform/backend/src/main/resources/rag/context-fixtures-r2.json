@@ -2742,6 +2742,24 @@
           "audience": "administrator"
         }
       ]
+    },
+    {
+      "id": "identity_session_duration",
+      "description": "C2 tail I02: sign-in duration wording reuses the session guidance without adding scores to existing session aliases",
+      "boost": 0,
+      "keywordPatterns": [
+        "a sign-in last"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/access-and-storage.md",
+          "section": "sign-in-sessions-google-30-day-sessions-and-managed-sessions",
+          "audience": "administrator"
+        }
+      ]
     }
   ],
   "r2Changes": [
@@ -2768,6 +2786,7 @@
     "2026-11-18 C2 tail M02: isolated zero-boost Node-RED editor wording reuses reviewed login recovery; old login/rotation patterns and credential guidance preserved. No authentication, host or guide change.",
     "2026-11-18 C2 tail M03: zero-boost category recovery_grafana_outside_panel ('grafana shows', Grafana-scoped, two words) reuses the existing household Grafana login recovery section. It ties generic 'sign in' rather than beating it, so the reported question keeps user_auth_role first and also receives the Grafana section whole; credential password/token/secret wording (3) stays ahead. Other products' 'embedded panel' sign-in questions are unaffected. No guide, boost, matcher or budget change.",
     "2026-11-18 C2 tail M05: recovery heartbeat wording reuses the existing recovery-checks-and-notices section. No service action or behavior change.",
-    "2026-11-18 C2 tail I04: zero-boost category identity_guest_link_scopes ('guest link have', guest-link-qualified, three words) reuses the existing administrator guest-link server-checks section. It outranks access_sharing's 'guest link' (2) only when the question asks what a guest link has; scope questions about other products (Google sign-in, Home Assistant accounts) are unaffected. Both sections are administrator-only, so other roles receive nothing, as before. No guide, boost, matcher or budget change."
+    "2026-11-18 C2 tail I04: zero-boost category identity_guest_link_scopes ('guest link have', guest-link-qualified, three words) reuses the existing administrator guest-link server-checks section. It outranks access_sharing's 'guest link' (2) only when the question asks what a guest link has; scope questions about other products (Google sign-in, Home Assistant accounts) are unaffected. Both sections are administrator-only, so other roles receive nothing, as before. No guide, boost, matcher or budget change.",
+    "2026-11-18 C2 tail I02: isolated sign-in duration phrase reuses administrator session guidance. No lifetime, security policy or authentication behavior change."
   ]
 }

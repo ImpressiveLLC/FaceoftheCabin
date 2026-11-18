@@ -644,8 +644,7 @@
       "expectedCategory": "identity_sessions",
       "expectedSection": "ai-assistant/user-guide/access-and-storage.md#sign-in-sessions-google-30-day-sessions-and-managed-sessions",
       "audience": "administrator",
-      "source": "#494 coverage check",
-      "knownGap": "#494 selection gap"
+      "source": "#494 coverage check"
     },
     {
       "id": "cov_I03",
