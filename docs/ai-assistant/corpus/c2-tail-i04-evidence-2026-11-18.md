@@ -16,14 +16,16 @@ Status: offline routing and delivery evidence only. No model call, no live Ask, 
 
 ## Delta (harness, `AskDeliveryHarnessTest`)
 
-| Audience | Frozen baseline fd1f8676 | main 0aea2f56 (after #500, #502, #503) | This change |
+| Audience | Frozen baseline fd1f8676 | main d4296aec (after #500, #502, #503, #504) | This change, integrated |
 |---|---|---|---|
-| administrator, delivered whole | 88 of 98 | 90 of 98 | **91 of 98** |
+| administrator, delivered whole | 88 of 98 | 91 of 98 | **92 of 98** |
 | household, delivered whole | 4 of 5 | 5 of 5 | 5 of 5 |
 
-- **Rows changed against main 0aea2f56:** only `cov_I04`. The selected set goes from `[access_sharing]` to `[identity_guest_link_scopes]`, the expected section is delivered whole, and `knownGap` is cleared. First-category agreement is unchanged by design, because the expected category in the frozen row is `identity_guest_link_checks`, which maps the same section.
+Measured on the integrated head: main d4296aec merged into this branch, with main's fixture kept byte for byte and only this category and note appended. The pre-integration measurement against 0aea2f56 gave the same single-row delta (90 to 91).
+
+- **Rows changed against main d4296aec:** only `cov_I04`. The selected set goes from `[access_sharing]` to `[identity_guest_link_scopes]`, the expected section is delivered whole, and `knownGap` is cleared. First-category agreement is unchanged by design, because the expected category in the frozen row is `identity_guest_link_checks`, which maps the same section.
 - **Other checks:** audience leaks 0; over budget 0; largest context 5143. The 150 phrasings still have 16 with no category, with the same ids.
-- **All roles:** in a throwaway probe I compared 253 questions (the 150 phrasings plus the 103 rows) under all six roles against `origin/main` 0aea2f56. Only the I04 question differs. For the administrator, it now receives the scope section instead of the two sharing sections. For the other five roles only the selected set differs, and the delivered context stays empty.
+- **All roles:** in a throwaway probe I compared 253 questions (the 150 phrasings plus the 103 rows) under all six roles against `origin/main` d4296aec, on the integrated head. Only the I04 question differs (6 pairs, with delivered context changing for the administrator only). For the administrator, it now receives the scope section instead of the two sharing sections. For the other five roles only the selected set differs, and the delivered context stays empty.
 
 ## Tests
 
@@ -32,4 +34,4 @@ New `AskGuestLinkScopesContextTest` (3 tests):
 - Scope questions about other products (Google sign-in, Home Assistant account, the monitoring key, Home Assistant tokens) select neither guest-link category and never receive the section, for any role. "How do I make a guest link?" keeps `access_sharing` alone.
 - Guest-link token and secret questions select `credential_redaction` and deliver credentials-and-access whole.
 
-All Ask test classes: 101 passed, 0 failed, including the harness gates and the 120 pins.
+All Ask test classes on the integrated head: 102 passed, 0 failed, including the harness gates and the 120 pins.

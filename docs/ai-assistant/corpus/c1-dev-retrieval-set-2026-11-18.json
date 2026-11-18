@@ -612,8 +612,7 @@
       "expectedCategory": "recovery_checks",
       "expectedSection": "ai-assistant/user-guide/operations-recovery-reference.md#recovery-checks-and-notices",
       "audience": "administrator",
-      "source": "#494 coverage check",
-      "knownGap": "#494 selection gap"
+      "source": "#494 coverage check"
     },
     {
       "id": "cov_M06",
