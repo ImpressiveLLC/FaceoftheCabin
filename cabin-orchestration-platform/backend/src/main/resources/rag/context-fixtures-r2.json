@@ -1934,6 +1934,182 @@
           "audience": "administrator"
         }
       ]
+    },
+    {
+      "id": "cap_dependencies",
+      "description": "W-117 C2 capability route reference: feature-prerequisites-and-evidence",
+      "boost": 0,
+      "keywordPatterns": [
+        "feature prerequisites",
+        "feature dependencies"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "feature-prerequisites-and-evidence",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_api_base",
+      "description": "W-117 C2 capability route reference: api-bases-and-browser-destinations",
+      "boost": 0,
+      "keywordPatterns": [
+        "api base",
+        "api bases",
+        "browser destinations"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "api-bases-and-browser-destinations",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_access",
+      "description": "W-117 C2 capability route reference: caller-boundaries-and-read-exceptions",
+      "boost": 0,
+      "keywordPatterns": [
+        "caller boundaries",
+        "route permissions"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "caller-boundaries-and-read-exceptions",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_helpdesk",
+      "description": "W-117 C2 capability route reference: ask-routes-and-proposal-prerequisites",
+      "boost": 0,
+      "keywordPatterns": [
+        "helpdesk endpoint",
+        "proposal prerequisites",
+        "ask routes"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "ask-routes-and-proposal-prerequisites",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_devices",
+      "description": "W-117 C2 capability route reference: device-routes-and-home-assistant-actions",
+      "boost": 0,
+      "keywordPatterns": [
+        "device routes",
+        "ha actions",
+        "ha prerequisites"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "device-routes-and-home-assistant-actions",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_events",
+      "description": "W-117 C2 capability route reference: event-routes-and-telemetry-prerequisites",
+      "boost": 0,
+      "keywordPatterns": [
+        "event routes",
+        "telemetry prerequisites",
+        "export permissions"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "event-routes-and-telemetry-prerequisites",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_cameras",
+      "description": "W-117 C2 capability route reference: camera-routes-and-media-prerequisites",
+      "boost": 0,
+      "keywordPatterns": [
+        "camera routes",
+        "media prerequisites"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "camera-routes-and-media-prerequisites",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_family",
+      "description": "W-117 C2 capability route reference: family-notes-routes-and-synchronization",
+      "boost": 0,
+      "keywordPatterns": [
+        "notes routes",
+        "notes synchronization"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "family-notes-routes-and-synchronization",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_rules",
+      "description": "W-117 C2 capability route reference: workflow-routes-and-alert-acknowledgments",
+      "boost": 0,
+      "keywordPatterns": [
+        "workflow routes",
+        "acknowledgment permissions",
+        "alert routes"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "workflow-routes-and-alert-acknowledgments",
+          "audience": "administrator"
+        }
+      ]
     }
   ],
   "r2Changes": [
@@ -1949,6 +2125,7 @@
     "2026-10-27 C2 rewrite r1: answer-shaped leads under six guide headings plus a new live-values-and-ask section; presence-for-each-location moves from installation to the new installation_presence category; live_sensors gains live-values-and-ask first.",
     "2026-10-29 C2 revert (HOLD per RUN-2 decision rule 3 and 4): Edits 3a and 3b (ask-and-helpdesk.md) and 4a with map change M2 (live-values-and-ask, first in live_sensors) removed; ask_helpdesk_behavior and live_sensors context restored to the RUN-1 text. RW-1, RW-2, RW-5, RW-6, K05 and K19 stay.",
     "2026-11-05 W-151 matcher: keyword endings widened (s, es, ed, d, ing, ings, ly, er, ers, ation, ations); categories tied for the top score are all kept in declaration order instead of the first winning (later tied categories add only sections that fit whole in the remaining document budget, duplicates dropped). Keywords and sections unchanged.",
-    "2026-11-18 W-117 C2 slice 1: five administrator categories (config_env_blink_camera, config_env_vaultwarden, config_env_weather, config_env_addresses, config_env_instance), one per reference section in configuration.md, so tied categories stay inside the 6000-character document budget. Source review only; no frozen question declares them, nothing is ingested or trained."
+    "2026-11-18 W-117 C2 slice 1: five administrator categories (config_env_blink_camera, config_env_vaultwarden, config_env_weather, config_env_addresses, config_env_instance), one per reference section in configuration.md, so tied categories stay inside the 6000-character document budget. Source review only; no frozen question declares them, nothing is ingested or trained.",
+    "2026-11-18 W-117 C2 slice 5: bounded administrator feature prerequisites, browser API bases and backend caller boundaries. Source review only; no model, device or host execution."
   ]
 }
