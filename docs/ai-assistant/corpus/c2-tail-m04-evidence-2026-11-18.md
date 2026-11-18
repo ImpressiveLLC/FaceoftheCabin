@@ -14,16 +14,20 @@ Status: offline routing and delivery evidence only. No model call, no live Ask, 
 
 ## Delta (harness, `AskDeliveryHarnessTest`)
 
-| Audience | Frozen baseline fd1f8676 | main 42bcc6da | This change |
+| Audience | Frozen baseline fd1f8676 | main cbb87010 (after #512) | This change, integrated |
 |---|---|---|---|
-| administrator, delivered whole | 88 of 98 | 95 of 98 | **96 of 98** |
+| administrator, delivered whole | 88 of 98 | 96 of 98 | **97 of 98** |
 | administrator, selected but not delivered | 1 | 1 | **0** |
+| administrator, expected category in the selected set | 89 | 89 | 88 |
 | household, delivered whole | 4 of 5 | 5 of 5 | 5 of 5 |
 
-- **Rows changed against main 42bcc6da:** only `cov_M04`. The selected set goes from `[self_healing_recovery, recovery_deadman]` to `[recovery_external_deadman]`, and delivery goes from 4648 characters of the wrong section to the dead-man section, whole (1760). `knownGap` is cleared.
-- **Other checks:** audience leaks 0; over budget 0; largest context 5143. The 150 phrasings still have 16 with no category.
-- **All roles:** in a throwaway probe I compared 253 questions (the 150 phrasings plus the 103 rows) under all six roles against `origin/main` 42bcc6da. Only the M04 question differs, with delivered context changing for the administrator only.
-- **Order with #512:** this branch was measured on main before #512. When #512 merges, I merge main in and re-measure before READY. #512 changes only the two setup-section lengths, which this row does not use.
+Measured on the integrated head: main cbb87010 (#512) merged into this branch. Main's fixture is kept byte for byte, and this category and its note are appended **after** #512's `recreation_acceptance_record`. The pre-integration measurement against 42bcc6da gave the same single-row delta (95 to 96).
+
+**Selected-set agreement drops by 1 (89 to 88), by design.** The frozen row's expected category for `cov_M04` is `recovery_deadman`. It was selected in the old tie but never delivered. It is no longer selected, because the new category delivers the same expected section whole instead. Delivered-whole is the measure that matters, as in the checkpoint.
+
+- **Rows changed against main cbb87010:** only `cov_M04`. The selected set goes from `[self_healing_recovery, recovery_deadman]` to `[recovery_external_deadman]`, and delivery goes from 4648 characters of the wrong section to the dead-man section, whole (1760). `knownGap` is cleared.
+- **Other checks:** audience leaks 0; over budget 0. The largest context is 5990, which is #512's acceptance bundle and unchanged by this PR. The 150 phrasings still have 16 with no category.
+- **All roles:** in a throwaway probe I compared 253 questions (the 150 phrasings plus the 103 rows) under all six roles against `origin/main` cbb87010, on the integrated head. Only the M04 question differs (6 pairs), with delivered context changing for the administrator only.
 
 ## Tests
 
@@ -32,4 +36,4 @@ New `AskExternalDeadmanContextTest` (3 tests):
 - Blink and generic dead-man wordings ("What does the Blink dead-man monitor do?", "What is the Blink dead-man alert?", "What does the dead-man alert mean?", "Is there a dead-man check?") never select the new category. The Blink monitor question stays `self_healing_recovery`.
 - External dead-man token, password and secret questions select `credential_redaction` and deliver credentials-and-access whole.
 
-All Ask test classes: 112 passed, 0 failed.
+All Ask test classes on the integrated head: 115 passed, 0 failed. After this change, the only known gap left in the development set is `install_gap_1` (the plan, 897 over after #512), which is under Codex's separate design.
