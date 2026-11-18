@@ -1,0 +1,52 @@
+{
+  "round": "2026-11-17-r14-stress",
+  "model": "cabin-intent-slot-prompt-r1",
+  "prompt_sha256": "15a94e07fcfe04f936ded4643ea73b8a0a2da96739c18464566873d66b8f1254",
+  "gold_sha256": "487fac1aea77b9d1454251f050479dd55cc2cdbeea39e41ad4ff1b739f8d95e8",
+  "schema_sha256": "59f63b920a66d85fb20a08d66d31b2bbc3268dea871e691debfdb50842ca15dd",
+  "fixtures": 100,
+  "valid_output_rate": 1.0,
+  "intent_accuracy": 0.95,
+  "slot_micro_f1": 0.0,
+  "critical_fixture_failures": 0,
+  "per_intent": {
+    "answer_question": {
+      "correct": 95,
+      "total": 100
+    }
+  },
+  "confusions": {
+    "answer_question->unsupported": 2,
+    "answer_question->set_device_attribute": 1,
+    "answer_question->propose_automation": 1,
+    "answer_question->clarify": 1
+  },
+  "failed": {
+    "oos-053": {
+      "want": "answer_question",
+      "got": "set_device_attribute",
+      "critical": false
+    },
+    "oos-056": {
+      "want": "answer_question",
+      "got": "unsupported",
+      "critical": false
+    },
+    "oos-063": {
+      "want": "answer_question",
+      "got": "unsupported",
+      "critical": false
+    },
+    "oos-080": {
+      "want": "answer_question",
+      "got": "propose_automation",
+      "critical": false
+    },
+    "oos-089": {
+      "want": "answer_question",
+      "got": "clarify",
+      "critical": false
+    }
+  },
+  "released": false
+}
