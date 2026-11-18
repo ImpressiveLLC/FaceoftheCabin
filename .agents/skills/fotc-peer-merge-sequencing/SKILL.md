@@ -8,6 +8,8 @@ description: >
   conflict checks between merges. Load this before merging ANY PR, before
   pushing to a branch another session may share, before allocating a W-/D-/UC-
   ID, and whenever ListAgents shows other sessions working in this repo.
+  Assume this skill is needed at the start of an active collaboration cycle
+  whenever Cowork and Code are known to be present, even before a conflict.
 ---
 
 # FaceoftheCabin — peer merge sequencing
@@ -29,6 +31,14 @@ agreed* (order, peer discovery, overlap notes on the PR).
 `cabin-peer-agent-collaboration` owns *how to repair and how to merge safely*
 (its sections 1-4 and 6). Where the two overlap, the stricter rule wins; where
 they differ, fix the text in a PR rather than silently picking one.
+
+## Collaboration-cycle entry and handoff
+
+Known simultaneous Cowork and Code participation triggers this skill together with `cabin-peer-agent-collaboration`, even if Codex is only reviewing or coordinating and no merge is imminent. Establish owners and queue order early. This trigger grants no branch-write or merge authority.
+
+Follow the peer-collaboration skill's full-SHA READY/ACK protocol. Re-read the remote head before review and again before merging; a changed head requires a new READY, ACK and exact-head verdict, including for a small follow-up delta. Never treat the previous head's CLEAN as the new head's verdict. After more than two repair/review returns, consolidate the remaining work and agree the next head/checks before another cycle. Use event-driven handoffs unless Nate explicitly requests a timer; GitHub posts alone do not guarantee an idle agent wakes.
+
+READY, ACK and CLEAN grant no execution authority. Independent review must come from a session other than the author; an author self-check is not an independent CLEAN. The assigned author owns merge-from-main repairs and renews READY after validation. The named merge owner, not whoever posts first, runs the pinned merge and any deployment watch under Nate's applicable authorization. If ownership is missing or changes, resolve and record it on #244 before acting; hold an ownerless merge.
 
 ## 0. The one rule
 

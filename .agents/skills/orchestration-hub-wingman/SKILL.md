@@ -59,22 +59,25 @@ Detail and source skills: `references/karpathy-canon.md`.
 
 ## 3. Start of session (2 minutes, in order)
 
+**Active ecosystem override (Nate, 2026-11-16).** When Cowork and Code are both known to be active, load `cabin-peer-agent-collaboration` and `fotc-peer-merge-sequencing` immediately. Their full-SHA READY/ACK protocol is the default collaboration cadence. Do not automatically arm or re-arm the scheduled loop below: its timer/watch instructions apply only while Nate explicitly requests scheduled monitoring. If he substitutes READY/ACK, delete this session's timer, record the change on #244, and continue on notifications or prompts. Do not imply GitHub comments wake idle sessions. After more than two repair/review returns, consolidate findings and ownership before another cycle. All merge gates still apply. READY, ACK and CLEAN grant no execution authority. The independent reviewer must be other than the authoring session. The assigned author owns merge-from-main repairs; the named merge owner owns the pinned merge and deployment watch under Nate's applicable authorization. Missing ownership is a hold to resolve on #244, not permission for the next awake session.
+
+
 1. Time from the clock tool.
 2. `bash .claude/skills/orchestration-hub-wingman/scripts/ctx-audit.sh`: clone fresh? PRs and gates? board age? new comments? deploys?
 3. Read the board comment and every #244 comment after its stamp.
-4. Heartbeat armed? List scheduled tasks. Exactly one "Cowork RTE cycle". None: arm. Two: delete the extra.
+4. Check the current cadence on #244. If Nate requested scheduled monitoring, list tasks and keep exactly one authorized heartbeat; otherwise use READY/ACK and do not arm one.
 5. Read `docs/governance/rte/context-registry.md` for the places you will touch.
 6. Clone not fresh (dirty, main behind, wrong base): fix per `fotc-git-and-host-routing` or use a clean clone. Never clean up another session's work.
 
 End of session: board edited, backlog row for every state change, nothing unpushed, hand-back text for any decision made where git was unreachable.
 
-## 4. The loop (every 15 to 30 min while any handoff is open)
+## 4. The loop (on READY/ACK events, or the explicitly requested timer cadence)
 
 1. **READ**: `ctx-audit.sh`. REST only (`gh api`); GraphQL can be blocked.
 2. **DECIDE**: per item: due? acked? verdict in? merge-ready? blocked? Apply the silence ladder.
 3. **ACT**: ruling, nudge, handoff, merge, review.
 4. **RECORD**: edit the board in place (`gh api -X PATCH repos/ImpressiveLLC/FaceoftheCabin/issues/comments/6449313109 -F body=@file`, no footer in the body, the platform adds one). Comment with ids, counts, hashes only. Backlog row. Registry if a location or channel changed.
-5. **RE-ARM**: one scheduled task with `send_later`, 15 to 30 min (30 while Codex is out), prompt states what to read and what to do per outcome. Delete duplicates. Change a prompt by arming a fresh one, never with `update_trigger` (it can wait on Nate's approval and the old prompt fires stale).
+5. **RE-ARM only when Nate requested scheduled monitoring**: one scheduled task with `send_later`, 15 to 30 min (30 while Codex is out), prompt states what to read and what to do per outcome. Delete duplicates. Change a prompt by arming a fresh one, never with `update_trigger` (it can wait on Nate's approval and the old prompt fires stale).
 
 Silence ladder: +20 min no ack: wait. +40: named nudge comment on #244. +60 on the critical path with no alternate owner: one phone push to Nate. Silence is `unknown`, never `clear`. There is no direct channel to Code or Codex; GitHub comment or Nate.
 
