@@ -140,14 +140,14 @@ describe("OnTheWayButton", () => {
     expect(mechRoomTemperature([])).toBeNull();
   });
 
-  it("turns on input_boolean.on_the_way_to_cabin and confirms with the mech room temp", async () => {
+  it("turns on input_boolean.on_the_way_to_cabin and says it was sent, not that the heater started", async () => {
     localStorage.setItem("tempUnit", "F");
     const authedFetch = okFetch();
     render(<OnTheWayButton auth={{ authedFetch }} devices={devices} />);
 
     fireEvent.click(screen.getByRole("button", { name: /on the way/i }));
 
-    expect((await screen.findByRole("status")).textContent).toBe("Preheat started. Mech room is 41.0°F.");
+    expect((await screen.findByRole("status")).textContent).toBe("Sent. Home Assistant decides whether the heater starts. Mech room is 41.0°F.");
     expect(JSON.parse(authedFetch.mock.calls[0][1].body)).toEqual({
       domain: "input_boolean", service: "turn_on", entity_id: "input_boolean.on_the_way_to_cabin",
     });
