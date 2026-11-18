@@ -161,6 +161,14 @@
       "section": "workflow-test-gates",
       "audience": "administrator",
       "expectedText": "does not establish the root cause"
+    },
+    {
+      "id": "recovery_nodered_editor_m02",
+      "question": "I can't log in to the Node-RED editor. What now?",
+      "category": "recovery_nodered_editor",
+      "section": "node-red-login-recovery",
+      "audience": "administrator",
+      "expectedText": "Node-RED"
     }
   ]
 }
