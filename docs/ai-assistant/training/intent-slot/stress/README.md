@@ -4,7 +4,7 @@
 
 ## Source and attribution (CC BY 3.0)
 
-The utterances come from the `oos_test` split of CLINC150 (`data/data_full.json` in the GitHub repository `clinc/oos-eval`), released under the Creative Commons Attribution 3.0 Unported licence (the repository's `LICENSE` file; a copy is `CLINC150-LICENSE.txt` here). Credit: Stefan Larson, Anish Mahendran, Joseph J. Peper, Christopher Clarke, Andrew Lee, Parker Hill, Jonathan K. Kummerfeld, Kevin Leach, Michael A. Laurenzano, Lingjia Tang and Jason Mars, "An Evaluation Dataset for Intent Classification and Out-of-Scope Prediction", EMNLP-IJCNLP 2019. The rows are unmodified apart from being placed in the gold row format; the model-facing text is the original utterance. SHA-256 of the source file: `36923c3705a59e08...` (full value in each row's provenance).
+The utterances come from the `oos_test` split of CLINC150 (`data/data_full.json` in the GitHub repository `clinc/oos-eval`), released under the Creative Commons Attribution 3.0 Unported licence (<https://creativecommons.org/licenses/by/3.0/>; the repository's `LICENSE` file; a copy is `CLINC150-LICENSE.txt` here). Credit: Stefan Larson, Anish Mahendran, Joseph J. Peper, Christopher Clarke, Andrew Lee, Parker Hill, Jonathan K. Kummerfeld, Kevin Leach, Michael A. Laurenzano, Lingjia Tang and Jason Mars, "An Evaluation Dataset for Intent Classification and Out-of-Scope Prediction", EMNLP-IJCNLP 2019. The rows are unmodified apart from being placed in the gold row format; the model-facing text is the original utterance. SHA-256 of the source file: `36923c3705a59e08...` (full value in each row's provenance).
 
 ## How the 100 rows were chosen
 
