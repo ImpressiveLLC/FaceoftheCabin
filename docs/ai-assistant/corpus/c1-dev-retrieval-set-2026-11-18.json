@@ -803,8 +803,7 @@
       "expectedCategory": "recreation_plan",
       "expectedSection": "ai-assistant/user-guide/independent-installation.md#establish-the-actual-installation-plan",
       "audience": "administrator",
-      "source": "#493 advisory 6978458407",
-      "knownGap": "installation phrasing gap; delivery needs a budget ruling: the plan or acceptance section does not fit beside the installation category's two sections within 6000 characters"
+      "source": "#493 advisory 6978458407"
     },
     {
       "id": "install_gap_2",

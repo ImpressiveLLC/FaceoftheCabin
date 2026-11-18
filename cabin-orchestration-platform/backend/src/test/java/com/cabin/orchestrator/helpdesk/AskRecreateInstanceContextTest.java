@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * new machine?" used to match nothing, and "What are the acceptance checks for recreating the instance?" went to device
  * onboarding. Each now delivers the existing administrator plan or acceptance section whole. The two clean-machine and
  * blank-machine phrasings were initially known gaps. The accepted C1 condensation and acceptance-record tie now deliver
- * the blank-machine acceptance bundle; the clean-machine plan remains a known gap. Other roles receive nothing, credential questions keep
+ * both complete setup bundles within budget. Other roles receive nothing, credential questions keep
  * credentials-and-access whole, and ordinary device-import acceptance questions keep their category.
  */
 class AskRecreateInstanceContextTest {
@@ -81,24 +81,8 @@ class AskRecreateInstanceContextTest {
     /** C1 #512: preserve both setup sections while adding the whole acceptance record within the fixed budget. */
     @Test
     void blankMachineAcceptanceKeepsTheWholeSetupBundleWithinBudget() {
-        String question = "What goes in the installation acceptance record when I install on a blank machine?";
-        assertThat(builder.categoryIdsFor(question)).containsExactly("installation", "recreation_acceptance_record");
-        List<String> sections = List.of("minimum-inputs", "verified-clean-host-limitations", "acceptance-record");
-        List<KnowledgeNode> nodes = builder.buildContext(question, HouseholdRole.ADMINISTRATOR);
-        assertThat(nodes.stream().map(KnowledgeNode::entityRef)).containsExactlyElementsOf(
-            sections.stream().map(section -> "doc:" + GUIDE + "#" + section).toList());
-        for (String section : sections) {
-            String expected = source.section(GUIDE, section).orElseThrow().text();
-            assertThat(nodes).anyMatch(n -> n.entityRef().endsWith("#" + section) && n.content().equals(expected));
-        }
-        // The reviewed bundle is 5990 characters. Growth beyond its 10-character margin must fail, not hide a section.
-        int sourceBundle = sections.stream().mapToInt(section -> source.section(GUIDE, section).orElseThrow().text().length()).sum();
-        assertThat(sourceBundle).isLessThanOrEqualTo(6000);
-        assertThat(total(nodes)).isEqualTo(sourceBundle);
-        for (HouseholdRole role : Arrays.asList(HouseholdRole.ADULT_HOUSEHOLD_MEMBER, HouseholdRole.CHILD,
-                HouseholdRole.KIOSK_DISPLAY, HouseholdRole.SERVICE, null)) {
-            assertThat(builder.buildContext(question, role)).as("acceptance bundle / " + role).isEmpty();
-        }
+        assertSetupBundle("What goes in the installation acceptance record when I install on a blank machine?",
+            "recreation_acceptance_record", "acceptance-record", 6000);
     }
 
     @Test
@@ -127,6 +111,73 @@ class AskRecreateInstanceContextTest {
                 assertThat(builder.buildContext(question, role)).as(question + " / " + role)
                     .noneMatch(n -> n.entityRef().endsWith(GUIDE + "#acceptance-record"));
             }
+        }
+    }
+
+    @Test
+    void installationPlanKeepsTheWholeSetupBundleAndFortyCharactersOfHeadroom() {
+        assertSetupBundle("What is the installation plan for a clean machine?",
+            "recreation_plan_for", "establish-the-actual-installation-plan", 5960);
+    }
+
+    @Test
+    void planCredentialOverlapKeepsCredentialGuidanceWhole() {
+        String guidance = source.section("ai-assistant/user-guide/configuration.md", "credentials-and-access").orElseThrow().text();
+        for (String credential : List.of("password", "token", "secret")) {
+            String question = "Where is the " + credential + " in the installation plan for a clean machine?";
+            assertThat(builder.categoryIdsFor(question)).containsExactly("credential_redaction", "installation", "recreation_plan_for");
+            List<KnowledgeNode> nodes = builder.buildContext(question, HouseholdRole.ADMINISTRATOR);
+            assertThat(nodes).anyMatch(n -> n.entityRef().endsWith("#credentials-and-access") && n.content().equals(guidance));
+            assertThat(total(nodes)).isLessThanOrEqualTo(6000);
+            for (HouseholdRole role : Arrays.asList(HouseholdRole.ADULT_HOUSEHOLD_MEMBER, HouseholdRole.CHILD,
+                    HouseholdRole.KIOSK_DISPLAY, HouseholdRole.SERVICE, null)) {
+                assertThat(builder.buildContext(question, role)).as(question + " / " + role).isEmpty();
+            }
+        }
+    }
+
+    @Test
+    void crossProductPlanQuestionsKeepTheirExistingWholePlanAndPlainSharingIsUnchanged() {
+        for (String subject : List.of("a Zigbee device", "a rule", "Home Assistant", "Frigate")) {
+            String question = "What is the installation plan for " + subject + "?";
+            assertWhole(question, "recreation_plan_for", "establish-the-actual-installation-plan");
+            assertThat(builder.buildContext(question, HouseholdRole.ADMINISTRATOR)).hasSize(1);
+        }
+        String question = "How do I make a guest link?";
+        assertThat(builder.categoryIdsFor(question)).containsExactly("access_sharing");
+        List<KnowledgeNode> nodes = builder.buildContext(question, HouseholdRole.ADMINISTRATOR);
+        for (String section : List.of("share-read-only-access-with-a-link-guest-access", "give-someone-a-demo-link")) {
+            String expected = source.section("ai-assistant/user-guide/access-and-storage.md", section).orElseThrow().text();
+            assertThat(nodes).anyMatch(n -> n.entityRef().endsWith("#" + section) && n.content().equals(expected));
+        }
+    }
+
+    /** Known limitation accepted in #515 and Cowork #244 comment 6991093994; this is not a preservation negative. */
+    @Test
+    void knownLimitationMixedGuestLinkPlanOmitsSharingContext() {
+        String question = "What is the installation plan for a guest link?";
+        assertWhole(question, "recreation_plan_for", "establish-the-actual-installation-plan");
+        List<KnowledgeNode> nodes = builder.buildContext(question, HouseholdRole.ADMINISTRATOR);
+        assertThat(nodes).hasSize(1).noneMatch(n -> n.entityRef().contains("access-and-storage.md#"));
+    }
+
+    private void assertSetupBundle(String question, String category, String requestedSection, int maximumChars) {
+        assertThat(builder.categoryIdsFor(question)).containsExactly("installation", category);
+        List<String> sections = List.of("minimum-inputs", "verified-clean-host-limitations", requestedSection);
+        List<KnowledgeNode> nodes = builder.buildContext(question, HouseholdRole.ADMINISTRATOR);
+        assertThat(nodes.stream().map(KnowledgeNode::entityRef)).containsExactlyElementsOf(
+            sections.stream().map(section -> "doc:" + GUIDE + "#" + section).toList());
+        for (String section : sections) {
+            String expected = source.section(GUIDE, section).orElseThrow().text();
+            assertThat(nodes).anyMatch(n -> n.entityRef().endsWith("#" + section) && n.content().equals(expected));
+        }
+        // Source growth must fail visibly rather than silently hide a required section.
+        int sourceBundle = sections.stream().mapToInt(section -> source.section(GUIDE, section).orElseThrow().text().length()).sum();
+        assertThat(sourceBundle).isLessThanOrEqualTo(maximumChars);
+        assertThat(total(nodes)).isEqualTo(sourceBundle);
+        for (HouseholdRole role : Arrays.asList(HouseholdRole.ADULT_HOUSEHOLD_MEMBER, HouseholdRole.CHILD,
+                HouseholdRole.KIOSK_DISPLAY, HouseholdRole.SERVICE, null)) {
+            assertThat(builder.buildContext(question, role)).as(question + " / " + role).isEmpty();
         }
     }
 
