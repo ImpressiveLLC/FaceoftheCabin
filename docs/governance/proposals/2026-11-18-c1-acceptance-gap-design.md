@@ -1,6 +1,6 @@
 # C1 acceptance-gap design: remove one repeated clause, preserve the limits
 
-Status: **design only; not implemented**. Authorized for read-only source analysis and a proposal by [Cowork's scope ruling](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/244#issuecomment-6987067644). Source pin: `1a94b0be1f05c4d3a9e488cd9860032f8265d162`. Code's post-C2 checkpoint is pending; this proposal is not READY until its measured facts are reconciled with that checkpoint. No guide, fixture, matcher, budget or test code changes are included.
+Status: **design only; not implemented**. Authorized for read-only source analysis and a proposal by [Cowork's scope ruling](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/244#issuecomment-6987067644). Source pin: `1a94b0be1f05c4d3a9e488cd9860032f8265d162`. Measured facts are reconciled with [Code's post-C2 checkpoint](https://github.com/ImpressiveLLC/FaceoftheCabin/blob/5f93e539aa0f294679ff8addef7a4f950c8d23d2/docs/ai-assistant/rag/eval-results/2026-11-18-c1-post-c2-checkpoint.md) at PR #511 head `5f93e539aa0f294679ff8addef7a4f950c8d23d2`, measuring the same source pin. Codex's reciprocal checkpoint review is [recorded on #244](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/244#issuecomment-6987328429); Cowork retains the final gate. No guide, fixture, matcher, budget or test code changes are included.
 
 ## Recommendation and the two blockers
 
@@ -60,6 +60,8 @@ The source reader joins LF-normalized lines and strips section-edge whitespace; 
 | Setup limits plus acceptance | 6046 | 5990 |
 | Headroom under 6000 | -46 | 10 |
 
+The checkpoint confirms current section sizes and actual selection/delivery, but it does not run this proposed text or selection candidate. The public development result remains 95/98 administrator and 5/5 household, with all three gaps still open.
+
 Source guide LF-normalized SHA-256: `7d193a436585ae265d435dddf0c70f477f16b09d9d2d869362ebbc7c4676aff7`. The narrow margin makes a future whole-bundle regression essential: later prose growth must fail visibly rather than silently dropping acceptance. Do not truncate a section or remove a requirement to recover headroom.
 
 ## Selection decision required before any implementation
@@ -74,7 +76,7 @@ This candidate is stated to make the dependency reviewable, not to authorize a n
 - **One-sentence condensation:** smallest affected surface, stable anchors, no moved prerequisites, 56-character saving. Recommended capacity candidate, conditional on independent preservation review. It leaves only 10 characters of margin and does not solve selection by itself.
 - **Split the setup sections:** adds headings/reference ownership and selection complexity without removing the requirement to deliver all setup limits. Moving required text out of the delivered bundle would violate the ruling. Reject for this 46-character case.
 
-The plan question's 953-character deficit is not solved by this candidate: even reusing the 56-character saving, its conditional bundle is 6897 characters, still 897 over budget. M04 receives no content, ordering or routing proposal here. Both remain separate measurement/design decisions after the acceptance case.
+The plan question's 953-character deficit is not solved by this candidate: even reusing the 56-character saving, its conditional bundle is 6897 characters, still 897 over budget. The checkpoint measures M04 as 4648 characters delivered plus a selected but omitted 1760-character section: 6408 total, a 408-character deficit. M04 receives no content or routing proposal here; its priority and remedy need a separate ruling. Both larger gaps remain behind the acceptance case for measurement/design ordering only.
 
 For any later approved implementation, use one isolated PR and record the exact before and candidate heads. Reuse the real harness; prove the exact acceptance question gets all three complete source sections within 6000, every preserved claim remains, credential guidance stays whole, all six roles retain their boundaries, and unrelated selection/context changes are disclosed over the existing development/coverage inputs. Preserve 120 pins, stable expected fields, immutable baseline and mirrors. Add cross-product/negative phrasing checks for the actual proposed selection phrase. Only remove the one known-gap marker after the measured whole-bundle result passes independent review. Rollback restores the original sentence and any separately approved mapping together, then reruns the same checks.
 
