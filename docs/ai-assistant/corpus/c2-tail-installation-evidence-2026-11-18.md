@@ -24,18 +24,20 @@ Both questions say "clean machine" or "blank machine" and "install", so the exis
 - **Plan question:** the plan section (2393 chars) does not fit beside them: 6953 > 6000. If it tied, the matcher would skip it. If it won outright, the limits would be lost.
 - **Acceptance question:** the acceptance record (1486 chars) misses by 46 characters: 6046 > 6000.
 
-This is the same budget-and-tie question as M04. Per the C1 ruling, nothing changes until Cowork rules on budget or tie delivery. Both rows stay known gaps, with the reason in their markers.
+This is the same budget-and-tie question as M04. **Cowork ruled on #244 ([6984259185](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/244#issuecomment-6984259185)):** both stay measured known gaps. There is no global budget raise, no dropping of the setup-limits sections and no score workaround. They are parked as C1 retrieval-design candidates (a reviewed split or condensation with preservation evidence), with the 46-character acceptance gap first. The ruling is recorded in the tail plan by #508.
 
 ## Delta (harness, `AskDeliveryHarnessTest`)
 
-| Audience | Frozen baseline fd1f8676 | main d4296aec | This change |
+| Audience | Frozen baseline fd1f8676 | main 608b1101 (after #500, #502 to #506) | This change, integrated |
 |---|---|---|---|
-| administrator, delivered whole | 88 of 98 | 91 of 98 | **93 of 98** |
+| administrator, delivered whole | 88 of 98 | 93 of 98 | **95 of 98** |
 | household, delivered whole | 4 of 5 | 5 of 5 | 5 of 5 |
 
-- **Rows changed against main d4296aec:** only install_gap_3 and install_gap_4. Their knownGap markers are cleared. install_gap_1 and 2 change only their marker text, which now records the budget reason.
+Measured on the integrated head: main 608b1101 merged into this branch, with main's fixture kept byte for byte and only these two categories and their note appended. The pre-integration measurement against d4296aec gave the same two-row delta (91 to 93). After this change, the only known gaps left in the development set are `cov_M04`, `install_gap_1` and `install_gap_2`, all budget-limited.
+
+- **Rows changed against main 608b1101:** only install_gap_3 and install_gap_4. Their knownGap markers are cleared. install_gap_1 and 2 change only their marker text, which now records the budget reason.
 - **Other checks:** audience leaks 0; over budget 0; largest context 5143. The 150 phrasings still have 16 with no category, with the same ids.
-- **All roles:** in a throwaway probe I compared 253 questions under all six roles against `origin/main` d4296aec. Only these two questions differ. Delivered context changes for the administrator only (2 pairs). For the other roles only the selected set differs, and their context stays empty.
+- **All roles:** in a throwaway probe I compared 253 questions under all six roles against `origin/main` 608b1101, on the integrated head. Only these two questions differ. Delivered context changes for the administrator only (2 pairs). For the other roles only the selected set differs, and their context stays empty.
 
 ## Tests
 
@@ -44,4 +46,4 @@ New `AskRecreateInstanceContextTest` (3 tests):
 - Ordinary device-import acceptance and clean-machine install questions keep their categories.
 - Credential questions that use the same wording keep credentials-and-access whole.
 
-All Ask test classes: 102 passed, 0 failed.
+All Ask test classes on the integrated head: 108 passed, 0 failed.
