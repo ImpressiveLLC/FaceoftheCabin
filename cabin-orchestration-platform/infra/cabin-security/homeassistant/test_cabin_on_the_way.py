@@ -90,12 +90,108 @@ class OnTheWayPackage(unittest.TestCase):
         default_actions = [a["action"] for a in choose_step()["default"]]
         self.assertEqual(default_actions, ["mqtt.publish"])
 
-    def test_reset_is_first_so_no_later_failure_can_leave_the_helper_on(self):
-        first = AUTO["actions"][0]
-        self.assertEqual(first["action"], "input_boolean.turn_off")
-        self.assertEqual(first["target"]["entity_id"], BOOLEAN)
+    def test_reset_is_first_and_last(self):
+        first, last = AUTO["actions"][0], AUTO["actions"][-1]
+        for step in (first, last):
+            self.assertEqual(step["action"], "input_boolean.turn_off")
+            self.assertEqual(step["target"]["entity_id"], BOOLEAN)
         resets = [a for a in AUTO["actions"] if a.get("action") == "input_boolean.turn_off"]
-        self.assertEqual(resets, [first])
+        self.assertEqual(len(resets), 2)
+
+    def test_wait_guard_is_an_exact_bounded_state_wait(self):
+        seq = choose_step()["choose"][0]["sequence"]
+        wait = seq[1]
+        self.assertEqual(wait["wait_template"], "{{ is_state('switch.heater_mech_room', 'on') }}")
+        self.assertEqual(wait["timeout"], "00:00:15")
+        self.assertIs(wait["continue_on_timeout"], True)
+        self.assertEqual(len(re.findall("wait_template", YAML_TEXT)), 1)
+
+    def test_every_step_between_the_resets_tolerates_its_own_failure(self):
+        # The final reset is only always reached if no step before it can abort the run.
+        def walk(node):
+            if isinstance(node, dict):
+                if "action" in node and node is not AUTO["actions"][0] and node is not AUTO["actions"][-1]:
+                    self.assertIs(node.get("continue_on_error"), True, node["action"])
+                if "wait_template" in node:
+                    self.assertIs(node.get("continue_on_timeout"), True)
+                    self.assertIn("timeout", node)
+                for v in node.values():
+                    walk(v)
+            elif isinstance(node, list):
+                for v in node:
+                    walk(v)
+
+        walk(AUTO["actions"])
+
+    def test_repeated_tap_never_strands_the_helper_on(self):
+        """Run the action list in a tiny model of HA's single mode: a second tap arrives while the run waits (the
+        helper turns on, the trigger is ignored). Whatever fails, the helper must end off so a later tap can trigger."""
+        class Abort(Exception):
+            pass
+
+        def run(env):
+            state = {"helper": "on", "heater": env["heater"], "published": []}
+
+            def conds_ok(conds):
+                for c in conds:
+                    if c["condition"] == "numeric_state":
+                        t = env["temp"]
+                        if t is None or not t > c["above"]:
+                            return False
+                    elif c["condition"] == "state":
+                        if state["heater"] != c["state"]:
+                            return False
+                return True
+
+            def exec_list(steps):
+                for st in steps:
+                    exec_step(st)
+
+            def exec_step(st):
+                if "choose" in st:
+                    for branch in st["choose"]:
+                        if conds_ok(branch["conditions"]):
+                            return exec_list(branch["sequence"])
+                    return exec_list(st.get("default", []))
+                if "wait_template" in st:
+                    state["helper"] = "on"  # the second tap, during the wait; its trigger is ignored in single mode
+                    if env["heater_comes_on"]:
+                        state["heater"] = "on"
+                    elif "timeout" not in st or not st.get("continue_on_timeout"):
+                        raise Abort()
+                    return
+                act = st["action"]
+                if act == "input_boolean.turn_off":
+                    state["helper"] = "off"
+                elif act == "switch.turn_on":
+                    if env["heater_call_fails"]:
+                        if not st.get("continue_on_error"):
+                            raise Abort()
+                elif act == "mqtt.publish":
+                    if env["mqtt_fails"]:
+                        if not st.get("continue_on_error"):
+                            raise Abort()
+                    else:
+                        state["published"].append(st["data"]["payload"])
+
+            try:
+                exec_list(AUTO["actions"])
+            except Abort:
+                pass
+            return state
+
+        for heater_call_fails in (False, True):
+            for heater_comes_on in (False, True):
+                for mqtt_fails in (False, True):
+                    for temp, heater in ((70, "off"), (30, "off"), (None, "off"), (70, "on")):
+                        env = dict(temp=temp, heater=heater, heater_call_fails=heater_call_fails,
+                                   heater_comes_on=heater_comes_on, mqtt_fails=mqtt_fails)
+                        end = run(env)
+                        self.assertEqual(end["helper"], "off", env)
+                        if not mqtt_fails:
+                            joined = " ".join(end["published"])
+                            if "HEATER_PREHEAT_STARTED" in joined:
+                                self.assertTrue(heater_comes_on, "STARTED published although the heater never reported on")
 
     def test_failed_heater_call_does_not_abort_and_is_not_reported_as_started(self):
         seq = choose_step()["choose"][0]["sequence"]

@@ -20,8 +20,8 @@
 #   - Every press publishes one INFO event to cabin/event/INFO so the hub's audit
 #     trail records whether the heater was started (only when it reports on), failed
 #     to start, or why it was skipped.
-#   - Resets the helper first, before any step that can fail, so the next tap always
-#     triggers again.
+#   - Resets the helper first, before any step that can fail, and again as the last
+#     action, so the next tap always triggers again even if a tap arrived mid-run.
 #   - Does not turn the heater off; that stays a manual step (heater-control.md).
 input_boolean:
   on_the_way_to_cabin:
@@ -38,8 +38,10 @@ automation:
         to: "on"
     actions:
       # Reset first, so a failure in any later step (heater service, MQTT) can never leave the helper on. With the
-      # helper stuck on, the next tap could not produce the off-to-on change this automation triggers on. mode: single
-      # means a second tap during the few seconds this run takes is ignored, which is intended.
+      # helper stuck on, the next tap could not produce the off-to-on change this automation triggers on.
+      # mode: single ignores a second tap while this run is active (up to the 15 s wait). That tap still turns the
+      # helper back on, so the same reset runs again as the last action, after every failure-tolerant branch: an
+      # ignored tap can never strand the helper on. The ignored tap starts nothing; tap again after the run ends.
       - action: input_boolean.turn_off
         target:
           entity_id: input_boolean.on_the_way_to_cabin
@@ -103,3 +105,7 @@ automation:
                             ~ " F (needs a known value above 38 F) and heater is "
                             ~ states('switch.heater_mech_room') ~ " (needs off)."
                 } | tojson }}
+      # Final cleanup, always reached: every step above tolerates its own failure or timeout.
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.on_the_way_to_cabin
