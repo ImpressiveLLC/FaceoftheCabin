@@ -1,0 +1,142 @@
+{
+  "status": "Authored regression questions, not gold or sealed evaluation",
+  "baseline": "e8b32bb2c5bcd4f2281a213c33456e89b955c873",
+  "cases": [
+    {
+      "id": "stack_ownership_1",
+      "category": "stack_ownership",
+      "section": "stack-ownership-and-networks",
+      "audience": "administrator",
+      "question": "Which Compose files define stack ownership?",
+      "expectedText": "two Compose layers"
+    },
+    {
+      "id": "stack_ownership_2",
+      "category": "stack_ownership",
+      "section": "stack-ownership-and-networks",
+      "audience": "administrator",
+      "question": "Does the stack map mean I should start base Compose alone?",
+      "expectedText": "not equivalent"
+    },
+    {
+      "id": "stack_app_ports_1",
+      "category": "stack_app_ports",
+      "section": "application-ports-and-internal-listeners",
+      "audience": "administrator",
+      "question": "What are the application ports for the UI and backend?",
+      "expectedText": "4080 -> 80"
+    },
+    {
+      "id": "stack_app_ports_2",
+      "category": "stack_app_ports",
+      "section": "application-ports-and-internal-listeners",
+      "audience": "administrator",
+      "question": "Does the discovery port have the same host and container number?",
+      "expectedText": "8091 -> 8000"
+    },
+    {
+      "id": "stack_device_ports_1",
+      "category": "stack_device_ports",
+      "section": "device-stack-ports",
+      "audience": "administrator",
+      "question": "Which support ports belong to the device stack?",
+      "expectedText": "8555 -> 8555 TCP and UDP"
+    },
+    {
+      "id": "stack_device_ports_2",
+      "category": "stack_device_ports",
+      "section": "device-stack-ports",
+      "audience": "administrator",
+      "question": "Does Homeassistant networking use a host-to-container mapping?",
+      "expectedText": "does not use a Compose"
+    },
+    {
+      "id": "stack_browser_1",
+      "category": "stack_browser",
+      "section": "browser-requests-and-api-proxy",
+      "audience": "administrator",
+      "question": "Where does the API proxy send requests?",
+      "expectedText": "cabin-backend:8090"
+    },
+    {
+      "id": "stack_browser_2",
+      "category": "stack_browser",
+      "section": "browser-requests-and-api-proxy",
+      "audience": "administrator",
+      "question": "Does the browser route prove that API access is authorized?",
+      "expectedText": "authentication and authorization still apply"
+    },
+    {
+      "id": "stack_telemetry_1",
+      "category": "stack_telemetry",
+      "section": "telemetry-and-camera-connections",
+      "audience": "administrator",
+      "question": "What is the telemetry path from MQTT to stored events?",
+      "expectedText": "cabin.events.raw"
+    },
+    {
+      "id": "stack_telemetry_2",
+      "category": "stack_telemetry",
+      "section": "telemetry-and-camera-connections",
+      "audience": "administrator",
+      "question": "Does a working telemetry path prove camera frames are arriving?",
+      "expectedText": "different evidence"
+    },
+    {
+      "id": "stack_model_1",
+      "category": "stack_model",
+      "section": "model-runtime-connections",
+      "audience": "administrator",
+      "question": "Is the Ollama port published on the host?",
+      "expectedText": "no published host port"
+    },
+    {
+      "id": "stack_model_2",
+      "category": "stack_model",
+      "section": "model-runtime-connections",
+      "audience": "administrator",
+      "question": "Does a model connection prove the required model is installed?",
+      "expectedText": "does not prove a required model"
+    },
+    {
+      "id": "stack_home_1",
+      "category": "stack_home",
+      "section": "home-collector-and-cabin-host",
+      "audience": "administrator",
+      "question": "Is the Home collector a second cabin backend?",
+      "expectedText": "not a second cabin backend"
+    },
+    {
+      "id": "stack_home_2",
+      "category": "stack_home",
+      "section": "home-collector-and-cabin-host",
+      "audience": "administrator",
+      "question": "Does the Home collector stop when HOME_HA_DEPLOYED is false?",
+      "expectedText": "does not disable the Home collector"
+    },
+    {
+      "id": "stack_app_ports_natural",
+      "category": "stack_app_ports",
+      "section": "application-ports-and-internal-listeners",
+      "audience": "administrator",
+      "question": "Which port does the backend use?",
+      "expectedText": "8090"
+    },
+    {
+      "id": "stack_device_ports_natural",
+      "category": "stack_device_ports",
+      "section": "device-stack-ports",
+      "audience": "administrator",
+      "question": "What is the Home Assistant port?",
+      "expectedText": "8123"
+    },
+    {
+      "id": "stack_telemetry_natural",
+      "category": "stack_telemetry",
+      "section": "telemetry-and-camera-connections",
+      "audience": "administrator",
+      "question": "How does telemetry get from MQTT to Kafka?",
+      "expectedText": "cabin.events.raw"
+    }
+  ]
+}

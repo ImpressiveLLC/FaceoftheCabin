@@ -1,0 +1,166 @@
+{
+  "status": "Authored regression questions, not gold or sealed evaluation",
+  "baseline": "e8b32bb2c5bcd4f2281a213c33456e89b955c873",
+  "cases": [
+    {
+      "id": "cap_dependencies_1",
+      "category": "cap_dependencies",
+      "section": "feature-prerequisites-and-evidence",
+      "audience": "administrator",
+      "question": "What are the feature prerequisites for camera media?",
+      "expectedText": "available event/clip/live data"
+    },
+    {
+      "id": "cap_dependencies_2",
+      "category": "cap_dependencies",
+      "section": "feature-prerequisites-and-evidence",
+      "audience": "administrator",
+      "question": "Do feature dependencies prove that a visible button works end to end?",
+      "expectedText": "does not establish"
+    },
+    {
+      "id": "cap_api_base_1",
+      "category": "cap_api_base",
+      "section": "api-bases-and-browser-destinations",
+      "audience": "administrator",
+      "question": "How does the API base differ from the route?",
+      "expectedText": "chooses the server"
+    },
+    {
+      "id": "cap_api_base_2",
+      "category": "cap_api_base",
+      "section": "api-bases-and-browser-destinations",
+      "audience": "administrator",
+      "question": "Can a new API base redirect a signed-in request to another origin?",
+      "expectedText": "rejects redirects"
+    },
+    {
+      "id": "cap_access_1",
+      "category": "cap_access",
+      "section": "caller-boundaries-and-read-exceptions",
+      "audience": "administrator",
+      "question": "Do route permissions make every GET public?",
+      "expectedText": "not use a rule that every GET is public"
+    },
+    {
+      "id": "cap_access_2",
+      "category": "cap_access",
+      "section": "caller-boundaries-and-read-exceptions",
+      "audience": "administrator",
+      "question": "Do caller boundaries let a managed Viewer send POST requests?",
+      "expectedText": "refused non-GET requests"
+    },
+    {
+      "id": "cap_helpdesk_1",
+      "category": "cap_helpdesk",
+      "section": "ask-routes-and-proposal-prerequisites",
+      "audience": "administrator",
+      "question": "Which helpdesk endpoint returns documentation answers?",
+      "expectedText": "POST /api/helpdesk/ask"
+    },
+    {
+      "id": "cap_helpdesk_2",
+      "category": "cap_helpdesk",
+      "section": "ask-routes-and-proposal-prerequisites",
+      "audience": "administrator",
+      "question": "Do proposal prerequisites mean that a proposal executes a device action?",
+      "expectedText": "proposals, not execution"
+    },
+    {
+      "id": "cap_devices_1",
+      "category": "cap_devices",
+      "section": "device-routes-and-home-assistant-actions",
+      "audience": "administrator",
+      "question": "What do device routes require before sending a command?",
+      "expectedText": "enabled, active-use"
+    },
+    {
+      "id": "cap_devices_2",
+      "category": "cap_devices",
+      "section": "device-routes-and-home-assistant-actions",
+      "audience": "administrator",
+      "question": "Do HA prerequisites make a timeout proof that nothing happened?",
+      "expectedText": "outcome is unknown"
+    },
+    {
+      "id": "cap_events_1",
+      "category": "cap_events",
+      "section": "event-routes-and-telemetry-prerequisites",
+      "audience": "administrator",
+      "question": "Which event routes are open numeric history reads?",
+      "expectedText": "GET /api/events/telemetry-history"
+    },
+    {
+      "id": "cap_events_2",
+      "category": "cap_events",
+      "section": "event-routes-and-telemetry-prerequisites",
+      "audience": "administrator",
+      "question": "Do export permissions allow a guest link to export all history?",
+      "expectedText": "additionally requires an administrator"
+    },
+    {
+      "id": "cap_cameras_1",
+      "category": "cap_cameras",
+      "section": "camera-routes-and-media-prerequisites",
+      "audience": "administrator",
+      "question": "Which camera routes start and stop live view?",
+      "expectedText": "liveview/start"
+    },
+    {
+      "id": "cap_cameras_2",
+      "category": "cap_cameras",
+      "section": "camera-routes-and-media-prerequisites",
+      "audience": "administrator",
+      "question": "Do camera routes include pan tilt zoom controls?",
+      "expectedText": "no backend PTZ route"
+    },
+    {
+      "id": "cap_family_1",
+      "category": "cap_family",
+      "section": "family-notes-routes-and-synchronization",
+      "audience": "administrator",
+      "question": "What do notes routes need for server synchronization?",
+      "expectedText": "backend persistence"
+    },
+    {
+      "id": "cap_family_2",
+      "category": "cap_family",
+      "section": "family-notes-routes-and-synchronization",
+      "audience": "administrator",
+      "question": "Does notes synchronization bind authorId to the signed-in principal?",
+      "expectedText": "does not bind it"
+    },
+    {
+      "id": "cap_rules_1",
+      "category": "cap_rules",
+      "section": "workflow-routes-and-alert-acknowledgments",
+      "audience": "administrator",
+      "question": "What do workflow routes require before a manual fire?",
+      "expectedText": "existing enabled MANUAL"
+    },
+    {
+      "id": "cap_rules_2",
+      "category": "cap_rules",
+      "section": "workflow-routes-and-alert-acknowledgments",
+      "audience": "administrator",
+      "question": "Do acknowledgment permissions waive explicit CRITICAL confirmation?",
+      "expectedText": "POST returns 409"
+    },
+    {
+      "id": "cap_helpdesk_natural",
+      "category": "cap_helpdesk",
+      "section": "ask-routes-and-proposal-prerequisites",
+      "audience": "administrator",
+      "question": "What does the propose route need?",
+      "expectedText": "/api/helpdesk/propose"
+    },
+    {
+      "id": "cap_devices_natural",
+      "category": "cap_devices",
+      "section": "device-routes-and-home-assistant-actions",
+      "audience": "administrator",
+      "question": "Who can call POST /api/ha/services?",
+      "expectedText": "switch"
+    }
+  ]
+}

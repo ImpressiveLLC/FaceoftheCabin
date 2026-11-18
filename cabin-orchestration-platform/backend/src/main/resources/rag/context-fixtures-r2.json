@@ -2147,6 +2147,473 @@
       ]
     },
     {
+      "id": "credential_inventory",
+      "description": "Administrator: where each credential lives, what changes it, what breaks when it is blank, rotation versus recovery (W-117 C2 slice 3). Its own category so credential-location questions keep only credentials-and-access and their budget.",
+      "keywordPatterns": [
+        "rotate a secret",
+        "secret rotation",
+        "credential inventory",
+        "where each credential",
+        "each credential",
+        "ansible vault",
+        "rotation versus recovery"
+      ],
+      "questions": [],
+      "contextNodes": [
+        {
+          "entityRef": "platform.credentials",
+          "chunkType": "SETUP"
+        }
+      ],
+      "oracleRefs": [
+        "K08",
+        "K09"
+      ],
+      "boost": 1,
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/configuration.md",
+          "section": "where-each-credential-lives-and-how-it-changes",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "identity_admin",
+      "description": "Administrator: how someone becomes an administrator (ADMIN_EMAILS; a managed session never is one) (W-117 C2 slice 3)",
+      "keywordPatterns": [
+        "become an administrator",
+        "become an admin",
+        "make someone an administrator",
+        "make someone an admin",
+        "admin_emails",
+        "administrator list"
+      ],
+      "questions": [],
+      "contextNodes": [
+        {
+          "entityRef": "platform.credentials",
+          "chunkType": "DESCRIPTION"
+        }
+      ],
+      "oracleRefs": [
+        "K08"
+      ],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/access-and-storage.md",
+          "section": "how-someone-becomes-an-administrator",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "identity_sessions",
+      "description": "Administrator: the three kinds of sign-in session, how long each lasts and what ends it (W-117 C2 slice 3)",
+      "keywordPatterns": [
+        "30-day session",
+        "stay signed in",
+        "keep me signed in",
+        "signed in for",
+        "sign out everywhere",
+        "session last",
+        "session expire"
+      ],
+      "questions": [],
+      "contextNodes": [
+        {
+          "entityRef": "platform.credentials",
+          "chunkType": "DESCRIPTION"
+        }
+      ],
+      "oracleRefs": [
+        "K08"
+      ],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/access-and-storage.md",
+          "section": "sign-in-sessions-google-30-day-sessions-and-managed-sessions",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "identity_guest_link_checks",
+      "description": "Administrator: what the server checks when a guest link is made, and the scopes it honours (W-117 C2 slice 3)",
+      "keywordPatterns": [
+        "link scope",
+        "guest link scope"
+      ],
+      "questions": [],
+      "contextNodes": [
+        {
+          "entityRef": "platform.credentials",
+          "chunkType": "DESCRIPTION"
+        }
+      ],
+      "oracleRefs": [
+        "K08"
+      ],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/access-and-storage.md",
+          "section": "what-the-server-checks-when-a-guest-link-is-made",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "identity_sign_in_link",
+      "description": "Administrator: why the managed sign-in link opens without signing in, single use, 30 minutes (W-117 C2 slice 3)",
+      "keywordPatterns": [
+        "link work without signing in",
+        "link open without signing in",
+        "link work once",
+        "link only work once"
+      ],
+      "questions": [],
+      "contextNodes": [
+        {
+          "entityRef": "platform.credentials",
+          "chunkType": "DESCRIPTION"
+        }
+      ],
+      "oracleRefs": [
+        "K08"
+      ],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/access-and-storage.md",
+          "section": "why-the-sign-in-link-opens-without-signing-in",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "stack_ownership",
+      "description": "W-117 C2 source stack map: stack-ownership-and-networks",
+      "boost": 0,
+      "keywordPatterns": [
+        "stack ownership",
+        "compose ownership",
+        "stack map"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/stack-map.md",
+          "section": "stack-ownership-and-networks",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "stack_app_ports",
+      "description": "W-117 C2 source stack map: application-ports-and-internal-listeners",
+      "boost": 0,
+      "keywordPatterns": [
+        "application ports",
+        "backend port",
+        "discovery port",
+        "backend use"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/stack-map.md",
+          "section": "application-ports-and-internal-listeners",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "stack_device_ports",
+      "description": "W-117 C2 source stack map: device-stack-ports",
+      "boost": 0,
+      "keywordPatterns": [
+        "device ports",
+        "support ports",
+        "frigate port",
+        "homeassistant networking",
+        "home assistant port"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/stack-map.md",
+          "section": "device-stack-ports",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "stack_browser",
+      "description": "W-117 C2 source stack map: browser-requests-and-api-proxy",
+      "boost": 0,
+      "keywordPatterns": [
+        "browser route",
+        "api proxy",
+        "nginx routing",
+        "browser requests",
+        "streaming proxy"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/stack-map.md",
+          "section": "browser-requests-and-api-proxy",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "stack_telemetry",
+      "description": "W-117 C2 source stack map: telemetry-and-camera-connections",
+      "boost": 0,
+      "keywordPatterns": [
+        "telemetry path",
+        "mqtt kafka",
+        "event path",
+        "mqtt to kafka"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/stack-map.md",
+          "section": "telemetry-and-camera-connections",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "stack_model",
+      "description": "W-117 C2 source stack map: model-runtime-connections",
+      "boost": 0,
+      "keywordPatterns": [
+        "model connection",
+        "ollama port",
+        "model network"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/stack-map.md",
+          "section": "model-runtime-connections",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "stack_home",
+      "description": "W-117 C2 source stack map: home-collector-and-cabin-host",
+      "boost": 1,
+      "keywordPatterns": [
+        "home collector",
+        "collector host",
+        "collector network"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/stack-map.md",
+          "section": "home-collector-and-cabin-host",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_dependencies",
+      "description": "W-117 C2 capability route reference: feature-prerequisites-and-evidence",
+      "boost": 0,
+      "keywordPatterns": [
+        "feature prerequisites",
+        "feature dependencies"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "feature-prerequisites-and-evidence",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_api_base",
+      "description": "W-117 C2 capability route reference: api-bases-and-browser-destinations",
+      "boost": 0,
+      "keywordPatterns": [
+        "api base",
+        "api bases",
+        "browser destinations"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "api-bases-and-browser-destinations",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_access",
+      "description": "W-117 C2 capability route reference: caller-boundaries-and-read-exceptions",
+      "boost": 0,
+      "keywordPatterns": [
+        "caller boundaries",
+        "route permissions"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "caller-boundaries-and-read-exceptions",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_helpdesk",
+      "description": "W-117 C2 capability route reference: ask-routes-and-proposal-prerequisites",
+      "boost": 0,
+      "keywordPatterns": [
+        "helpdesk endpoint",
+        "proposal prerequisites",
+        "ask routes",
+        "propose route"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "ask-routes-and-proposal-prerequisites",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_devices",
+      "description": "W-117 C2 capability route reference: device-routes-and-home-assistant-actions",
+      "boost": 0,
+      "keywordPatterns": [
+        "device routes",
+        "ha actions",
+        "ha prerequisites",
+        "call post /api/ha/services"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "device-routes-and-home-assistant-actions",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_events",
+      "description": "W-117 C2 capability route reference: event-routes-and-telemetry-prerequisites",
+      "boost": 0,
+      "keywordPatterns": [
+        "event routes",
+        "telemetry prerequisites",
+        "export permissions"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "event-routes-and-telemetry-prerequisites",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_cameras",
+      "description": "W-117 C2 capability route reference: camera-routes-and-media-prerequisites",
+      "boost": 0,
+      "keywordPatterns": [
+        "camera routes",
+        "media prerequisites"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "camera-routes-and-media-prerequisites",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_family",
+      "description": "W-117 C2 capability route reference: family-notes-routes-and-synchronization",
+      "boost": 0,
+      "keywordPatterns": [
+        "notes routes",
+        "notes synchronization"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "family-notes-routes-and-synchronization",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "cap_rules",
+      "description": "W-117 C2 capability route reference: workflow-routes-and-alert-acknowledgments",
+      "boost": 0,
+      "keywordPatterns": [
+        "workflow routes",
+        "acknowledgment permissions",
+        "alert routes"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/capability-routes.md",
+          "section": "workflow-routes-and-alert-acknowledgments",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
       "id": "recreation_plan",
       "description": "W-117 C2 recreation coverage: existing establish-the-actual-installation-plan section",
       "boost": 0,
@@ -2201,6 +2668,10 @@
     "2026-11-05 W-151 matcher: keyword endings widened (s, es, ed, d, ing, ings, ly, er, ers, ation, ations); categories tied for the top score are all kept in declaration order instead of the first winning (later tied categories add only sections that fit whole in the remaining document budget, duplicates dropped). Keywords and sections unchanged.",
     "2026-11-18 W-117 C2 slice 1: five administrator categories (config_env_blink_camera, config_env_vaultwarden, config_env_weather, config_env_addresses, config_env_instance), one per reference section in configuration.md, so tied categories stay inside the 6000-character document budget. Source review only; no frozen question declares them, nothing is ingested or trained.",
     "2026-11-18 W-117 C2 slice 2: source-reviewed operations/recovery reference mapped in bounded role-gated sections. Offline routing/context checks only; no model run, training or restore rehearsal.",
+    "2026-11-18 W-117 C2 slice 3 (identity and credentials): four new administrator categories, one section each: identity_admin, identity_sessions, identity_guest_link_checks, identity_sign_in_link (split after the #490 review so a tie with credential_redaction still delivers the asked-for section); the credential inventory is its own administrator category, credential_inventory (boost 1), so credential_redaction is unchanged and credential-location questions keep only credentials-and-access within budget (after #487, adding the inventory to credential_redaction pushed recovery sections out of a tied bundle). Credential-location questions keep credentials-and-access.",
+    "2026-11-18 W-117 C2 slice 4: seven bounded administrator stack-map sections, source declarations only. No live topology, model execution, training or infrastructure change.",
+    "2026-11-18 W-117 C2 slice 5: bounded administrator feature prerequisites, browser API bases and backend caller boundaries. Source review only; no model, device or host execution.",
+    "2026-11-18 W-117 C2 slice 8: three stack and two capability phrasing aliases; existing zero boosts unchanged. Delivered-content and credential-priority regressions; no matcher/runtime/model change.",
     "2026-11-18 W-117 C2 slice 6: map the existing installation plan and acceptance record as bounded administrator sections. Existing inputs, limitations and presence mappings unchanged; no duplicate installer or execution."
   ]
 }
