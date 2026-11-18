@@ -17,8 +17,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * C2 tail installation phrasings, part 1 (#498 plan, Cowork's #493 review questions). "How do I recreate the instance on a
  * new machine?" used to match nothing, and "What are the acceptance checks for recreating the instance?" went to device
  * onboarding. Each now delivers the existing administrator plan or acceptance section whole. The two clean-machine and
- * blank-machine phrasings are deliberately unchanged here (their sections do not fit beside the installation limits within
- * the budget) and stay known gaps pending a budget ruling. Other roles receive nothing, credential questions keep
+ * blank-machine phrasings were initially known gaps. The accepted C1 condensation and acceptance-record tie now deliver
+ * the blank-machine acceptance bundle; the clean-machine plan remains a known gap. Other roles receive nothing, credential questions keep
  * credentials-and-access whole, and ordinary device-import acceptance questions keep their category.
  */
 class AskRecreateInstanceContextTest {
@@ -75,6 +75,58 @@ class AskRecreateInstanceContextTest {
             List<KnowledgeNode> nodes = builder.buildContext(q, HouseholdRole.ADMINISTRATOR);
             assertThat(nodes).as(q).anyMatch(n -> n.entityRef().endsWith("#credentials-and-access") && n.content().equals(guidance));
             assertThat(total(nodes)).as(q).isLessThanOrEqualTo(6000);
+        }
+    }
+
+    /** C1 #512: preserve both setup sections while adding the whole acceptance record within the fixed budget. */
+    @Test
+    void blankMachineAcceptanceKeepsTheWholeSetupBundleWithinBudget() {
+        String question = "What goes in the installation acceptance record when I install on a blank machine?";
+        assertThat(builder.categoryIdsFor(question)).containsExactly("installation", "recreation_acceptance_record");
+        List<String> sections = List.of("minimum-inputs", "verified-clean-host-limitations", "acceptance-record");
+        List<KnowledgeNode> nodes = builder.buildContext(question, HouseholdRole.ADMINISTRATOR);
+        assertThat(nodes.stream().map(KnowledgeNode::entityRef)).containsExactlyElementsOf(
+            sections.stream().map(section -> "doc:" + GUIDE + "#" + section).toList());
+        for (String section : sections) {
+            String expected = source.section(GUIDE, section).orElseThrow().text();
+            assertThat(nodes).anyMatch(n -> n.entityRef().endsWith("#" + section) && n.content().equals(expected));
+        }
+        // The reviewed bundle is 5990 characters. Growth beyond its 10-character margin must fail, not hide a section.
+        int sourceBundle = sections.stream().mapToInt(section -> source.section(GUIDE, section).orElseThrow().text().length()).sum();
+        assertThat(sourceBundle).isLessThanOrEqualTo(6000);
+        assertThat(total(nodes)).isEqualTo(sourceBundle);
+        for (HouseholdRole role : Arrays.asList(HouseholdRole.ADULT_HOUSEHOLD_MEMBER, HouseholdRole.CHILD,
+                HouseholdRole.KIOSK_DISPLAY, HouseholdRole.SERVICE, null)) {
+            assertThat(builder.buildContext(question, role)).as("acceptance bundle / " + role).isEmpty();
+        }
+    }
+
+    @Test
+    void acceptanceRecordCredentialOverlapRetainsWholeCredentialGuidance() {
+        String guidance = source.section("ai-assistant/user-guide/configuration.md", "credentials-and-access").orElseThrow().text();
+        for (String credential : List.of("password", "token", "secret")) {
+            String question = "Where is the " + credential + " for the installation acceptance record?";
+            assertThat(builder.categoryIdsFor(question)).containsExactly("credential_redaction", "recreation_acceptance_record");
+            List<KnowledgeNode> nodes = builder.buildContext(question, HouseholdRole.ADMINISTRATOR);
+            assertThat(nodes).anyMatch(n -> n.entityRef().endsWith("#credentials-and-access") && n.content().equals(guidance));
+            assertThat(total(nodes)).isLessThanOrEqualTo(6000);
+            for (HouseholdRole role : Arrays.asList(HouseholdRole.ADULT_HOUSEHOLD_MEMBER, HouseholdRole.CHILD,
+                    HouseholdRole.KIOSK_DISPLAY, HouseholdRole.SERVICE, null)) {
+                assertThat(builder.buildContext(question, role)).as(question + " / " + role).isEmpty();
+            }
+        }
+    }
+
+    @Test
+    void otherProductsAcceptanceRecordsDoNotSelectTheInstanceRecord() {
+        for (String subject : List.of("a Zigbee device", "a guest link", "a rule", "Home Assistant", "Frigate")) {
+            String question = "What goes in the acceptance record for " + subject + "?";
+            assertThat(builder.categoryIdsFor(question)).as(question).doesNotContain("recreation_acceptance_record");
+            for (HouseholdRole role : Arrays.asList(HouseholdRole.ADMINISTRATOR, HouseholdRole.ADULT_HOUSEHOLD_MEMBER,
+                    HouseholdRole.CHILD, HouseholdRole.KIOSK_DISPLAY, HouseholdRole.SERVICE, null)) {
+                assertThat(builder.buildContext(question, role)).as(question + " / " + role)
+                    .noneMatch(n -> n.entityRef().endsWith(GUIDE + "#acceptance-record"));
+            }
         }
     }
 
