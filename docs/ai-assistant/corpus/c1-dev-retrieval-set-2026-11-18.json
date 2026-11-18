@@ -807,7 +807,7 @@
       "expectedSection": "ai-assistant/user-guide/independent-installation.md#establish-the-actual-installation-plan",
       "audience": "administrator",
       "source": "#493 advisory 6978458407",
-      "knownGap": "installation phrasing gap"
+      "knownGap": "installation phrasing gap; delivery needs a budget ruling: the plan or acceptance section does not fit beside the installation category's two sections within 6000 characters"
     },
     {
       "id": "install_gap_2",
@@ -816,7 +816,7 @@
       "expectedSection": "ai-assistant/user-guide/independent-installation.md#acceptance-record",
       "audience": "administrator",
       "source": "#493 advisory 6978458407",
-      "knownGap": "installation phrasing gap"
+      "knownGap": "installation phrasing gap; delivery needs a budget ruling: the plan or acceptance section does not fit beside the installation category's two sections within 6000 characters"
     },
     {
       "id": "install_gap_3",
@@ -824,8 +824,7 @@
       "expectedCategory": "recreation_plan",
       "expectedSection": "ai-assistant/user-guide/independent-installation.md#establish-the-actual-installation-plan",
       "audience": "administrator",
-      "source": "#493 Cowork review 6979193217",
-      "knownGap": "installation phrasing gap"
+      "source": "#493 Cowork review 6979193217"
     },
     {
       "id": "install_gap_4",
@@ -833,8 +832,7 @@
       "expectedCategory": "recreation_acceptance",
       "expectedSection": "ai-assistant/user-guide/independent-installation.md#acceptance-record",
       "audience": "administrator",
-      "source": "#493 Cowork review 6979193217",
-      "knownGap": "installation phrasing gap"
+      "source": "#493 Cowork review 6979193217"
     }
   ]
 }
