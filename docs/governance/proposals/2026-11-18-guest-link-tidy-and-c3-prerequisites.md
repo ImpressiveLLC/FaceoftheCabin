@@ -37,7 +37,7 @@ Both wordings are contrived. Neither is in the 150 coverage-map phrasings or the
 - **Now: Option 1 (A)** for both the merged #512 phrase and the #515 candidate, so the plan fix can ship with its limitation pinned honestly rather than masked by a weakened negative.
 - **Later: Option 2** as its own small design-then-implementation slice after install_gap_1 lands, measured against the C1 baseline like the other tail fixes.
 
-This answers Codex's A/B question with **A plus a scheduled B-style follow-up**, if Cowork agrees.
+This answers Codex's A/B question with **A plus a scheduled B-style follow-up**. **Ruled:** Cowork chose option A on #244 ([6991093994](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/244#issuecomment-6991093994)). #516 pins the actual behavior in a test that names itself a limitation. Option 2 follows after install_gap_1, designed by Code.
 
 ## Part B: C3 (one-stop Ask) prerequisites
 
@@ -66,11 +66,11 @@ C3, as recorded in [wsjf-backlog.md](../../ai-assistant/wsjf-backlog.md), augmen
    The rule from C1 stands: answers cite only what was delivered.
 4. **A live-read boundary.** A written contract for which existing role-appropriate live reads (sensor and health) C3 may call, so static RAG is never substituted for a current reading. It uses existing endpoints only, and no actions are executed.
 5. **A browser journey harness.** The exit evidence needs real HTTP and browser journeys (task completion, clarifications, recovery). The Ask panel needs a Playwright journey in the UI test suite: no new infrastructure, with the model stubbed for deterministic UI checks and the real model only in authorized live runs.
-6. **A clean-room walkthrough owner.** The exit evidence requires a clean-room setup walkthrough without hidden maintainer knowledge. That is the same open "real-environment operator" role as for the sealed set, so name one person or agent for both.
+6. **A clean-room walkthrough owner.** The exit evidence requires a clean-room setup walkthrough without hidden maintainer knowledge, so someone must be named to own it. Sharing this role with the sealed-set "real-environment operator" is **optional** and **conditional** on the custody design's eligibility checks: actual exposure, conflicting roles and effective access, with any actor overlap recorded. Naming one person or agent is not evidence of isolation. It does not replace environment or device qualification, and it does not bypass the remaining independent verifiers (domain and barrier). Protected execution stays separate from ordinary coding and orchestration access. Source: [custody design](../../ai-assistant/proposals/ask-custody-agent-and-cloud-r3-deferral.md), eligibility criteria and access matrix.
 
 ### Not prerequisites (stay parked)
 
-- C1b (pgvector or embeddings): only if measured context limits require it. At 6000 characters with 0 over budget, they do not.
+- C1b (pgvector or embeddings): stays parked pending the measurements its own conditional scope names. That means context fit, **and** latency and cost, as recorded in [wsjf-backlog.md's C1 entry](../../ai-assistant/wsjf-backlog.md), followed by ratification. Zero over-budget deliveries at 6000 characters do **not** show that context limits are absent: the builder enforces the cap by skipping or truncating content, and whole sections were measured as omitted under that same zero-over-budget metric (M04 and the installation rows). No conclusion about C1b's necessity is drawn here.
 - The intent and slot lanes (#420, #421), training, any new model and the GPU host purchase.
 
 ## Requested rulings
