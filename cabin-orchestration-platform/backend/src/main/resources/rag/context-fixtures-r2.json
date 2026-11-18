@@ -1934,6 +1934,217 @@
           "audience": "administrator"
         }
       ]
+    },
+    {
+      "id": "recovery_checks",
+      "description": "W-117 C2 operations reference: recovery-checks-and-notices",
+      "boost": 0,
+      "keywordPatterns": [
+        "recovery check",
+        "heartbeat stop",
+        "heartbeat restart",
+        "heartbeat notices"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/operations-recovery-reference.md",
+          "section": "recovery-checks-and-notices",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "recovery_install",
+      "description": "W-117 C2 operations reference: recovery-installation-and-tuning",
+      "boost": 0,
+      "keywordPatterns": [
+        "install recovery",
+        "recovery tuning",
+        "hb_miss_limit",
+        "heartbeat installation"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/operations-recovery-reference.md",
+          "section": "recovery-installation-and-tuning",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "recovery_deadman",
+      "description": "W-117 C2 operations reference: external-dead-man-monitoring",
+      "boost": 0,
+      "keywordPatterns": [
+        "dead-man",
+        "deadman",
+        "external heartbeat",
+        "stop_max_minutes"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/operations-recovery-reference.md",
+          "section": "external-dead-man-monitoring",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "recovery_key",
+      "description": "W-117 C2 operations reference: monitoring-key-access",
+      "boost": 0,
+      "keywordPatterns": [
+        "monitoring key",
+        "monitor key",
+        "recovery ssh",
+        "restricted ssh"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/operations-recovery-reference.md",
+          "section": "monitoring-key-access",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "recovery_triage",
+      "description": "W-117 C2 operations reference: incident-triage-for-the-household",
+      "boost": 0,
+      "keywordPatterns": [
+        "incident triage",
+        "report a sync problem"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/operations-recovery-reference.md",
+          "section": "incident-triage-for-the-household",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "recovery_restore",
+      "description": "W-117 C2 operations reference: restore-status-by-store",
+      "boost": 0,
+      "keywordPatterns": [
+        "restore status",
+        "restore postgres",
+        "restore kafka",
+        "restore vaultwarden",
+        "restore home assistant",
+        "restore frigate",
+        "restore grafana"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/operations-recovery-reference.md",
+          "section": "restore-status-by-store",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "recovery_nodered",
+      "description": "W-117 C2 operations reference: node-red-login-recovery",
+      "boost": 0,
+      "keywordPatterns": [
+        "node-red login",
+        "node red login",
+        "node-red password rotation"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/operations-recovery-reference.md",
+          "section": "node-red-login-recovery",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "recovery_grafana",
+      "description": "W-117 C2 operations reference: grafana-login-outside-the-embedded-panel",
+      "boost": 0,
+      "keywordPatterns": [
+        "grafana login",
+        "grafana blank",
+        "grafana sign in"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/operations-recovery-reference.md",
+          "section": "grafana-login-outside-the-embedded-panel",
+          "audience": "household"
+        }
+      ]
+    },
+    {
+      "id": "recovery_prune",
+      "description": "W-117 C2 operations reference: storage-pruning-boundaries",
+      "boost": 0,
+      "keywordPatterns": [
+        "storage prune",
+        "storage pruning",
+        "cabin-storage-prune"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/operations-recovery-reference.md",
+          "section": "storage-pruning-boundaries",
+          "audience": "administrator"
+        }
+      ]
+    },
+    {
+      "id": "recovery_workflows",
+      "description": "W-117 C2 operations reference: workflow-test-gates",
+      "boost": 0,
+      "keywordPatterns": [
+        "workflow gates",
+        "workflow tests",
+        "test gates",
+        "homeassistant-package-tests",
+        "recovery-heartbeat-tests",
+        "telemetry-export-tests",
+        "eval-fixture-tooling"
+      ],
+      "questions": [],
+      "contextNodes": [],
+      "oracleRefs": [],
+      "contextDocuments": [
+        {
+          "path": "ai-assistant/user-guide/operations-recovery-reference.md",
+          "section": "workflow-test-gates",
+          "audience": "administrator"
+        }
+      ]
     }
   ],
   "r2Changes": [
@@ -1949,6 +2160,7 @@
     "2026-10-27 C2 rewrite r1: answer-shaped leads under six guide headings plus a new live-values-and-ask section; presence-for-each-location moves from installation to the new installation_presence category; live_sensors gains live-values-and-ask first.",
     "2026-10-29 C2 revert (HOLD per RUN-2 decision rule 3 and 4): Edits 3a and 3b (ask-and-helpdesk.md) and 4a with map change M2 (live-values-and-ask, first in live_sensors) removed; ask_helpdesk_behavior and live_sensors context restored to the RUN-1 text. RW-1, RW-2, RW-5, RW-6, K05 and K19 stay.",
     "2026-11-05 W-151 matcher: keyword endings widened (s, es, ed, d, ing, ings, ly, er, ers, ation, ations); categories tied for the top score are all kept in declaration order instead of the first winning (later tied categories add only sections that fit whole in the remaining document budget, duplicates dropped). Keywords and sections unchanged.",
-    "2026-11-18 W-117 C2 slice 1: five administrator categories (config_env_blink_camera, config_env_vaultwarden, config_env_weather, config_env_addresses, config_env_instance), one per reference section in configuration.md, so tied categories stay inside the 6000-character document budget. Source review only; no frozen question declares them, nothing is ingested or trained."
+    "2026-11-18 W-117 C2 slice 1: five administrator categories (config_env_blink_camera, config_env_vaultwarden, config_env_weather, config_env_addresses, config_env_instance), one per reference section in configuration.md, so tied categories stay inside the 6000-character document budget. Source review only; no frozen question declares them, nothing is ingested or trained.",
+    "2026-11-18 W-117 C2 slice 2: source-reviewed operations/recovery reference mapped in bounded role-gated sections. Offline routing/context checks only; no model run, training or restore rehearsal."
   ]
 }
