@@ -1947,27 +1947,15 @@
       ]
     },
     {
-      "id": "identity_sessions",
-      "description": "Administrator: how someone becomes an administrator, the three kinds of sign-in session, server checks on guest links, and why the managed sign-in link opens without signing in (W-117 C2 slice 3)",
+      "id": "identity_admin",
+      "description": "Administrator: how someone becomes an administrator (ADMIN_EMAILS; a managed session never is one) (W-117 C2 slice 3)",
       "keywordPatterns": [
         "become an administrator",
         "become an admin",
         "make someone an administrator",
         "make someone an admin",
         "admin_emails",
-        "administrator list",
-        "30-day session",
-        "stay signed in",
-        "signed in for",
-        "sign out everywhere",
-        "session last",
-        "session expire",
-        "link scope",
-        "guest link scope",
-        "link work once",
-        "link only work once",
-        "link work without signing in",
-        "link open without signing in"
+        "administrator list"
       ],
       "questions": [],
       "contextNodes": [
@@ -1984,17 +1972,84 @@
           "path": "ai-assistant/user-guide/access-and-storage.md",
           "section": "how-someone-becomes-an-administrator",
           "audience": "administrator"
-        },
+        }
+      ]
+    },
+    {
+      "id": "identity_sessions",
+      "description": "Administrator: the three kinds of sign-in session, how long each lasts and what ends it (W-117 C2 slice 3)",
+      "keywordPatterns": [
+        "30-day session",
+        "stay signed in",
+        "keep me signed in",
+        "signed in for",
+        "sign out everywhere",
+        "session last",
+        "session expire"
+      ],
+      "questions": [],
+      "contextNodes": [
+        {
+          "entityRef": "platform.credentials",
+          "chunkType": "DESCRIPTION"
+        }
+      ],
+      "oracleRefs": [
+        "K08"
+      ],
+      "contextDocuments": [
         {
           "path": "ai-assistant/user-guide/access-and-storage.md",
           "section": "sign-in-sessions-google-30-day-sessions-and-managed-sessions",
           "audience": "administrator"
-        },
+        }
+      ]
+    },
+    {
+      "id": "identity_guest_link_checks",
+      "description": "Administrator: what the server checks when a guest link is made, and the scopes it honours (W-117 C2 slice 3)",
+      "keywordPatterns": [
+        "link scope",
+        "guest link scope"
+      ],
+      "questions": [],
+      "contextNodes": [
+        {
+          "entityRef": "platform.credentials",
+          "chunkType": "DESCRIPTION"
+        }
+      ],
+      "oracleRefs": [
+        "K08"
+      ],
+      "contextDocuments": [
         {
           "path": "ai-assistant/user-guide/access-and-storage.md",
           "section": "what-the-server-checks-when-a-guest-link-is-made",
           "audience": "administrator"
-        },
+        }
+      ]
+    },
+    {
+      "id": "identity_sign_in_link",
+      "description": "Administrator: why the managed sign-in link opens without signing in, single use, 30 minutes (W-117 C2 slice 3)",
+      "keywordPatterns": [
+        "link work without signing in",
+        "link open without signing in",
+        "link work once",
+        "link only work once"
+      ],
+      "questions": [],
+      "contextNodes": [
+        {
+          "entityRef": "platform.credentials",
+          "chunkType": "DESCRIPTION"
+        }
+      ],
+      "oracleRefs": [
+        "K08"
+      ],
+      "contextDocuments": [
         {
           "path": "ai-assistant/user-guide/access-and-storage.md",
           "section": "why-the-sign-in-link-opens-without-signing-in",
@@ -2017,6 +2072,6 @@
     "2026-10-29 C2 revert (HOLD per RUN-2 decision rule 3 and 4): Edits 3a and 3b (ask-and-helpdesk.md) and 4a with map change M2 (live-values-and-ask, first in live_sensors) removed; ask_helpdesk_behavior and live_sensors context restored to the RUN-1 text. RW-1, RW-2, RW-5, RW-6, K05 and K19 stay.",
     "2026-11-05 W-151 matcher: keyword endings widened (s, es, ed, d, ing, ings, ly, er, ers, ation, ations); categories tied for the top score are all kept in declaration order instead of the first winning (later tied categories add only sections that fit whole in the remaining document budget, duplicates dropped). Keywords and sections unchanged.",
     "2026-11-18 W-117 C2 slice 1: five administrator categories (config_env_blink_camera, config_env_vaultwarden, config_env_weather, config_env_addresses, config_env_instance), one per reference section in configuration.md, so tied categories stay inside the 6000-character document budget. Source review only; no frozen question declares them, nothing is ingested or trained.",
-    "2026-11-18 W-117 C2 slice 3 (identity and credentials): new administrator category identity_sessions (becoming an administrator, sign-in sessions, guest link server checks, why the sign-in link needs no sign-in); credential_redaction gains the credential inventory section after credentials-and-access, which stays first, plus a few inventory and rotation phrases. Credential-location questions keep credentials-and-access."
+    "2026-11-18 W-117 C2 slice 3 (identity and credentials): four new administrator categories, one section each: identity_admin, identity_sessions, identity_guest_link_checks, identity_sign_in_link (split after the #490 review so a tie with credential_redaction still delivers the asked-for section); credential_redaction gains the credential inventory section after credentials-and-access, which stays first, plus a few inventory and rotation phrases. Credential-location questions keep credentials-and-access."
   ]
 }

@@ -162,10 +162,12 @@ Audience: administrator. Source review only at `main` e8b32bb2; nothing was run 
 |---|---|---|---|
 | `POSTGRES_PASSWORD` | Ansible Vault, templated into `infra/.env` | The monthly `rotate-secrets` run (automatic) | The backend cannot reach its database |
 | `GRAFANA_PASSWORD` | Ansible Vault | A manual vault edit plus the matching change in Grafana | Grafana admin sign-in fails |
-| `HA_TOKEN` | Ansible Vault | A manual vault edit plus a new long-lived token in Home Assistant | Backend health goes DOWN on the next recreate |
-| `CAMERA_PASSWORD`, `TECH_ID_API_KEY` | Ansible Vault | A manual vault edit | Camera streams fail; Tech ID submissions get 503 |
-| Vaultwarden admin token and the backend's vault login (client ID, client secret, master password) | Ansible Vault | A manual vault edit; the login is created once in Vaultwarden itself | SmartThings and Ring imports fail loudly at the credential step |
-| ntfy topic (`CABIN_ALERT_NTFY_TOPIC`) | `infra/.env` | Editing `.env`, then recreating `cabin-backend` | No phone pushes from the backend |
+| `HA_TOKEN` | Ansible Vault | A manual vault edit plus a new long-lived token in Home Assistant | Blank: backend health goes DOWN on the next recreate. Wrong, expired or revoked: health stays UP; Home Assistant devices stop updating and the backend log warns (see HA token validity above) |
+| `CAMERA_PASSWORD` | Ansible Vault | A manual vault edit | Camera streams fail |
+| `TECH_ID_API_KEY` | Ansible Vault | A manual vault edit | Blank on the hub: every Tech ID submission gets 503 (not configured). A provider sending a missing or different key gets 401 |
+| `VAULTWARDEN_ADMIN_TOKEN` | Ansible Vault | A manual vault edit | Vaultwarden's own `/admin` page stays closed. It does not affect the backend or imports |
+| The backend's vault login (`VAULTWARDEN_CLIENT_ID`, `VAULTWARDEN_CLIENT_SECRET`, `VAULTWARDEN_MASTER_PASSWORD`) | Ansible Vault; the Organization API key is created once in Vaultwarden itself | A manual vault edit | SmartThings and Ring imports fail loudly at the credential step |
+| ntfy topic (`CABIN_ALERT_NTFY_TOPIC`) | Ansible Vault (`vault_cabin_alert_ntfy_topic`), templated into `infra/.env` | A vault edit, then template with the `secrets` tag and recreate `cabin-backend`. A change made only in `.env` is overwritten by the next secrets run | No phone pushes from the backend |
 
 - **Rotation is not recovery.** Rotation replaces a working secret on schedule. Recovery restores one that was lost or blanked, from the vault or its source system.
 - **After any vault edit,** template `.env` with the `secrets` tag and recreate the containers that read it. Verify the edit by decrypting and comparing a hash before committing: a successful re-encrypt proves nothing (the 2026-10-01 rotation blanked `HA_TOKEN` this way). Never compare secrets by printing them.

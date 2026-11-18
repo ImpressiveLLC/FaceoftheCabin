@@ -36,17 +36,41 @@ class AskIdentityCredentialsRoutingTest {
             new DefaultResourceLoader(), "classpath:rag/context-fixtures-r2.json", 6000);
     }
 
+    private static final String ADMIN = "#how-someone-becomes-an-administrator";
+    private static final String SESSIONS = "#sign-in-sessions-google-30-day-sessions-and-managed-sessions";
+    private static final String SIGN_IN_LINK = "#why-the-sign-in-link-opens-without-signing-in";
+    private static final String GUEST_CHECKS = "#what-the-server-checks-when-a-guest-link-is-made";
+
     @Test
-    void identityQuestionsReachTheIdentitySections() {
+    void identityQuestionsReachTheirOwnCategory() {
         Map<String, String> pinned = Map.of(
-            "How do I make someone an administrator?", "#how-someone-becomes-an-administrator",
-            "What does ADMIN_EMAILS do?", "#how-someone-becomes-an-administrator",
-            "How long does the 30-day session last and what ends it?", "#sign-in-sessions-google-30-day-sessions-and-managed-sessions",
-            "Why does the managed sign-in link work without signing in?", "#why-the-sign-in-link-opens-without-signing-in",
-            "What guest link scope does the server require?", "#what-the-server-checks-when-a-guest-link-is-made");
-        pinned.forEach((question, section) -> {
-            assertThat(builder.categoryIdFor(question)).as(question).isEqualTo("identity_sessions");
-            assertThat(refs(question, HouseholdRole.ADMINISTRATOR)).as(question).anyMatch(r -> r.endsWith(section));
+            "How do I make someone an administrator?", "identity_admin",
+            "What does ADMIN_EMAILS do?", "identity_admin",
+            "How long does the 30-day session last and what ends it?", "identity_sessions",
+            "Why does the managed sign-in link work without signing in?", "identity_sign_in_link",
+            "What guest link scope does the server require?", "identity_guest_link_checks");
+        pinned.forEach((question, category) -> assertThat(builder.categoryIdFor(question)).as(question).isEqualTo(category));
+    }
+
+    /**
+     * Delivered content, not just the category: the asked-for section text reaches an administrator whole, inside the
+     * 6000-character budget. The last question is the #490 review probe, which ties on "token" with credential_redaction
+     * and used to lose the session section to the budget.
+     */
+    @Test
+    void theAskedForSectionIsDeliveredWholeWithinTheBudget() {
+        Map<String, String> wanted = Map.of(
+            "How do I make someone an administrator?", ADMIN,
+            "How long does the 30-day session last and what ends it?", SESSIONS,
+            "Why does the managed sign-in link work without signing in?", SIGN_IN_LINK,
+            "What guest link scope does the server require?", GUEST_CHECKS,
+            "How long does my token keep me signed in for?", SESSIONS);
+        wanted.forEach((question, section) -> {
+            List<KnowledgeNode> nodes = builder.buildContext(question, HouseholdRole.ADMINISTRATOR);
+            KnowledgeNode hit = nodes.stream().filter(n -> n.entityRef().endsWith(section)).findFirst().orElse(null);
+            assertThat(hit).as(question + " delivers " + section).isNotNull();
+            assertThat(hit.content()).as(question).doesNotContain("section truncated");
+            assertThat(nodes.stream().mapToInt(n -> n.content().length()).sum()).as(question + " total").isLessThanOrEqualTo(6000);
         });
     }
 
@@ -72,7 +96,8 @@ class AskIdentityCredentialsRoutingTest {
         unchanged.forEach((q, category) -> assertThat(builder.categoryIdFor(q)).as(q).isEqualTo(category));
         assertThat(refs("Where is the Vaultwarden master password?", HouseholdRole.ADMINISTRATOR))
             .anyMatch(r -> r.endsWith("#credentials-and-access"));
-        assertThat(builder.categoryIdsFor("What's the Blink login?")).doesNotContain("identity_sessions");
+        assertThat(builder.categoryIdsFor("What's the Blink login?"))
+            .doesNotContain("identity_admin", "identity_sessions", "identity_guest_link_checks", "identity_sign_in_link");
     }
 
     @Test
@@ -80,7 +105,7 @@ class AskIdentityCredentialsRoutingTest {
         for (String question : List.of("How do I make someone an administrator?",
                 "Where is each credential kept and how do I rotate a secret?")) {
             assertThat(refs(question, HouseholdRole.ADULT_HOUSEHOLD_MEMBER)).as(question)
-                .noneMatch(r -> r.endsWith("#how-someone-becomes-an-administrator") || r.endsWith("#where-each-credential-lives-and-how-it-changes"));
+                .noneMatch(r -> r.endsWith(ADMIN) || r.endsWith("#where-each-credential-lives-and-how-it-changes"));
             assertThat(refs(question, null)).as(question).isEmpty();
         }
     }

@@ -140,9 +140,9 @@ Evidence: `AuthController` (`issueSession`, `revokeSession`); `CabinSessionServi
 
 Audience: administrator. Source review only at `main` e8b32bb2.
 
-**Short answer.** A guest link needs a label, and its scope must include at least one of `dashboard`, `device_states` or `alerts_read`; otherwise the server refuses to create it. Every guest link is read-only, whatever its scope.
+**Short answer.** The server refuses a new link with no label or an empty scope list. It does not check the scope names themselves. The scopes it honours when a link is used are `dashboard`, `device_states` and `alerts_read` (the guest views), `roof_spec` (the Roof Monitoring page link) and `demo` (a demo link, which must hold `demo` alone and expires after 30 days unless a lifetime is set). A link carrying only other names opens nothing. Every link is read-only.
 
-Evidence: `CabinAccessTokensController` (label and scope checks). Making and revoking links is described in [Share read-only access with a link](#share-read-only-access-with-a-link-guest-access).
+Evidence: `CabinAccessTokensController.create` (label required, scope not empty); `CabinAccessTokenService.create` (the demo rule); `GoogleAuthInterceptor` (the scopes each read path accepts). Making and revoking links is described in [Share read-only access with a link](#share-read-only-access-with-a-link-guest-access).
 
 ## Why the sign-in link opens without signing in
 
