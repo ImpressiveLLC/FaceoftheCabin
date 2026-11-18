@@ -154,6 +154,29 @@ Where Compose fixes a value, the `.env` file cannot override it. Change the Comp
 
 Names Compose passes through from `.env` take effect on recreating the service; those marked as build arguments need the image rebuilt first. `SERVER_PORT` is the exception: Compose fixes it, so change the Compose line.
 
+## Where each credential lives and how it changes
+
+Audience: administrator. Source review only at `main` e8b32bb2; nothing was run on the host. Names only: no value appears here, and Ask never returns one.
+
+| Credential | Kept in | Changed by | If it goes blank or wrong |
+|---|---|---|---|
+| `POSTGRES_PASSWORD` | Ansible Vault, templated into `infra/.env` | The monthly `rotate-secrets` run (automatic) | The backend cannot reach its database |
+| `GRAFANA_PASSWORD` | Ansible Vault | A manual vault edit plus the matching change in Grafana | Grafana admin sign-in fails |
+| `HA_TOKEN` | Ansible Vault | A manual vault edit plus a new long-lived token in Home Assistant | Blank: backend health goes DOWN on the next recreate. Wrong, expired or revoked: health stays UP; Home Assistant devices stop updating and the backend log warns (see HA token validity above) |
+| `CAMERA_PASSWORD` | Ansible Vault | A manual vault edit | Camera streams fail |
+| `TECH_ID_API_KEY` | Ansible Vault | A manual vault edit | Blank on the hub: every Tech ID submission gets 503 (not configured). A provider sending a missing or different key gets 401 |
+| `VAULTWARDEN_ADMIN_TOKEN` | Ansible Vault | A manual vault edit | Vaultwarden's own `/admin` page stays closed. It does not affect the backend or imports |
+| The backend's vault login (`VAULTWARDEN_CLIENT_ID`, `VAULTWARDEN_CLIENT_SECRET`, `VAULTWARDEN_MASTER_PASSWORD`) | Ansible Vault; the Organization API key is created once in Vaultwarden itself | A manual vault edit | SmartThings and Ring imports fail loudly at the credential step |
+| ntfy topic (`CABIN_ALERT_NTFY_TOPIC`) | Ansible Vault (`vault_cabin_alert_ntfy_topic`), templated into `infra/.env` | A vault edit, then template with the `secrets` tag and recreate `cabin-backend`. A change made only in `.env` is overwritten by the next secrets run | No phone pushes from the backend |
+
+- **Rotation is not recovery.** Rotation replaces a working secret on schedule. Recovery restores one that was lost or blanked, from the vault or its source system.
+- **After any vault edit,** template `.env` with the `secrets` tag and recreate the containers that read it. Verify the edit by decrypting and comparing a hash before committing: a successful re-encrypt proves nothing (the 2026-10-01 rotation blanked `HA_TOKEN` this way). Never compare secrets by printing them.
+- **The ntfy topic works like a password:** anyone who knows it can read and send to that phone channel. It was blank on 2026-10-12 (W-51); the current value is not known here.
+- **Vaultwarden runs or not: unknown.** MAINTENANCE.md says both "not deployed yet" (its ESPHome note) and describes it as deployed, and the M920q Compose file declares the service. Check the host before relying on it.
+- Node-RED and Grafana sign-in recovery are in the [operations and recovery reference](operations-recovery-reference.md#node-red-login-recovery) ([Grafana](operations-recovery-reference.md#grafana-login-outside-the-embedded-panel)); this table does not repeat them.
+
+Evidence: [MAINTENANCE](../../MAINTENANCE.md) Secrets, Vaultwarden and Overnight Camera Alerts sections; `ansible/group_vars/cabin/vars.yml`; [`rotate-secrets.yml`](../../../.github/workflows/rotate-secrets.yml).
+
 ## Explicit source disagreement
 
 Two existing incident runbooks answer common configuration failures. A successfully rebuilt Family Hub may still receive old `host-config.js` from an edge cache; inspect the browser-served nonsecret configuration and use the authorized cache correction described in [MAINTENANCE](../../MAINTENANCE.md#cloudflare-edge-caching-a-build-time-config-file-found-2026-08-01). Frigate's configuration substitutions require its `FRIGATE_` namespace, distinct from Compose interpolation; see the [existing two-stage mapping](../../REPLICATION.md#frigate-environment-substitution-is-prefix-restricted). Neither problem is resolved merely by proving a setting exists.
