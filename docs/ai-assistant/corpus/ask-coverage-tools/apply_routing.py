@@ -4,8 +4,10 @@
   python apply_routing.py --apply map.json out.json     # write the changed map (indent 2, as the map is stored)
   python apply_routing.py --report before.json after.json
 
-The proposals are data here, in one place, so the change is reviewable and repeatable. Matching is the replica in
-route.py (same whole-word regex, word-count score, boost only when matched, declaration order on ties).
+The proposals are data here, in one place, so the change is reviewable and repeatable. Matching is this file's own
+copy of the matcher as it was on 2026-10-31 (whole-word regex with plural-only endings, word-count score, boost only
+when matched, first winner on ties). That copy is older than the W-151 matcher, and route.py was retired on 2026-11-18;
+measure the current map with AskDeliveryHarnessTest (see README.md).
 """
 import copy
 import json

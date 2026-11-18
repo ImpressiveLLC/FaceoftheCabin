@@ -49,6 +49,7 @@ class AskDeliveryHarnessTest {
     private static final String DEV_SET_REL = "docs/ai-assistant/corpus/c1-dev-retrieval-set-2026-11-18.json";
     private static final String FIXTURE_DOCS_REL = "docs/ai-assistant/rag/context-fixtures-r2.json";
     private static final String FIXTURE_BACKEND_REL = "cabin-orchestration-platform/backend/src/main/resources/rag/context-fixtures-r2.json";
+    private static final String PHRASINGS_REL = "docs/ai-assistant/corpus/ask-coverage-tools/phrasings.json";
     private static final Path REPORT = Path.of("target/c1-s1-delivery-report.json");
     static final int BUDGET = 6000;
     static final Set<String> AUDIENCES = Set.of("administrator", "household");
@@ -159,18 +160,39 @@ class AskDeliveryHarnessTest {
         for (String guide : consumedGuides) guides.put("docs/" + guide, sha256(REPO_DOCS.resolve(guide)));
         inputs.put("consumedGuides", guides);
 
+        // The 150 coverage-map phrasings, reported (not gated) with the real matcher. This replaces the retired route.py
+        // replica's "no category" count.
+        Path phrasings = REPO_ROOT.resolve(PHRASINGS_REL);
+        assertThat(phrasings).as("coverage-map phrasings are required").isRegularFile();
+        int phrasingTotal = 0;
+        List<String> phrasingNoCategory = new ArrayList<>();
+        for (JsonNode topic : json.readTree(phrasings.toFile())) {
+            int i = 0;
+            for (JsonNode q : topic.get(1)) {
+                i++;
+                phrasingTotal++;
+                if (builder.categoryIdFor(q.asText()) == null) phrasingNoCategory.add(topic.get(0).asText() + "-" + i);
+            }
+        }
+        inputs.put(PHRASINGS_REL, sha256(phrasings));
+        Map<String, Object> coverage = new LinkedHashMap<>();
+        coverage.put("total", phrasingTotal);
+        coverage.put("noCategory", phrasingNoCategory.size());
+        coverage.put("noCategoryIds", phrasingNoCategory);
+
         Map<String, Object> report = new LinkedHashMap<>();
         report.put("budgetChars", BUDGET);
         report.put("devSet", DEV_SET_REL + " (development, spent; never acceptance)");
         report.put("inputs", inputs);
         report.put("summaryByAudience", summary);
+        report.put("coverageMapPhrasings", coverage);
         report.put("audienceLeaks", leaks.size());
         report.put("overBudget", overBudget.size());
         report.put("results", results);
         Files.createDirectories(REPORT.toAbsolutePath().getParent());
         new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT).writeValue(REPORT.toFile(), report);
         System.out.println("C1-S1 delivery summary " + summary + ", audienceLeaks=" + leaks.size() + ", overBudget=" + overBudget.size()
-            + ", measuredRevision=" + inputs.get("measuredRevision"));
+            + ", coverageMapNoCategory=" + phrasingNoCategory.size() + "/" + phrasingTotal + ", measuredRevision=" + inputs.get("measuredRevision"));
 
         assertThat(unresolved).as("expected sections that no longer resolve").isEmpty();
         assertThat(overBudget).as("contexts over the " + BUDGET + "-character budget").isEmpty();

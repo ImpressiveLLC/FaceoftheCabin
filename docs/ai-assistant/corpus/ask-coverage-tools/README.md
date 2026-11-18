@@ -1,14 +1,25 @@
-# Ask routing replica (offline)
-
-`route.py` is an offline copy of the keyword routing in `AskContextBuilder.select()` (same whole-word regex with an optional `s`/`es` plural, word-count scoring, boost only when a keyword matched, declaration order on ties). It reads the compiled map and a list of questions and prints, for each, the category Ask would choose or `NO CATEGORY`. It sends nothing to Ask, Ollama or any endpoint.
+# Ask coverage tools
 
 `phrasings.json` holds 150 plain-language questions written by the coverage-map analyst, keyed by the topic row in `../ask-coverage-map-2026-10-30.md` (A1, A2, ...). They are not drawn from usage logs or from any sealed or held-out set.
 
-Reproduce the 2026-10-30 result (95 of 150 match no category) from the repository root:
+## Measuring routing and delivery: use the C1-S1 harness
+
+`route.py`, the offline Python replica of the routing, was **retired on 2026-11-18**. This follows Cowork's C1 ruling on #244 (6979177326, point 4). The replica predated the W-151 matcher (wider word endings; tied categories all kept), so every report that used it needed a caveat.
+
+The authority is now the backend's own matcher, through [`AskDeliveryHarnessTest`](../../../../cabin-orchestration-platform/backend/src/test/java/com/cabin/orchestrator/helpdesk/AskDeliveryHarnessTest.java). From `cabin-orchestration-platform/backend`:
 
 ```
-python3 -I -c "import json;[print(f'{t}-{i}|{q}') for t,qs in json.load(open('docs/ai-assistant/corpus/ask-coverage-tools/phrasings.json')) for i,q in enumerate(qs,1)]" > /tmp/ask-phrasings.txt
-python3 -I docs/ai-assistant/corpus/ask-coverage-tools/route.py cabin-orchestration-platform/backend/src/main/resources/rag/context-fixtures-r2.json /tmp/ask-phrasings.txt | grep -c "NO CATEGORY"
+mvn -Dtest=AskDeliveryHarnessTest test
 ```
 
-Keep it in step with `AskContextBuilder` if the matching rules change; the backend routing test, not this script, is the authority.
+It writes `target/c1-s1-delivery-report.json`. That report has two parts:
+- **The development set:** for each row and audience, the first category, selected set, delivered sections, whole-section delivery, budget, leaks and known gaps. The frozen baseline is in [`../../rag/eval-results/2026-11-18-c1-s1-baseline.md`](../../rag/eval-results/2026-11-18-c1-s1-baseline.md).
+- **`coverageMapPhrasings`:** these 150 phrasings run through the real matcher, with the "no category" count and ids. This replaces `route.py`'s count. At retirement both gave 16 of 150. The figure is reported, not gated.
+
+The 120 pinned phrasings are gated separately by `AskRoutingCoverageTest` (`src/test/resources/rag/routing-pins.json`).
+
+## Older tools kept as records
+
+`apply_routing.py` and `write_pins.py` applied the 2026-10-31 routing proposals (PR #365) and wrote `routing-pins.json`. They carry their own copy of the matcher as it was then (plural-only endings, first winner on ties), so rerunning them reproduces that change, not today's routing. Do not use them to measure the current map. Any new pin must be checked with the backend tests.
+
+Evidence files dated before 2026-11-18 quote `route.py` commands. They are dated records and are left as written.
