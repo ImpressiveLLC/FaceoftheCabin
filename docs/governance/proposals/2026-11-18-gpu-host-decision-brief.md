@@ -56,4 +56,3 @@ These are proposed questions, not sent messages.
 - **Before Nate's buy decision:** reconcile current product/cart prices and complete totals; identify the intended model, quantization, context and concurrency; select a compatible compute GPU with a stated budget. No throughput or training-capacity claim yet.
 - **After separately approved commissioning:** check ECC/drive health, BIOS access, GPU discovery and actual GPU offload; measure cold/warm latency, throughput, memory use, wall power and noise on an approved non-sealed workload. These checks are all NOT_RUN.
 - **Review state:** source-linked docs only; no code, deployment, credential, cart, purchase, device command or training change. Independent exact-head review is required before Cowork merges. Backlog/roadmap reconciliation remains Cowork-owned under the iteration assignment; no new work ID is allocated here.
-
