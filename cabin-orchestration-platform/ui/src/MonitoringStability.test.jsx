@@ -131,6 +131,10 @@ describe("layout contract (jsdom has no layout engine, so this checks the CSS th
     expect(css).toMatch(/\.sh-col-outdoor \{\s*width:\s*30em/);
     // the outdoor reading is long (mean, low, high, count, partial): it wraps inside its column, never clipped
     expect(css).toMatch(/td\.sh-cell-outdoor \{\s*white-space:\s*normal/);
+    // header cells wrap inside their fixed column (a long device name must not paint over the next header)
+    expect(css).toMatch(/\.sensor-history-table--fixed th \{[^}]*white-space:\s*normal[^}]*overflow-wrap:\s*anywhere/);
+    expect(css).toMatch(/\.sensor-history-table--fixed td \{\s*white-space:\s*nowrap/);
+    expect(css).not.toMatch(/\.sensor-history-table--fixed th,\s*\.sensor-history-table--fixed td\s*\{[^}]*nowrap/);
     const fixedRules = css.match(/\.sensor-history-table--fixed[^{]*\{[^}]*\}/g).join(" ");
     expect(fixedRules).not.toMatch(/text-overflow|overflow:\s*hidden/);
   });

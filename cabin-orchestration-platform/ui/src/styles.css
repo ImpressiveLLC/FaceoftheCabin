@@ -785,7 +785,10 @@ body {
 .sensor-history-table--fixed .sh-col-date { width: 13em; }
 .sensor-history-table--fixed .sh-col-device { width: 11em; }
 .sensor-history-table--fixed .sh-col-outdoor { width: 30em; }
-.sensor-history-table--fixed th, .sensor-history-table--fixed td { white-space: nowrap; }
+/* Data cells stay on one line; header cells wrap inside their column, because a device name has no length limit and
+   a nowrap header wider than its column would paint over the next header (found in a 390 px browser check). */
+.sensor-history-table--fixed td { white-space: nowrap; }
+.sensor-history-table--fixed th { white-space: normal; overflow-wrap: anywhere; vertical-align: bottom; }
 .sensor-history-table--fixed td.sh-cell-outdoor { white-space: normal; overflow-wrap: anywhere; }
 .sensor-history-table-wrap { overflow-x: auto; }
 .sensor-history-table th {
