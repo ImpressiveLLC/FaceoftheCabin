@@ -8,8 +8,9 @@
 # DO NOT COPY THIS ONTO THE LIVE HOST BEFORE READING ON_THE_WAY.md. If the live HA
 # already has a UI-created helper and automation with these names, loading this
 # package as well gives duplicate entities and a preheat that fires twice. The
-# apply steps there remove the old pair first. Deployment path is the same as
-# cabin_security.yaml: copy into /config/packages/ inside the homeassistant container.
+# apply steps there disable the old pair first and verify only one responds.
+# Deployment path is the same as cabin_security.yaml: copy into /config/packages/
+# inside the homeassistant container.
 #
 # Behaviour, on purpose conservative:
 #   - Turns the mech room heater on only when the mech room temperature is known and
@@ -17,8 +18,10 @@
 #     automation (CabinAutomations) already owns the heater; an unavailable or
 #     unknown reading does nothing (fails closed, never guesses).
 #   - Every press publishes one INFO event to cabin/event/INFO so the hub's audit
-#     trail records whether the heater was started or why not.
-#   - Resets the helper at the end so the next tap triggers again.
+#     trail records whether the heater was started (only when it reports on), failed
+#     to start, or why it was skipped.
+#   - Resets the helper first, before any step that can fail, so the next tap always
+#     triggers again.
 #   - Does not turn the heater off; that stays a manual step (heater-control.md).
 input_boolean:
   on_the_way_to_cabin:
@@ -34,6 +37,12 @@ automation:
         entity_id: input_boolean.on_the_way_to_cabin
         to: "on"
     actions:
+      # Reset first, so a failure in any later step (heater service, MQTT) can never leave the helper on. With the
+      # helper stuck on, the next tap could not produce the off-to-on change this automation triggers on. mode: single
+      # means a second tap during the few seconds this run takes is ignored, which is intended.
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.on_the_way_to_cabin
       - choose:
           - conditions:
               - condition: numeric_state
@@ -43,21 +52,46 @@ automation:
                 entity_id: switch.heater_mech_room
                 state: "off"
             sequence:
+              # A failed heater call must not stop the run: the next steps record what the heater actually reports,
+              # never the fact that the call was made.
               - action: switch.turn_on
+                continue_on_error: true
                 target:
                   entity_id: switch.heater_mech_room
-              - action: mqtt.publish
-                data:
-                  topic: cabin/event/INFO
-                  payload: >-
-                    {{ {
-                      "deviceId": "switch.heater_mech_room",
-                      "event": "HEATER_PREHEAT_STARTED",
-                      "detail": "On the Way: mech room heater turned on, mech room temperature "
-                                ~ states('sensor.temp_mech_room_temperature') ~ " F."
-                    } | tojson }}
+              - wait_template: "{{ is_state('switch.heater_mech_room', 'on') }}"
+                timeout: "00:00:15"
+                continue_on_timeout: true
+              - choose:
+                  - conditions:
+                      - condition: state
+                        entity_id: switch.heater_mech_room
+                        state: "on"
+                    sequence:
+                      - action: mqtt.publish
+                        continue_on_error: true
+                        data:
+                          topic: cabin/event/INFO
+                          payload: >-
+                            {{ {
+                              "deviceId": "switch.heater_mech_room",
+                              "event": "HEATER_PREHEAT_STARTED",
+                              "detail": "On the Way: mech room heater is on, mech room temperature "
+                                        ~ states('sensor.temp_mech_room_temperature') ~ " F."
+                            } | tojson }}
+                default:
+                  - action: mqtt.publish
+                    continue_on_error: true
+                    data:
+                      topic: cabin/event/INFO
+                      payload: >-
+                        {{ {
+                          "deviceId": "switch.heater_mech_room",
+                          "event": "HEATER_PREHEAT_FAILED",
+                          "detail": "On the Way: heater did not report on within 15 s of the turn-on call. Check the heater."
+                        } | tojson }}
         default:
           - action: mqtt.publish
+            continue_on_error: true
             data:
               topic: cabin/event/INFO
               payload: >-
@@ -69,6 +103,3 @@ automation:
                             ~ " F (needs a known value above 38 F) and heater is "
                             ~ states('switch.heater_mech_room') ~ " (needs off)."
                 } | tojson }}
-      - action: input_boolean.turn_off
-        target:
-          entity_id: input_boolean.on_the_way_to_cabin

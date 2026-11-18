@@ -6,6 +6,7 @@ Run from this directory (needs PyYAML):
 These tests tie the package to the three other places that name the same
 entities: the dashboard button (App.jsx), the backend allowlist
 (HaServiceController.java) and the heater knowledge entry (heater-control.md).
+They are structural: they read the YAML, they do not run Home Assistant.
 """
 
 import pathlib
@@ -26,6 +27,23 @@ AUTO = PKG["automation"][0]
 
 def read(rel):
     return (ROOT / rel).read_text(encoding="utf-8")
+
+
+def choose_step():
+    return [a for a in AUTO["actions"] if "choose" in a][0]
+
+
+def all_publishes(node, found=None):
+    found = [] if found is None else found
+    if isinstance(node, dict):
+        if node.get("action") == "mqtt.publish":
+            found.append(node)
+        for v in node.values():
+            all_publishes(v, found)
+    elif isinstance(node, list):
+        for v in node:
+            all_publishes(v, found)
+    return found
 
 
 class OnTheWayPackage(unittest.TestCase):
@@ -53,7 +71,7 @@ class OnTheWayPackage(unittest.TestCase):
         self.assertEqual(triggers[0]["to"], "on")
 
     def test_heater_starts_only_when_temp_known_above_38_and_heater_off(self):
-        choose = AUTO["actions"][0]["choose"]
+        choose = choose_step()["choose"]
         self.assertEqual(len(choose), 1)
         conds = choose[0]["conditions"]
         numeric = [c for c in conds if c["condition"] == "numeric_state"]
@@ -62,28 +80,47 @@ class OnTheWayPackage(unittest.TestCase):
         self.assertEqual(numeric[0]["above"], 38)
         self.assertNotIn("below", numeric[0])
         self.assertEqual((state[0]["entity_id"], state[0]["state"]), (HEATER, "off"))
-        turn_ons = [s for s in choose[0]["sequence"] if s["action"] == "switch.turn_on"]
+        turn_ons = [s for s in choose[0]["sequence"] if s.get("action") == "switch.turn_on"]
         self.assertEqual(len(turn_ons), 1)
         self.assertEqual(turn_ons[0]["target"]["entity_id"], HEATER)
 
     def test_heater_is_never_started_outside_the_guarded_branch(self):
         self.assertEqual(len(re.findall(r"switch\.turn_on", YAML_TEXT)), 1)
         self.assertEqual(len(re.findall(r"switch\.turn_off", YAML_TEXT)), 0, "package must not turn the heater off")
-        default_actions = [a["action"] for a in AUTO["actions"][0]["default"]]
+        default_actions = [a["action"] for a in choose_step()["default"]]
         self.assertEqual(default_actions, ["mqtt.publish"])
 
-    def test_every_press_publishes_one_info_event_and_resets_the_helper(self):
-        step = AUTO["actions"][0]
-        started = [s for s in step["choose"][0]["sequence"] if s["action"] == "mqtt.publish"]
-        skipped = step["default"]
-        for branch in (started, skipped):
-            self.assertEqual(len(branch), 1)
-            self.assertEqual(branch[0]["data"]["topic"], "cabin/event/INFO")
-        self.assertIn("HEATER_PREHEAT_STARTED", started[0]["data"]["payload"])
-        self.assertIn("HEATER_PREHEAT_SKIPPED", skipped[0]["data"]["payload"])
-        reset = AUTO["actions"][-1]
-        self.assertEqual(reset["action"], "input_boolean.turn_off")
-        self.assertEqual(reset["target"]["entity_id"], BOOLEAN)
+    def test_reset_is_first_so_no_later_failure_can_leave_the_helper_on(self):
+        first = AUTO["actions"][0]
+        self.assertEqual(first["action"], "input_boolean.turn_off")
+        self.assertEqual(first["target"]["entity_id"], BOOLEAN)
+        resets = [a for a in AUTO["actions"] if a.get("action") == "input_boolean.turn_off"]
+        self.assertEqual(resets, [first])
+
+    def test_failed_heater_call_does_not_abort_and_is_not_reported_as_started(self):
+        seq = choose_step()["choose"][0]["sequence"]
+        self.assertEqual(seq[0]["action"], "switch.turn_on")
+        self.assertTrue(seq[0]["continue_on_error"], "a failed heater call must not stop the run")
+        self.assertIn(HEATER, seq[1]["wait_template"])
+        self.assertTrue(seq[1]["continue_on_timeout"])
+        inner = seq[2]
+        cond = inner["choose"][0]["conditions"][0]
+        self.assertEqual((cond["condition"], cond["entity_id"], cond["state"]), ("state", HEATER, "on"))
+        self.assertIn("HEATER_PREHEAT_STARTED", inner["choose"][0]["sequence"][0]["data"]["payload"])
+        self.assertEqual(len(re.findall("HEATER_PREHEAT_STARTED", YAML_TEXT)), 1)
+        failed = inner["default"][0]["data"]["payload"]
+        self.assertIn("HEATER_PREHEAT_FAILED", failed)
+        self.assertNotIn("HEATER_PREHEAT_STARTED", failed)
+
+    def test_every_press_records_one_info_event_and_publish_failures_do_not_abort(self):
+        publishes = all_publishes(AUTO["actions"])
+        self.assertEqual(len(publishes), 3)
+        for pub in publishes:
+            self.assertEqual(pub["data"]["topic"], "cabin/event/INFO")
+            self.assertTrue(pub["continue_on_error"])
+        events = " ".join(pub["data"]["payload"] for pub in publishes)
+        for name in ("HEATER_PREHEAT_STARTED", "HEATER_PREHEAT_FAILED", "HEATER_PREHEAT_SKIPPED"):
+            self.assertIn(name, events)
 
     def test_mode_is_single(self):
         self.assertEqual(AUTO["mode"], "single")
