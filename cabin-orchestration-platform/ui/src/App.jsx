@@ -8334,6 +8334,13 @@ export function trimPreview(targets, keepN, disk) {
 
 // "I need N GB for a big job": the most copies we can keep and still free at least `wantGb`.
 // Returns { keepN, achievable, maxFreeGb }; keepN is null when sizes are not measured yet.
+// Polled lists (devices every 15 s, workflows every 30 s) used to replace their state with a freshly parsed array on every poll,
+// even when nothing had changed, so React re-rendered every card each time and cards visibly shifted and resized on phones and
+// tablets (Nate, 2026-11-16). Keep the previous reference when the new payload is structurally identical; React then skips the render.
+export function keepIfSame(prev, next) {
+  try { return JSON.stringify(prev) === JSON.stringify(next) ? prev : next; } catch { return next; }
+}
+
 export function keepForFreeing(targets, wantGb) {
   const max = Math.max(1, ...(targets || []).map(t => (t.snapshots || []).length));
   const freedGbAt = (n) => {
@@ -10467,7 +10474,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
       const succeeded = results.filter(r => r.status === "fulfilled");
       // Every fetch failing (a blip during a toggle, a restart) must not wipe the list: that unmounted every
       // row and sent the person back to the top. Keep the last good data; apiError below says it is stale.
-      if (succeeded.length > 0) setDevices(succeeded.map(r => r.value).flat());
+      if (succeeded.length > 0) { const next = succeeded.map(r => r.value).flat(); setDevices(prev => keepIfSame(prev, next)); }
 
       const relevant = attempts
         .map((a, i) => ({ loc: a.loc, result: results[i] }))
@@ -10505,7 +10512,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
       attempts.push(fetch(`${LOCATIONS.home.apiBase}/api/rules/workflows`)
         .then(r => r.ok ? r.json() : []).catch(() => []));
     }
-    Promise.all(attempts).then(results => setWorkflows(results.flat()));
+    Promise.all(attempts).then(results => { const next = results.flat(); setWorkflows(prev => keepIfSame(prev, next)); });
   }, [activeLocation]);
 
   useEffect(() => {
