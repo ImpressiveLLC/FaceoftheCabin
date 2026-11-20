@@ -2955,5 +2955,863 @@
       "clarification": null,
       "automation": null
     }
+  },
+  {
+    "id": "train-s2b5-predicate-1",
+    "utterances": [
+      "Create a rule to switch the copper lamp in the home study on whenever the illuminance reading of the copper illuminance sensor in the home study is below 75 lux.",
+      "Whenever the illuminance reading of the copper illuminance sensor in the home study is below 75 lux, switch the copper lamp in the home study on.",
+      "Use this condition for a rule: the illuminance reading of the copper illuminance sensor in the home study is below 75 lux; the action is to turn the copper lamp in the home study on."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "target": {
+            "device_name": "copper illuminance sensor",
+            "location": "study",
+            "site": "home"
+          },
+          "attribute": "illuminance",
+          "operator": "lt",
+          "value": "75",
+          "unit": "lux"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "copper lamp",
+              "location": "study",
+              "site": "home"
+            },
+            "operation": "on",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-predicate-2",
+    "utterances": [
+      "Create a rule to switch the ivory lamp in the cabin loft off whenever the illuminance reading of the ivory illuminance sensor in the cabin loft is above 320 lux.",
+      "Whenever the illuminance reading of the ivory illuminance sensor in the cabin loft is above 320 lux, switch the ivory lamp in the cabin loft off.",
+      "Use this condition for a rule: the illuminance reading of the ivory illuminance sensor in the cabin loft is above 320 lux; the action is to turn the ivory lamp in the cabin loft off."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "target": {
+            "device_name": "ivory illuminance sensor",
+            "location": "loft",
+            "site": "cabin"
+          },
+          "attribute": "illuminance",
+          "operator": "gt",
+          "value": "320",
+          "unit": "lux"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "ivory lamp",
+              "location": "loft",
+              "site": "cabin"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-predicate-3",
+    "utterances": [
+      "Create a rule to switch the teal fan in the home office on whenever the temperature reading of the teal temperature sensor in the home office is above 26 C.",
+      "Whenever the temperature reading of the teal temperature sensor in the home office is above 26 C, switch the teal fan in the home office on.",
+      "Use this condition for a rule: the temperature reading of the teal temperature sensor in the home office is above 26 C; the action is to turn the teal fan in the home office on."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "target": {
+            "device_name": "teal temperature sensor",
+            "location": "office",
+            "site": "home"
+          },
+          "attribute": "temperature",
+          "operator": "gt",
+          "value": "26",
+          "unit": "C"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "teal fan",
+              "location": "office",
+              "site": "home"
+            },
+            "operation": "on",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-predicate-4",
+    "utterances": [
+      "Create a rule to switch the plum fan in the cabin den off whenever the temperature reading of the plum temperature sensor in the cabin den is below 19 C.",
+      "Whenever the temperature reading of the plum temperature sensor in the cabin den is below 19 C, switch the plum fan in the cabin den off.",
+      "Use this condition for a rule: the temperature reading of the plum temperature sensor in the cabin den is below 19 C; the action is to turn the plum fan in the cabin den off."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "target": {
+            "device_name": "plum temperature sensor",
+            "location": "den",
+            "site": "cabin"
+          },
+          "attribute": "temperature",
+          "operator": "lt",
+          "value": "19",
+          "unit": "C"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "plum fan",
+              "location": "den",
+              "site": "cabin"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-predicate-5",
+    "utterances": [
+      "Create a rule to switch the ochre fan in the home laundry room on whenever the humidity reading of the ochre humidity sensor in the home laundry room is above 68 percent.",
+      "Whenever the humidity reading of the ochre humidity sensor in the home laundry room is above 68 percent, switch the ochre fan in the home laundry room on.",
+      "Use this condition for a rule: the humidity reading of the ochre humidity sensor in the home laundry room is above 68 percent; the action is to turn the ochre fan in the home laundry room on."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "target": {
+            "device_name": "ochre humidity sensor",
+            "location": "laundry room",
+            "site": "home"
+          },
+          "attribute": "humidity",
+          "operator": "gt",
+          "value": "68",
+          "unit": "percent"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "ochre fan",
+              "location": "laundry room",
+              "site": "home"
+            },
+            "operation": "on",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-predicate-6",
+    "utterances": [
+      "Create a rule to switch the jade fan in the cabin bathroom off whenever the humidity reading of the jade humidity sensor in the cabin bathroom is below 42 percent.",
+      "Whenever the humidity reading of the jade humidity sensor in the cabin bathroom is below 42 percent, switch the jade fan in the cabin bathroom off.",
+      "Use this condition for a rule: the humidity reading of the jade humidity sensor in the cabin bathroom is below 42 percent; the action is to turn the jade fan in the cabin bathroom off."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "target": {
+            "device_name": "jade humidity sensor",
+            "location": "bathroom",
+            "site": "cabin"
+          },
+          "attribute": "humidity",
+          "operator": "lt",
+          "value": "42",
+          "unit": "percent"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "jade fan",
+              "location": "bathroom",
+              "site": "cabin"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-predicate-7",
+    "utterances": [
+      "Create a rule whose trigger is that the contact value of the silver door contact in the home entry equals closed; turn the silver lamp in the home entry off."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "target": {
+            "device_name": "silver door contact",
+            "location": "entry",
+            "site": "home"
+          },
+          "attribute": "contact",
+          "operator": "eq",
+          "value": "closed",
+          "unit": null
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "silver lamp",
+              "location": "entry",
+              "site": "home"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-time_once-1",
+    "utterances": [
+      "Arrange a single switch to off for the coral lamp in the home pantry at 2034-04-18T16:25:00+03:00.",
+      "At exactly 2034-04-18T16:25:00+03:00, turn the coral lamp in the home pantry off once."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "time_once",
+          "at": "2034-04-18T16:25:00+03:00"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "coral lamp",
+              "location": "pantry",
+              "site": "home"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-time_once-2",
+    "utterances": [
+      "Arrange a single switch to on for the saffron fan in the cabin guest room at 2034-09-07T07:40:00-05:00.",
+      "At exactly 2034-09-07T07:40:00-05:00, turn the saffron fan in the cabin guest room on once."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "time_once",
+          "at": "2034-09-07T07:40:00-05:00"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "saffron fan",
+              "location": "guest room",
+              "site": "cabin"
+            },
+            "operation": "on",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-time_recurring-1",
+    "utterances": [
+      "Starting at 2034-01-10T18:20:00Z, turn the amber lamp in the home study off each day at 18:20 UTC.",
+      "Schedule the amber lamp in the home study to switch off each day at 18:20 UTC, with the first occurrence at 2034-01-10T18:20:00Z.",
+      "I want a repeating rule: switch the amber lamp in the home study off each day at 18:20 UTC; begin at 2034-01-10T18:20:00Z."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "time_recurring",
+          "start_time": "2034-01-10T18:20:00Z",
+          "rrule": "FREQ=DAILY"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "amber lamp",
+              "location": "study",
+              "site": "home"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-time_recurring-2",
+    "utterances": [
+      "Starting at 2034-02-12T08:35:00Z, turn the violet fan in the cabin loft on every two days at 08:35 UTC.",
+      "Schedule the violet fan in the cabin loft to switch on every two days at 08:35 UTC, with the first occurrence at 2034-02-12T08:35:00Z.",
+      "I want a repeating rule: switch the violet fan in the cabin loft on every two days at 08:35 UTC; begin at 2034-02-12T08:35:00Z."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "time_recurring",
+          "start_time": "2034-02-12T08:35:00Z",
+          "rrule": "FREQ=DAILY;INTERVAL=2"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "violet fan",
+              "location": "loft",
+              "site": "cabin"
+            },
+            "operation": "on",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-time_recurring-3",
+    "utterances": [
+      "Starting at 2034-03-14T21:10:00Z, turn the pearl lamp in the home den off every week at 21:10 UTC on the same weekday as the start.",
+      "Schedule the pearl lamp in the home den to switch off every week at 21:10 UTC on the same weekday as the start, with the first occurrence at 2034-03-14T21:10:00Z.",
+      "I want a repeating rule: switch the pearl lamp in the home den off every week at 21:10 UTC on the same weekday as the start; begin at 2034-03-14T21:10:00Z."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "time_recurring",
+          "start_time": "2034-03-14T21:10:00Z",
+          "rrule": "FREQ=WEEKLY"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "pearl lamp",
+              "location": "den",
+              "site": "home"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-time_recurring-4",
+    "utterances": [
+      "Starting at 2034-04-16T10:45:00Z, turn the indigo fan in the cabin office on every two weeks at 10:45 UTC on the same weekday as the start.",
+      "Schedule the indigo fan in the cabin office to switch on every two weeks at 10:45 UTC on the same weekday as the start, with the first occurrence at 2034-04-16T10:45:00Z.",
+      "I want a repeating rule: switch the indigo fan in the cabin office on every two weeks at 10:45 UTC on the same weekday as the start; begin at 2034-04-16T10:45:00Z."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "time_recurring",
+          "start_time": "2034-04-16T10:45:00Z",
+          "rrule": "FREQ=WEEKLY;INTERVAL=2"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "indigo fan",
+              "location": "office",
+              "site": "cabin"
+            },
+            "operation": "on",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-time_recurring-5",
+    "utterances": [
+      "Starting at 2034-05-10T17:15:00Z, turn the russet lamp in the home hall off on day 10 of each month at 17:15 UTC.",
+      "Schedule the russet lamp in the home hall to switch off on day 10 of each month at 17:15 UTC, with the first occurrence at 2034-05-10T17:15:00Z.",
+      "I want a repeating rule: switch the russet lamp in the home hall off on day 10 of each month at 17:15 UTC; begin at 2034-05-10T17:15:00Z."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "time_recurring",
+          "start_time": "2034-05-10T17:15:00Z",
+          "rrule": "FREQ=MONTHLY;BYMONTHDAY=10"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "russet lamp",
+              "location": "hall",
+              "site": "home"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-time_recurring-6",
+    "utterances": [
+      "Starting at 2034-06-19T09:05:00Z, turn the cobalt fan in the cabin bedroom off daily at 09:05 UTC for exactly five occurrences including the start.",
+      "Schedule the cobalt fan in the cabin bedroom to switch off daily at 09:05 UTC for exactly five occurrences including the start, with the first occurrence at 2034-06-19T09:05:00Z.",
+      "I want a repeating rule: switch the cobalt fan in the cabin bedroom off daily at 09:05 UTC for exactly five occurrences including the start; begin at 2034-06-19T09:05:00Z."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "time_recurring",
+          "start_time": "2034-06-19T09:05:00Z",
+          "rrule": "FREQ=DAILY;COUNT=5"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "cobalt fan",
+              "location": "bedroom",
+              "site": "cabin"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-time_recurring-7",
+    "utterances": [
+      "Starting at 2034-07-08T12:30:00Z, turn the cedar lamp in the home entry on hourly for exactly four occurrences including the start."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "time_recurring",
+          "start_time": "2034-07-08T12:30:00Z",
+          "rrule": "FREQ=HOURLY;COUNT=4"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "cedar lamp",
+              "location": "entry",
+              "site": "home"
+            },
+            "operation": "on",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-state_changes_to-1",
+    "utterances": [
+      "When the contact of the bronze door contact in the cabin entry changes to open, turn the bronze lamp in the cabin entry on.",
+      "Use this transition as the trigger: the contact of the bronze door contact in the cabin entry changes to open; then switch the bronze lamp in the cabin entry on.",
+      "Create a rule to turn the bronze lamp in the cabin entry on when the contact of the bronze door contact in the cabin entry changes to open."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "state_changes_to",
+          "target": {
+            "device_name": "bronze door contact",
+            "location": "entry",
+            "site": "cabin"
+          },
+          "attribute": "contact",
+          "value": "open"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "bronze lamp",
+              "location": "entry",
+              "site": "cabin"
+            },
+            "operation": "on",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-state_changes_to-2",
+    "utterances": [
+      "When the contact of the maroon door contact in the home garage changes to closed, turn the maroon lamp in the home garage off.",
+      "Use this transition as the trigger: the contact of the maroon door contact in the home garage changes to closed; then switch the maroon lamp in the home garage off.",
+      "Create a rule to turn the maroon lamp in the home garage off when the contact of the maroon door contact in the home garage changes to closed."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "state_changes_to",
+          "target": {
+            "device_name": "maroon door contact",
+            "location": "garage",
+            "site": "home"
+          },
+          "attribute": "contact",
+          "value": "closed"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "maroon lamp",
+              "location": "garage",
+              "site": "home"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-state_changes_to-3",
+    "utterances": [
+      "When the state of the olive presence sensor in the cabin study changes to present, turn the olive lamp in the cabin study on.",
+      "Use this transition as the trigger: the state of the olive presence sensor in the cabin study changes to present; then switch the olive lamp in the cabin study on.",
+      "Create a rule to turn the olive lamp in the cabin study on when the state of the olive presence sensor in the cabin study changes to present."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "state_changes_to",
+          "target": {
+            "device_name": "olive presence sensor",
+            "location": "study",
+            "site": "cabin"
+          },
+          "attribute": "state",
+          "value": "present"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "olive lamp",
+              "location": "study",
+              "site": "cabin"
+            },
+            "operation": "on",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-state_changes_to-4",
+    "utterances": [
+      "When the state of the cream presence sensor in the home office changes to absent, turn the cream lamp in the home office off.",
+      "Use this transition as the trigger: the state of the cream presence sensor in the home office changes to absent; then switch the cream lamp in the home office off.",
+      "Create a rule to turn the cream lamp in the home office off when the state of the cream presence sensor in the home office changes to absent."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "state_changes_to",
+          "target": {
+            "device_name": "cream presence sensor",
+            "location": "office",
+            "site": "home"
+          },
+          "attribute": "state",
+          "value": "absent"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "cream lamp",
+              "location": "office",
+              "site": "home"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-state_changes_to-5",
+    "utterances": [
+      "When the state of the lilac presence sensor in the cabin den changes to absent and remains absent continuously for 150 seconds, turn the lilac lamp in the cabin den off.",
+      "Use this transition as the trigger: the state of the lilac presence sensor in the cabin den changes to absent and remains absent continuously for 150 seconds; then switch the lilac lamp in the cabin den off.",
+      "Create a rule to turn the lilac lamp in the cabin den off when the state of the lilac presence sensor in the cabin den changes to absent and remains absent continuously for 150 seconds."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "state_changes_to",
+          "target": {
+            "device_name": "lilac presence sensor",
+            "location": "den",
+            "site": "cabin"
+          },
+          "attribute": "state",
+          "value": "absent",
+          "for_seconds": 150
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "lilac lamp",
+              "location": "den",
+              "site": "cabin"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b5-state_changes_to-6",
+    "utterances": [
+      "When the contact of the aqua door contact in the home porch changes to open and remains open continuously for 45 seconds, turn the aqua lamp in the home porch on.",
+      "Use this transition as the trigger: the contact of the aqua door contact in the home porch changes to open and remains open continuously for 45 seconds; then switch the aqua lamp in the home porch on.",
+      "Create a rule to turn the aqua lamp in the home porch on when the contact of the aqua door contact in the home porch changes to open and remains open continuously for 45 seconds."
+    ],
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "state_changes_to",
+          "target": {
+            "device_name": "aqua door contact",
+            "location": "porch",
+            "site": "home"
+          },
+          "attribute": "contact",
+          "value": "open",
+          "for_seconds": 45
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "aqua lamp",
+              "location": "porch",
+              "site": "home"
+            },
+            "operation": "on",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
   }
 ]
