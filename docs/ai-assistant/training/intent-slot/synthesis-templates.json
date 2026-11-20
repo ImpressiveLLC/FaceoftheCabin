@@ -1546,7 +1546,7 @@
   {
     "id": "train-s2b2-hypothetical-1",
     "utterances": [
-      "If I were feeling cold in the study.",
+      "If I felt uncomfortably chilly in the study.",
       "Suppose I felt chilly in the study.",
       "Imagine I was feeling too cold in the study."
     ],
@@ -1561,7 +1561,7 @@
   {
     "id": "train-s2b2-hypothetical-1-pair",
     "utterances": [
-      "I am feeling cold in the study.",
+      "I feel uncomfortably chilly in the study.",
       "I feel chilly in the study.",
       "I am feeling too cold in the study."
     ],
@@ -1612,7 +1612,7 @@
   {
     "id": "train-s2b2-hypothetical-2",
     "utterances": [
-      "If I were feeling cold in the loft.",
+      "If I felt uncomfortably chilly in the loft.",
       "Suppose I felt chilly in the loft.",
       "Imagine I was feeling too cold in the loft."
     ],
@@ -1627,7 +1627,7 @@
   {
     "id": "train-s2b2-hypothetical-2-pair",
     "utterances": [
-      "I am feeling cold in the loft.",
+      "I feel uncomfortably chilly in the loft.",
       "I feel chilly in the loft.",
       "I am feeling too cold in the loft."
     ],
@@ -1678,7 +1678,7 @@
   {
     "id": "train-s2b2-hypothetical-3",
     "utterances": [
-      "If I were feeling cold in the pantry.",
+      "If I felt uncomfortably chilly in the pantry.",
       "Suppose I felt chilly in the pantry.",
       "Imagine I was feeling too cold in the pantry."
     ],
@@ -1693,7 +1693,7 @@
   {
     "id": "train-s2b2-hypothetical-3-pair",
     "utterances": [
-      "I am feeling cold in the pantry.",
+      "I feel uncomfortably chilly in the pantry.",
       "I feel chilly in the pantry.",
       "I am feeling too cold in the pantry."
     ],
@@ -1744,7 +1744,7 @@
   {
     "id": "train-s2b2-hypothetical-4",
     "utterances": [
-      "If I were feeling cold in the guest room.",
+      "If I felt uncomfortably chilly in the guest room.",
       "Suppose I felt chilly in the guest room.",
       "Imagine I was feeling too cold in the guest room."
     ],
@@ -1759,7 +1759,7 @@
   {
     "id": "train-s2b2-hypothetical-4-pair",
     "utterances": [
-      "I am feeling cold in the guest room.",
+      "I feel uncomfortably chilly in the guest room.",
       "I feel chilly in the guest room.",
       "I am feeling too cold in the guest room."
     ],
@@ -1810,7 +1810,7 @@
   {
     "id": "train-s2b2-hypothetical-5",
     "utterances": [
-      "If I were feeling cold in the attic.",
+      "If I felt uncomfortably chilly in the attic.",
       "Suppose I felt chilly in the attic.",
       "Imagine I was feeling too cold in the attic."
     ],
@@ -1825,7 +1825,7 @@
   {
     "id": "train-s2b2-hypothetical-5-pair",
     "utterances": [
-      "I am feeling cold in the attic.",
+      "I feel uncomfortably chilly in the attic.",
       "I feel chilly in the attic.",
       "I am feeling too cold in the attic."
     ],

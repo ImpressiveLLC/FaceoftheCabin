@@ -43,7 +43,7 @@ Offline validation used the parent-provided Python environment (`jsonschema` 4.2
 - Existing `bind_families.bind`: exact coverage of all 150 new IDs, no duplicate ownership, five groups of 30, with both sides of every pair kept together. This was exercised in memory, not exported as a training split.
 - Original 75 templates compare equal to the base; all template IDs are unique. Normalized new utterances are unique and have zero exact-text overlap with the existing templates. Each pair has equal utterance counts and identical card context; schedule pairs differ only by explicit offset.
 
-Template file SHA-256 after authoring: `30601ff619d54e1b4480dbdadcf6fc59a1ccb1ba37350592ba691d88a76029b1` (LF UTF-8).
+Template file SHA-256 after authoring: `629e13a40ac77c731345b290c626fd3a1fa084e6dd322dc3b605977d1af74f0f` (LF UTF-8).
 
 These checks establish format, compatibility and local pair integrity, not semantic label approval or independent CLEAN. Parent owns full-suite aggregate validation, PR publication and reciprocal Code/Cowork reviews. No commit or push by the author.
 
@@ -52,3 +52,11 @@ These checks establish format, compatibility and local pair integrity, not seman
 Parent validation on 2026-11-19: existing intent-slot suite 178 tests passed, boundary suite 34 passed, grading schema navigation 2 passed. Initial restricted run had six environment errors in loopback HTTP and temporary Git-repository tests; the same suite passed with those local test facilities available. The tests use existing unsealed development fixtures; none were supplied to the author as generation material. Sealed-set and private-sample checks remain NOT_RUN.
 
 Traceability: UC-17, D27, intent SFT contract R1/R5, SFT data path S2, hub assignment 7025513615. No new backlog ID allocated. This is candidate authoring only; independent Code review and Cowork review are required for the PR, and neither repository review substitutes for S4 labels, independent audit, S6 leakage checks or training authorization. Runtime and existing features are unchanged.
+
+## Reciprocal-review correction
+
+Code review 7027289716 found four near-duplicates of dev-gold-34 in the first hypothetical counterpart utterances. The parent repaired that wording together with its hypothetical partner across all five room variants, preserving only the conditional-versus-present distinction. This is leakage remediation, not a measured model improvement. The author never received gold content; the parent used the reported overlap and checked the revised candidates against the existing unsealed development inputs. Counts and IDs are unchanged.
+
+Diversity is deliberately limited: five room/device scenarios per boundary, with three phrasings each. Fifteen utterances are not fifteen independent scenarios, and the 150 candidates are not a claim of broad semantic coverage.
+
+Parent post-repair lexical screening: all 150 new candidates have zero normalized-exact and zero S1-near matches against dev gold (49), E3 (16), CLINC stress (100), boundary candidates (92), original template utterances (155), and quoted prompt fragments/examples extracted from system.txt (61). This supersedes the author-stage NOT_RUN status for those specific unsealed comparisons only; it is not meaning-level independence or a sealed/private leakage audit. Generator, unique IDs/texts and family-map coverage still pass.
