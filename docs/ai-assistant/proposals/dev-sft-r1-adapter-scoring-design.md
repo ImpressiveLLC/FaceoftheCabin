@@ -17,7 +17,7 @@ Status: **design only; NOT_RUN; authorizes nothing.** Assigned by Cowork on #244
 The baseline is r14 on `cabin-intent-slot-prompt-r1` (id `9d69b2ad6823`): valid-output 1.000, intent 0.837, slot micro F1 0.581.
 
 Three things separate an unmerged HF adapter from that baseline:
-1. **Weights.** `train_sft.py` trains on `unsloth/Llama-3.2-3B-Instruct` at `006f5dcd...` in fp32. Ollama serves a quantized GGUF build of llama3.2:3b. The trainer's own comment says the two are "NOT proven equal".
+1. **Weights.** `train_sft.py` trains on `unsloth/Llama-3.2-3B-Instruct` at `006f5dcd...` in fp32 on CPU (fp16 on GPU). Ollama serves a quantized GGUF build of llama3.2:3b. The trainer's own comment says the two are "NOT proven equal".
 2. **Decoder.** Ollama constrains every token to the schema grammar. Plain HF `generate` does not.
 3. **Prompt rendering.** Ollama renders with its served template. `sft_tokenize.py` renders from a pinned copy of it (`966de95c...6396`). Whether the served template still matches that copy is the open template-hash check.
 
