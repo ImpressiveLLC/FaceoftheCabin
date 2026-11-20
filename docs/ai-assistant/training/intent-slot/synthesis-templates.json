@@ -2781,5 +2781,179 @@
       "clarification": null,
       "automation": null
     }
+  },
+  {
+    "id": "train-s2b4-need-humid",
+    "utterances": [
+      "The indoor air feels heavy with moisture against my skin.",
+      "I find the air uncomfortably muggy while sitting here."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "humid"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b4-need-hot",
+    "utterances": [
+      "I feel overheated even sitting still in my chair.",
+      "This indoor warmth is more than I can comfortably tolerate.",
+      "I am uncomfortably warm in these clothes.",
+      "The heat around me is making it hard to relax.",
+      "I feel much too hot to concentrate on my puzzle.",
+      "I would feel more comfortable with cooler air around me.",
+      "I am sweltering here despite wearing a light shirt."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "hot"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b4-need-dark",
+    "utterances": [
+      "It is so dim that the words on my crossword disappear into shadow.",
+      "The darkness around me makes the pieces of my puzzle hard to distinguish.",
+      "I can barely make out the stitching because it is too dim here.",
+      "The page in my hands is difficult to see in this darkness.",
+      "I am struggling to see my knitting in these dim surroundings."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "dark"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b4-need-arriving",
+    "utterances": [
+      "I am arriving with my bags and stepping inside.",
+      "I have reached the entrance and am coming in with the groceries.",
+      "I am back from my walk and walking inside.",
+      "I am just arriving, carrying my suitcase in.",
+      "I have reached my destination and am making my way inside.",
+      "I am returning from my outing and coming through the doorway.",
+      "I am about to arrive, with my shopping bags in hand."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "arriving"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b4-need-leaving",
+    "utterances": [
+      "I have my coat and am setting off from here.",
+      "I am taking my bag and departing now.",
+      "I am on my way out with my walking shoes on.",
+      "I am ready to leave and have gathered my belongings.",
+      "I am stepping outside to begin my outing.",
+      "I am leaving this place with my suitcase.",
+      "I am about to head out, coat already on."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "leaving"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b4-need-bedtime",
+    "utterances": [
+      "I have put my book aside and am settling down for the night.",
+      "I am ready for my main sleep of the night.",
+      "I am retiring for the night with my reading finished.",
+      "I am done with the day and going to bed for the night.",
+      "I am turning in for a full night of sleep."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "bedtime"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b4-need-nap",
+    "utterances": [
+      "I want a short daytime snooze between my activities.",
+      "I am settling down for a brief nap during the day.",
+      "I could use a little daytime sleep to feel rested.",
+      "I am taking a short siesta as a break in my day."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "nap"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b4-need-wake_up",
+    "utterances": [
+      "I am awake now and beginning to get out of bed.",
+      "I have finished sleeping and am rising to start my day.",
+      "I am waking up and stretching as I get up.",
+      "My sleep is over and I am getting up now."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "wake_up"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b4-need-tv_time",
+    "utterances": [
+      "I want to settle in and watch a television programme.",
+      "I feel like relaxing with an episode on television.",
+      "I am ready to spend some time watching TV.",
+      "I would enjoy watching a documentary on television.",
+      "I want to unwind by watching a comedy on TV.",
+      "I am in the mood to watch a televised concert.",
+      "I would like to sit back and watch a movie on television."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "tv_time"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
   }
 ]
