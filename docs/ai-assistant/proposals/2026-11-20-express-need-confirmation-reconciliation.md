@@ -7,7 +7,7 @@ Status: **proposal only; nothing changed.** This note was requested by Cowork on
 The **executable contracts** require `requires_confirmation: true` for `express_need`. Four places agree:
 
 - **Java:** [IntentSlotContract](../../../cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/assistant/IntentSlotContract.java) lists `express_need` in `MUTATIONS` (line 37) and rejects a mutation without confirmation (line 89, "mutations require confirmation").
-- **Python:** [`contract.py`](../training/intent-slot/contract.py) `validate` raises "Mutations require confirmation" for the same four intents (lines 18-22). Its builder sets `requires_confirmation` true for them (lines 79-81).
+- **Python:** [`contract.py`](../training/intent-slot/contract.py) `validate` raises "Mutations require confirmation" for the same four intents (lines 20-22). Its builder sets `requires_confirmation` true for them (lines 79-81).
 - **Prompt:** both `system.txt` copies, the backend resource and the training copy, say "Needs require confirmation; never choose a device or action from a need alone" (line 26).
 - **Data:** every authored `express_need` candidate (S2 batch 4, #531) and the r10/r11 prompt examples use `true`. The batch-4 note says outright that it does not adopt CLAUDE.md's older example.
 
