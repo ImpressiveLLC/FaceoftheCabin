@@ -51,11 +51,11 @@ H1 and H2 write into `data/runs-incoming/<id>/`. The container only reads that f
 
 **C. Container capture (`run_capture.py`, new, in `docs/ai-assistant/training/`)**
 
-- **C1. Run directory.** Create `data/runs/<run_id>/` with an exclusive `os.mkdir`. If it exists, or `data/runs/` is a symlink, refuse and write nothing. Copy `repo.json` and `image-facts.json` in from `runs-incoming`; if either is missing, refuse. Earlier run directories are never opened for writing.
+- **C1. Run directory.** Create `data/runs/<run_id>/` with an exclusive `os.mkdir`. If it exists, or `data/runs/` is a symlink, refuse and write nothing. Copy `repo.json` and `image-facts.json` in from `runs-incoming`. If either is missing, the run aborts at preflight, but it still leaves evidence. The missing file is marked NOT_PRODUCED in the manifest with the reason, and C4 and C5 still write the manifest and the bundle. A `repo.json` showing a dirty tree aborts the same way, with the tree status kept as evidence. Only an existing directory or a symlinked `data/runs/` leaves nothing behind. Earlier run directories are never opened for writing.
 - **C2. Pre-run facts:**
   - `host-facts.json`: Python version and platform; CPU model, core count and memory from `/proc/cpuinfo` and `/proc/meminfo`; the torch version; `torch.cuda.is_available()`; and a dtype capability test. The test is a two-by-two matmul in fp32, and in fp16/bf16 only where the trainer would use them, recording pass or fail and the exception text.
   - `pip-freeze.txt` from `python -m pip freeze --all`, with its content SHA-256.
-  - **Lock comparison, lock to freeze only.** Every `name==version` pinned in `requirements.lock` must appear in the freeze with that exact version, or the run is refused. Extra freeze lines, such as `pip`, `setuptools` and `wheel`, are recorded and do not fail the run.
+  - **Lock comparison, lock to freeze only.** Every `name==version` pinned in `requirements.lock` must appear in the freeze with that exact version. Otherwise the run aborts at preflight, and the mismatch (package, locked version, found version) is written to `lock-check.json` as evidence. Extra freeze lines, such as `pip`, `setuptools` and `wheel`, are recorded and do not fail the run.
   - `dpkg.txt` from `dpkg-query -W`, because the apt layer is not pinned (section 3).
 - **C3. Run.** Call `train_sft.py --run-dir <dir> --seed <seed> --data <path> [--max-steps N]` as a subprocess.
   - Its standard output and standard error go **byte for byte unchanged** to `train.stdout` and `train.stderr`.
@@ -71,7 +71,7 @@ H1 and H2 write into `data/runs-incoming/<id>/`. The container only reads that f
   - The data manifest id and hashes. Placeholders refuse a real run until S7 exists.
   - Counts.
   - The exact section 5 attribution string.
-  - An `artifacts` map listing every expected artifact: `resolved-training-args.json`, `loss.jsonl`, the adapter files, `train.stdout`, `train.stderr`, `events.jsonl`, `host-facts.json`, `pip-freeze.txt`, `dpkg.txt`, `repo.json` and `image-facts.json`. Each entry is either `{"sha256": ...}` or `{"status": "NOT_PRODUCED", "reason": ...}`. A preflight abort marks the trainer outputs NOT_PRODUCED with the refusal reason. A mid-training failure marks the adapter and possibly `loss.jsonl` NOT_PRODUCED.
+  - An `artifacts` map listing every expected artifact: `resolved-training-args.json`, `loss.jsonl`, the adapter files, `train.stdout`, `train.stderr`, `events.jsonl`, `host-facts.json`, `pip-freeze.txt`, `lock-check.json`, `dpkg.txt`, `repo.json` and `image-facts.json`. Each entry is either `{"sha256": ...}` or `{"status": "NOT_PRODUCED", "reason": ...}`. A preflight abort marks the trainer outputs NOT_PRODUCED with the refusal reason. A mid-training failure marks the adapter and possibly `loss.jsonl` NOT_PRODUCED.
 - **C5. Bundle and seal.**
   - Write `bundle.sha256` listing the content SHA-256 of **every file in the run directory except `bundle.sha256` itself**, one `<sha256>  <relative path>` line per file, sorted by path, LF line endings. `run-manifest.json` is included.
   - Make every file and directory read-only, and print the content SHA-256 of `bundle.sha256`.
@@ -83,10 +83,12 @@ H1 and H2 write into `data/runs-incoming/<id>/`. The container only reads that f
 2. Every listed file exists and matches its line.
 3. No file other than `bundle.sha256` exists unlisted.
 4. `run-manifest.json` is listed, and every `artifacts` entry is either listed with a matching hash or marked NOT_PRODUCED with a non-empty reason.
-5. Fields required for every status are present (status, stage, times, attribution, repo and image facts).
-6. **Only for `status: completed`:** every artifact the plan's section 7 requires is produced.
+5. **Fields every status needs:** status, stage, times and attribution are present. `repo.json`, `image-facts.json`, `pip-freeze.txt` and `lock-check.json` are each either produced or NOT_PRODUCED with a reason. A missing fact with a recorded reason is valid failure evidence, not corruption.
+6. **Only for `status: completed`:** every artifact the plan's section 7 requires is produced, `repo.json` shows a clean tree, and `lock-check.json` records a pass.
 
-It reports `INTEGRITY_OK` with the status separately. **A failed or aborted run can be `INTEGRITY_OK`, and that is never reported as successful training.** It also recomputes the lock-to-freeze comparison. It reads nothing outside the run directory and the repository.
+It reports `INTEGRITY_OK` with the status separately. **A failed or aborted run can be `INTEGRITY_OK`, and that is never reported as successful training.**
+
+The verifier recomputes the lock-to-freeze comparison from `pip-freeze.txt` whenever that file was produced, and checks that the result equals `lock-check.json`. It does this for every status. A recorded mismatch in an `aborted_preflight` run is consistent evidence. The same mismatch in a run marked `completed`, or a recomputed result that disagrees with `lock-check.json`, fails integrity. It reads nothing outside the run directory and the repository.
 
 ## 3. Base-image digest pin
 
@@ -103,9 +105,14 @@ It reports `INTEGRITY_OK` with the status separately. **A failed or aborted run 
 - **Clean bundles.** A completed run verifies `INTEGRITY_OK`/`completed`, including the case where `bundle.sha256` is excluded from its own list.
 - **Tamper cases fail:** an edited listed file, an added unlisted file, a deleted listed file, an edited `bundle.sha256`, and a posted hash that does not match.
 - **Failure bundles:**
-  - Preflight abort, with a missing `image-facts.json`, a dirty tree in `repo.json` or a lock-to-freeze mismatch, gives `INTEGRITY_OK`/`aborted_preflight`. Trainer outputs are marked NOT_PRODUCED with the reason, and it is never reported as training.
+  - A missing `image-facts.json` gives `INTEGRITY_OK`/`aborted_preflight`, with `image-facts.json` and the trainer outputs marked NOT_PRODUCED with reasons.
+  - A lock-to-freeze mismatch gives `INTEGRITY_OK`/`aborted_preflight`, with `lock-check.json` recording the mismatch and the verifier's recomputation agreeing with it.
+  - A dirty tree gives `INTEGRITY_OK`/`aborted_preflight`.
+  - None of these is ever reported as training.
   - A stub that exits non-zero mid-training gives `INTEGRITY_OK`/`failed`, with the adapter marked NOT_PRODUCED.
   - An artifact marked NOT_PRODUCED without a reason fails.
+  - A manifest that says `completed` while `image-facts.json` is NOT_PRODUCED, or while `lock-check.json` records a mismatch, fails integrity.
+  - A `lock-check.json` that disagrees with the verifier's recomputation fails integrity.
 - **Raw logs.** `train.stdout` equals the stub's bytes exactly, with timestamps only in `events.jsonl`.
 - **Isolation.** An existing run directory is refused, and a second run leaves the first byte-identical.
 - **`--max-steps`.** It is passed through and recorded.
