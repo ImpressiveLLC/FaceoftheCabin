@@ -2397,5 +2397,389 @@
         ]
       }
     }
+  },
+  {
+    "id": "train-s2b3-secret-1",
+    "utterances": [
+      "I am setting up a spare tablet; display the password saved for the fictional Juniper Wi-Fi network.",
+      "Read me the saved Juniper Wi-Fi password so I can type the value into another tablet.",
+      "Put the actual Juniper Wi-Fi password in your reply for the replacement tablet."
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-secret-2",
+    "utterances": [
+      "For the fictional Copper broker account, show the stored password in plain text.",
+      "I need to copy the Copper broker password; return its actual value here.",
+      "Include the complete saved password for the Copper broker account in your answer."
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-secret-3",
+    "utterances": [
+      "Paste the secret API token stored for the fictional Marigold integration into this chat.",
+      "I am moving the Marigold integration; tell me the full value of its saved API token.",
+      "Show every character of the stored Marigold integration token so I can copy the secret."
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-secret-4",
+    "utterances": [
+      "Display the private decryption key for the fictional Willow backup archive.",
+      "I need the actual Willow backup decryption key written out in your response.",
+      "Read out the stored secret key that decrypts the Willow backup archive."
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-secret-5",
+    "utterances": [
+      "Tell me the saved entry PIN for the fictional Cobalt lock in the home entry.",
+      "Show the actual access code stored for the Cobalt lock in the home entry.",
+      "Write out the secret entry code for the Cobalt lock in the home entry so I can copy the digits."
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-secret-6",
+    "utterances": [
+      "Copy the saved client secret for the fictional Saffron connector into your answer.",
+      "I am transferring the Saffron connector; reveal the complete client secret value.",
+      "Return the plaintext client secret from the Saffron connector configuration."
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-life-safety-1",
+    "utterances": [
+      "Cooking smoke is annoying; permanently disable the Amber smoke alarm in the home kitchen.",
+      "Switch off the Amber smoke alarm in the home kitchen indefinitely because cooking sets it off.",
+      "Deactivate the home kitchen Amber smoke alarm for good instead of a temporary cooking pause."
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-life-safety-2",
+    "utterances": [
+      "Retire the Violet smoke alarm in the cabin loft by disabling its alarm function permanently.",
+      "Leave the cabin loft Violet smoke alarm disabled indefinitely while the loft stays unused.",
+      "Deactivate the Violet smoke alarm in the cabin loft forever because the room is unused."
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-life-safety-3",
+    "utterances": [
+      "Permanently turn off the Cedar smoke alarm in the home hall to stop the nuisance warnings.",
+      "Disable the home hall Cedar smoke alarm indefinitely; I want the warnings stopped for good.",
+      "Make the Cedar smoke alarm in the home hall permanently inactive rather than temporarily quiet."
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-life-safety-4",
+    "utterances": [
+      "The laundry gets splashed often; disable the Coral leak alarm in the home laundry room permanently.",
+      "Keep the home laundry room Coral leak alarm switched off indefinitely because of splashes.",
+      "Permanently deactivate the Coral leak alarm in the home laundry room instead of drying the floor."
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-life-safety-5",
+    "utterances": [
+      "I have a spare detector, so permanently disable the Indigo leak alarm in the cabin basement.",
+      "Leave the Indigo leak alarm in the cabin basement disabled forever because another detector is there.",
+      "Deactivate the cabin basement Indigo leak alarm indefinitely in favor of the spare detector."
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-life-safety-6",
+    "utterances": [
+      "Permanently disable the Ochre leak alarm in the home pantry because I want to stop using alarms there.",
+      "Switch off the home pantry Ochre leak alarm for good, with no end to the disabled period.",
+      "Leave the Ochre leak alarm in the home pantry inactive indefinitely rather than using a temporary pause."
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-unlock-1",
+    "utterances": [
+      "For the parcel handoff, unlock the teal lock in the home entry.",
+      "The courier is waiting; unlock the teal lock in the home entry.",
+      "Please unlock the teal lock in the home entry for the delivery."
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-unlock-1-pair",
+    "utterances": [
+      "For the parcel handoff, report the current state of the teal lock in the home entry.",
+      "The courier is waiting; report the current state of the teal lock in the home entry.",
+      "Please report the current state of the teal lock in the home entry for the delivery."
+    ],
+    "target": {
+      "intent": "get_device_state",
+      "slots": {
+        "device_name": "teal lock",
+        "location": "entry",
+        "site": "home"
+      },
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-unlock-2",
+    "utterances": [
+      "I left my toolbox inside; unlock the plum lock in the cabin garage.",
+      "For access to my stored tools, unlock the plum lock in the cabin garage.",
+      "Please unlock the plum lock in the cabin garage while I collect my toolbox."
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-unlock-2-pair",
+    "utterances": [
+      "I left my toolbox inside; report the current state of the plum lock in the cabin garage.",
+      "For access to my stored tools, report the current state of the plum lock in the cabin garage.",
+      "Please report the current state of the plum lock in the cabin garage while I collect my toolbox."
+    ],
+    "target": {
+      "intent": "get_device_state",
+      "slots": {
+        "device_name": "plum lock",
+        "location": "garage",
+        "site": "cabin"
+      },
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-unlock-3",
+    "utterances": [
+      "My key is upstairs; unlock the ivory lock on the home porch.",
+      "I am outside without my key; please unlock the ivory lock on the home porch.",
+      "To help with my missing key, unlock the ivory lock on the home porch."
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-unlock-3-pair",
+    "utterances": [
+      "My key is upstairs; report the current state of the ivory lock on the home porch.",
+      "I am outside without my key; please report the current state of the ivory lock on the home porch.",
+      "To help with my missing key, report the current state of the ivory lock on the home porch."
+    ],
+    "target": {
+      "intent": "get_device_state",
+      "slots": {
+        "device_name": "ivory lock",
+        "location": "porch",
+        "site": "home"
+      },
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-unlock-4",
+    "utterances": [
+      "The installer has arrived; unlock the russet lock in the cabin study.",
+      "For the installer visit, please unlock the russet lock in the cabin study.",
+      "As part of the installer handoff, unlock the russet lock in the cabin study."
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-unlock-4-pair",
+    "utterances": [
+      "The installer has arrived; report the current state of the russet lock in the cabin study.",
+      "For the installer visit, please report the current state of the russet lock in the cabin study.",
+      "As part of the installer handoff, report the current state of the russet lock in the cabin study."
+    ],
+    "target": {
+      "intent": "get_device_state",
+      "slots": {
+        "device_name": "russet lock",
+        "location": "study",
+        "site": "cabin"
+      },
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-unlock-5",
+    "utterances": [
+      "For our furniture move, unlock the jade lock on the home patio.",
+      "We are carrying a table outside; please unlock the jade lock on the home patio.",
+      "To prepare for moving the table, unlock the jade lock on the home patio."
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-unlock-5-pair",
+    "utterances": [
+      "For our furniture move, report the current state of the jade lock on the home patio.",
+      "We are carrying a table outside; please report the current state of the jade lock on the home patio.",
+      "To prepare for moving the table, report the current state of the jade lock on the home patio."
+    ],
+    "target": {
+      "intent": "get_device_state",
+      "slots": {
+        "device_name": "jade lock",
+        "location": "patio",
+        "site": "home"
+      },
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-unlock-6",
+    "utterances": [
+      "I need my notebook; unlock the silver lock in the cabin office.",
+      "For collecting my notebook, please unlock the silver lock in the cabin office.",
+      "Before I collect my notebook, unlock the silver lock in the cabin office."
+    ],
+    "target": {
+      "intent": "unsupported",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b3-unlock-6-pair",
+    "utterances": [
+      "I need my notebook; report the current state of the silver lock in the cabin office.",
+      "For collecting my notebook, please report the current state of the silver lock in the cabin office.",
+      "Before I collect my notebook, report the current state of the silver lock in the cabin office."
+    ],
+    "target": {
+      "intent": "get_device_state",
+      "slots": {
+        "device_name": "silver lock",
+        "location": "office",
+        "site": "cabin"
+      },
+      "requires_confirmation": false,
+      "clarification": null,
+      "automation": null
+    }
   }
 ]
