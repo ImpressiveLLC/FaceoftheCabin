@@ -1,6 +1,6 @@
 name: SFT tokenizer and loss-mask tests
 # Runs docs/ai-assistant/training/test_sft_tokenize.py: the pinned Ollama-shaped chat template, the assistant-only
-# loss mask, control-token injection refusal and the train_sft.py checks. Offline: no model, no network, no training.
+# loss mask, control-token injection refusal and the train_sft.py checks. No model or tokenizer download and no training (pip and setup-python still use the network).
 # The 5 real-tokenizer tests need the pinned tokenizer.json (SFT_TOKENIZER_JSON) and are SKIPPED here, not passed;
 # the summary says so. Training itself stays NOT_RUN and is not started by this workflow.
 on:
