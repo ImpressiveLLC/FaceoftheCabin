@@ -3813,5 +3813,103 @@
         ]
       }
     }
+  },
+  {
+    "id": "train-s2b6-hot-room",
+    "utterances": [
+      "I feel overheated even sitting still in my chair. I am in the study."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "hot",
+        "location": "study"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b6-dark-room",
+    "utterances": [
+      "It is so dim that the words on my crossword disappear into shadow. I am in the den."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "dark",
+        "location": "den"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b6-humid-site",
+    "utterances": [
+      "The indoor air feels heavy with moisture against my skin. I am at home."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "humid",
+        "site": "home"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b6-bedtime-site",
+    "utterances": [
+      "I have put my book aside and am settling down for the night. I am at the cabin."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "bedtime",
+        "site": "cabin"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b6-nap-room-site",
+    "utterances": [
+      "I want a short daytime snooze between my activities. I am in the guest room at home."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "nap",
+        "location": "guest room",
+        "site": "home"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b6-tv_time-room-site",
+    "utterances": [
+      "I want to settle in and watch a television programme. I am in the loft at the cabin."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "tv_time",
+        "location": "loft",
+        "site": "cabin"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
   }
 ]
