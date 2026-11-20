@@ -134,14 +134,17 @@ Proposed extension of the existing five-field envelope (not valid under r1 yet):
 {
   "intent": "express_need",
   "slots": {"concept": "cold"},
-  "requires_confirmation": false,
+  "requires_confirmation": true,
   "clarification": null,
   "automation": null
 }
 ```
 
-Here `false` means recognizing a need has no side effect. A subsequent action
-proposal requires confirmation regardless of that model field. Retain strict JSON,
+Here `true` is the package and data convention (Cowork ruling, #244 7032742877;
+[reconciliation note](docs/ai-assistant/proposals/2026-11-20-express-need-confirmation-reconciliation.md)).
+It marks only that any resulting action needs confirmation: recognizing a need has
+no side effect, selects no action and grants no execution authority. A subsequent
+action proposal requires confirmation regardless of that model field. Retain strict JSON,
 required envelope fields and `additionalProperties: false`; conditionally require
 `concept`, restrict need slots, and require null `automation` in semantic validation.
 Update the package schema, `contract.py`, `system.txt`, fixtures and evaluator with
