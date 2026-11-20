@@ -3911,5 +3911,57 @@
       "clarification": null,
       "automation": null
     }
+  },
+  {
+    "id": "train-s2b7-negated-hot",
+    "utterances": [
+      "I am not uncomfortably warm in these clothes."
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "What would you like me to understand about how you feel?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b7-negated-bedtime",
+    "utterances": [
+      "I am not ready for my main sleep of the night."
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "What would you like me to understand about your readiness for sleep?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b7-negated-nap",
+    "utterances": [
+      "I do not want a short daytime snooze between my activities."
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "What would you like me to understand about your wish to rest?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b7-negated-tv_time",
+    "utterances": [
+      "I am not in the mood to watch a televised concert."
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "What would you like me to understand about your viewing preference?",
+      "automation": null
+    }
   }
 ]
