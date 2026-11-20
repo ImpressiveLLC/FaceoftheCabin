@@ -2,7 +2,7 @@
 
 Status: **proposal only; execution NOT_RUN**. Hub assignment 7031619513. This document plans Track B review of the authored training candidates, not Track A private-source review or protected Track C. It creates no packet, labels, elected reviewer, approval, audit result, keys, split or training authorization. Author: Codex/Noether, an author of these candidate families, not an independent reviewer.
 
-Source checkout: `3e441f5b9793a606e3183d2a738f2570635b929b`. Authority: [SFT data path sections 5â€“9](sft-data-path.md), [training contract section 5 owner amendment](intent-sft-training-contract-v1.md#5-owner-amendment-codex-elects-the-auditors-6874199353), [S6 freeze design](s6-freeze-command-and-ledger-spec.md), [S7 gap list](s7-prepare-sft-gap-list.md), and [S7 G1/G2 build specification](s7-g1-frozen-exclusion-build-spec.md). The public [package contract](../training/intent-slot/system.txt) and executable schema/validators govern representation; recorded owner/Cowork rulings must accompany the rubric where they resolve a boundary.
+Source checkout: `3e441f5b9793a606e3183d2a738f2570635b929b`. Authority: [SFT data path sections 5-9](sft-data-path.md), [training contract section 5 owner amendment](intent-sft-training-contract-v1.md#5-owner-amendment-codex-elects-the-auditors-6874199353), [S6 freeze design](s6-freeze-command-and-ledger-spec.md), [S7 gap list](s7-prepare-sft-gap-list.md), and [S7 G1/G2 build specification](s7-g1-frozen-exclusion-build-spec.md). The public [package contract](../training/intent-slot/system.txt) and executable schema/validators govern representation; recorded owner/Cowork rulings must accompany the rubric where they resolve a boundary.
 
 ## 1. Pinned planning ceiling, not admitted data
 
@@ -30,7 +30,7 @@ Admission may shrink through quarantine, unresolved semantics, provenance gaps o
 
 ## 2. Family commitments and the legacy admission gate
 
-These are exact current Git-blob hashes under `training/intent-slot/sft/`. Overlay files overlap intentionally; their row counts cannot be summed.
+These are SHA-256 content digests computed from the committed Git blob bytes, not Git SHA-1 object IDs. The files are under `training/intent-slot/sft/`. Overlay files overlap intentionally; their row counts cannot be summed.
 
 | Family-map file | Keys | Listed IDs | SHA-256 |
 |---|---:|---:|---|
@@ -95,7 +95,7 @@ Any A/B disagreement, abstention, hold or unresolved policy question enters the 
 
 ## 6. Separate 20% blind audit
 
-Before S4 starts, approve the audit-selection algorithm and strata definitions. After agreement/admission locks, but **before audit access or scoring**, precommit the exact cohort hash, denominator M, intent/family/context counts, selection seed, quotas, projection/commitment hashes, sample IDs hash, elected auditor assignments and conflict decisions. Use **ceil(0.20 Ã— M)** rows (zero only for an empty cohort, which cannot pass). If M=495, n=99. The ceiling is not automatically the audit denominator.
+Before S4 starts, approve the audit-selection algorithm and strata definitions. After agreement/admission locks, but **before audit access or scoring**, precommit the exact cohort hash, denominator M, intent/family/context counts, selection seed, quotas, projection/commitment hashes, sample IDs hash, elected auditor assignments and conflict decisions. Use **ceil(0.20 x M)** rows (zero only for an empty cohort, which cannot pass). If M=495, n=99. The ceiling is not automatically the audit denominator.
 
 Proposed deterministic stratification: allocate n proportionally across agreed intent strata, with at least one per nonempty stratum; use largest-remainder allocation with a documented lexical tie-break. Within each intent, cycle through canonical families in seeded order, choosing seeded rows without replacement to spread coverage. Record coverage of card-dependent rows, safety/clarification boundaries, need categories, all four trigger kinds and declared minimal-pair families. Precommit any mandatory coverage constraints before labels; if n cannot meet them, increase the sample transparently rather than dropping coverage or choosing convenient rows. Overlapping strata are metadata, not double-counted rows. Report realized counts and omissions, including small-family limits, before scoring.
 
