@@ -1,0 +1,68 @@
+{
+  "train-s2b4-need-humid": [
+    "synthetic-train-s2b4-need-humid-0",
+    "synthetic-train-s2b4-need-humid-1"
+  ],
+  "train-s2b4-need-hot": [
+    "synthetic-train-s2b4-need-hot-0",
+    "synthetic-train-s2b4-need-hot-1",
+    "synthetic-train-s2b4-need-hot-2",
+    "synthetic-train-s2b4-need-hot-3",
+    "synthetic-train-s2b4-need-hot-4",
+    "synthetic-train-s2b4-need-hot-5",
+    "synthetic-train-s2b4-need-hot-6"
+  ],
+  "train-s2b4-need-dark": [
+    "synthetic-train-s2b4-need-dark-0",
+    "synthetic-train-s2b4-need-dark-1",
+    "synthetic-train-s2b4-need-dark-2",
+    "synthetic-train-s2b4-need-dark-3",
+    "synthetic-train-s2b4-need-dark-4"
+  ],
+  "train-s2b4-need-arriving": [
+    "synthetic-train-s2b4-need-arriving-0",
+    "synthetic-train-s2b4-need-arriving-1",
+    "synthetic-train-s2b4-need-arriving-2",
+    "synthetic-train-s2b4-need-arriving-3",
+    "synthetic-train-s2b4-need-arriving-4",
+    "synthetic-train-s2b4-need-arriving-5",
+    "synthetic-train-s2b4-need-arriving-6"
+  ],
+  "train-s2b4-need-leaving": [
+    "synthetic-train-s2b4-need-leaving-0",
+    "synthetic-train-s2b4-need-leaving-1",
+    "synthetic-train-s2b4-need-leaving-2",
+    "synthetic-train-s2b4-need-leaving-3",
+    "synthetic-train-s2b4-need-leaving-4",
+    "synthetic-train-s2b4-need-leaving-5",
+    "synthetic-train-s2b4-need-leaving-6"
+  ],
+  "train-s2b4-need-bedtime": [
+    "synthetic-train-s2b4-need-bedtime-0",
+    "synthetic-train-s2b4-need-bedtime-1",
+    "synthetic-train-s2b4-need-bedtime-2",
+    "synthetic-train-s2b4-need-bedtime-3",
+    "synthetic-train-s2b4-need-bedtime-4"
+  ],
+  "train-s2b4-need-nap": [
+    "synthetic-train-s2b4-need-nap-0",
+    "synthetic-train-s2b4-need-nap-1",
+    "synthetic-train-s2b4-need-nap-2",
+    "synthetic-train-s2b4-need-nap-3"
+  ],
+  "train-s2b4-need-wake_up": [
+    "synthetic-train-s2b4-need-wake_up-0",
+    "synthetic-train-s2b4-need-wake_up-1",
+    "synthetic-train-s2b4-need-wake_up-2",
+    "synthetic-train-s2b4-need-wake_up-3"
+  ],
+  "train-s2b4-need-tv_time": [
+    "synthetic-train-s2b4-need-tv_time-0",
+    "synthetic-train-s2b4-need-tv_time-1",
+    "synthetic-train-s2b4-need-tv_time-2",
+    "synthetic-train-s2b4-need-tv_time-3",
+    "synthetic-train-s2b4-need-tv_time-4",
+    "synthetic-train-s2b4-need-tv_time-5",
+    "synthetic-train-s2b4-need-tv_time-6"
+  ]
+}
