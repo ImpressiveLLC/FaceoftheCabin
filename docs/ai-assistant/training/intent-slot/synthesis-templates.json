@@ -1367,5 +1367,1035 @@
       "clarification": null,
       "automation": null
     }
+  },
+  {
+    "id": "train-s2b2-ambiguous-device-1",
+    "utterances": [
+      "There are two lamps in the study at home, named amber lamp and teal lamp. Turn the lamp on.",
+      "There are two lamps in the study at home, named amber lamp and teal lamp. Please switch the lamp on.",
+      "There are two lamps in the study at home, named amber lamp and teal lamp. I want the lamp on."
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Do you mean the amber lamp or the teal lamp in the study?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-ambiguous-device-1-pair",
+    "utterances": [
+      "There are two lamps in the study at home, named amber lamp and teal lamp. Turn the amber lamp on.",
+      "There are two lamps in the study at home, named amber lamp and teal lamp. Please switch the amber lamp on.",
+      "There are two lamps in the study at home, named amber lamp and teal lamp. I want the amber lamp on."
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "amber lamp",
+        "location": "study",
+        "site": "home",
+        "state": "on"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-ambiguous-device-2",
+    "utterances": [
+      "There are two fans in the loft at home, named violet fan and copper fan. Turn the fan off.",
+      "There are two fans in the loft at home, named violet fan and copper fan. Please switch the fan off.",
+      "There are two fans in the loft at home, named violet fan and copper fan. I want the fan off."
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Do you mean the violet fan or the copper fan in the loft?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-ambiguous-device-2-pair",
+    "utterances": [
+      "There are two fans in the loft at home, named violet fan and copper fan. Turn the violet fan off.",
+      "There are two fans in the loft at home, named violet fan and copper fan. Please switch the violet fan off.",
+      "There are two fans in the loft at home, named violet fan and copper fan. I want the violet fan off."
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "violet fan",
+        "location": "loft",
+        "site": "home",
+        "state": "off"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-ambiguous-device-3",
+    "utterances": [
+      "There are two lights in the pantry at home, named silver light and indigo light. Turn the light on.",
+      "There are two lights in the pantry at home, named silver light and indigo light. Please switch the light on.",
+      "There are two lights in the pantry at home, named silver light and indigo light. I want the light on."
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Do you mean the silver light or the indigo light in the pantry?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-ambiguous-device-3-pair",
+    "utterances": [
+      "There are two lights in the pantry at home, named silver light and indigo light. Turn the silver light on.",
+      "There are two lights in the pantry at home, named silver light and indigo light. Please switch the silver light on.",
+      "There are two lights in the pantry at home, named silver light and indigo light. I want the silver light on."
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "silver light",
+        "location": "pantry",
+        "site": "home",
+        "state": "on"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-ambiguous-device-4",
+    "utterances": [
+      "There are two humidifiers in the guest room at home, named pearl humidifier and ochre humidifier. Turn the humidifier off.",
+      "There are two humidifiers in the guest room at home, named pearl humidifier and ochre humidifier. Please switch the humidifier off.",
+      "There are two humidifiers in the guest room at home, named pearl humidifier and ochre humidifier. I want the humidifier off."
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Do you mean the pearl humidifier or the ochre humidifier in the guest room?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-ambiguous-device-4-pair",
+    "utterances": [
+      "There are two humidifiers in the guest room at home, named pearl humidifier and ochre humidifier. Turn the pearl humidifier off.",
+      "There are two humidifiers in the guest room at home, named pearl humidifier and ochre humidifier. Please switch the pearl humidifier off.",
+      "There are two humidifiers in the guest room at home, named pearl humidifier and ochre humidifier. I want the pearl humidifier off."
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "pearl humidifier",
+        "location": "guest room",
+        "site": "home",
+        "state": "off"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-ambiguous-device-5",
+    "utterances": [
+      "There are two lamps in the attic at home, named coral lamp and mint lamp. Turn the lamp off.",
+      "There are two lamps in the attic at home, named coral lamp and mint lamp. Please switch the lamp off.",
+      "There are two lamps in the attic at home, named coral lamp and mint lamp. I want the lamp off."
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Do you mean the coral lamp or the mint lamp in the attic?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-ambiguous-device-5-pair",
+    "utterances": [
+      "There are two lamps in the attic at home, named coral lamp and mint lamp. Turn the coral lamp off.",
+      "There are two lamps in the attic at home, named coral lamp and mint lamp. Please switch the coral lamp off.",
+      "There are two lamps in the attic at home, named coral lamp and mint lamp. I want the coral lamp off."
+    ],
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "coral lamp",
+        "location": "attic",
+        "site": "home",
+        "state": "off"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-hypothetical-1",
+    "utterances": [
+      "If I were feeling cold in the study.",
+      "Suppose I felt chilly in the study.",
+      "Imagine I was feeling too cold in the study."
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Are you describing feeling too cold now, or only a hypothetical situation?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-hypothetical-1-pair",
+    "utterances": [
+      "I am feeling cold in the study.",
+      "I feel chilly in the study.",
+      "I am feeling too cold in the study."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "cold",
+        "location": "study"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-medical-1",
+    "utterances": [
+      "When I say cold in the study, I might mean an illness or feeling too cold.",
+      "Cold in the study: I have not said whether I mean being ill or being too cold.",
+      "By a cold in the study, I could mean an illness or feeling chilly."
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Do you mean the room feels too cold, or that you have an illness?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-medical-1-pair",
+    "utterances": [
+      "When I say cold in the study, I mean feeling too cold.",
+      "Cold in the study: I mean being too cold.",
+      "By a cold in the study, I mean feeling chilly."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "cold",
+        "location": "study"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-hypothetical-2",
+    "utterances": [
+      "If I were feeling cold in the loft.",
+      "Suppose I felt chilly in the loft.",
+      "Imagine I was feeling too cold in the loft."
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Are you describing feeling too cold now, or only a hypothetical situation?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-hypothetical-2-pair",
+    "utterances": [
+      "I am feeling cold in the loft.",
+      "I feel chilly in the loft.",
+      "I am feeling too cold in the loft."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "cold",
+        "location": "loft"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-medical-2",
+    "utterances": [
+      "When I say cold in the loft, I might mean an illness or feeling too cold.",
+      "Cold in the loft: I have not said whether I mean being ill or being too cold.",
+      "By a cold in the loft, I could mean an illness or feeling chilly."
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Do you mean the room feels too cold, or that you have an illness?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-medical-2-pair",
+    "utterances": [
+      "When I say cold in the loft, I mean feeling too cold.",
+      "Cold in the loft: I mean being too cold.",
+      "By a cold in the loft, I mean feeling chilly."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "cold",
+        "location": "loft"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-hypothetical-3",
+    "utterances": [
+      "If I were feeling cold in the pantry.",
+      "Suppose I felt chilly in the pantry.",
+      "Imagine I was feeling too cold in the pantry."
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Are you describing feeling too cold now, or only a hypothetical situation?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-hypothetical-3-pair",
+    "utterances": [
+      "I am feeling cold in the pantry.",
+      "I feel chilly in the pantry.",
+      "I am feeling too cold in the pantry."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "cold",
+        "location": "pantry"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-medical-3",
+    "utterances": [
+      "When I say cold in the pantry, I might mean an illness or feeling too cold.",
+      "Cold in the pantry: I have not said whether I mean being ill or being too cold.",
+      "By a cold in the pantry, I could mean an illness or feeling chilly."
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Do you mean the room feels too cold, or that you have an illness?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-medical-3-pair",
+    "utterances": [
+      "When I say cold in the pantry, I mean feeling too cold.",
+      "Cold in the pantry: I mean being too cold.",
+      "By a cold in the pantry, I mean feeling chilly."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "cold",
+        "location": "pantry"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-hypothetical-4",
+    "utterances": [
+      "If I were feeling cold in the guest room.",
+      "Suppose I felt chilly in the guest room.",
+      "Imagine I was feeling too cold in the guest room."
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Are you describing feeling too cold now, or only a hypothetical situation?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-hypothetical-4-pair",
+    "utterances": [
+      "I am feeling cold in the guest room.",
+      "I feel chilly in the guest room.",
+      "I am feeling too cold in the guest room."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "cold",
+        "location": "guest room"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-medical-4",
+    "utterances": [
+      "When I say cold in the guest room, I might mean an illness or feeling too cold.",
+      "Cold in the guest room: I have not said whether I mean being ill or being too cold.",
+      "By a cold in the guest room, I could mean an illness or feeling chilly."
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Do you mean the room feels too cold, or that you have an illness?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-medical-4-pair",
+    "utterances": [
+      "When I say cold in the guest room, I mean feeling too cold.",
+      "Cold in the guest room: I mean being too cold.",
+      "By a cold in the guest room, I mean feeling chilly."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "cold",
+        "location": "guest room"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-hypothetical-5",
+    "utterances": [
+      "If I were feeling cold in the attic.",
+      "Suppose I felt chilly in the attic.",
+      "Imagine I was feeling too cold in the attic."
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Are you describing feeling too cold now, or only a hypothetical situation?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-hypothetical-5-pair",
+    "utterances": [
+      "I am feeling cold in the attic.",
+      "I feel chilly in the attic.",
+      "I am feeling too cold in the attic."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "cold",
+        "location": "attic"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-medical-5",
+    "utterances": [
+      "When I say cold in the attic, I might mean an illness or feeling too cold.",
+      "Cold in the attic: I have not said whether I mean being ill or being too cold.",
+      "By a cold in the attic, I could mean an illness or feeling chilly."
+    ],
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Do you mean the room feels too cold, or that you have an illness?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-medical-5-pair",
+    "utterances": [
+      "When I say cold in the attic, I mean feeling too cold.",
+      "Cold in the attic: I mean being too cold.",
+      "By a cold in the attic, I mean feeling chilly."
+    ],
+    "target": {
+      "intent": "express_need",
+      "slots": {
+        "concept": "cold",
+        "location": "attic"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-wrong-card-site-1",
+    "utterances": [
+      "Turn the teal lamp in the study at home on.",
+      "Please switch the teal lamp in the study at home on.",
+      "I want the teal lamp in the study at home on."
+    ],
+    "card_target": {
+      "device_name": "amber lamp",
+      "location": "study",
+      "site": "home"
+    },
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "The selected card is for the amber lamp in the study at home. Did you mean that card or the teal lamp in the study at home?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-wrong-card-site-1-pair",
+    "utterances": [
+      "Turn the amber lamp in the study at home on.",
+      "Please switch the amber lamp in the study at home on.",
+      "I want the amber lamp in the study at home on."
+    ],
+    "card_target": {
+      "device_name": "amber lamp",
+      "location": "study",
+      "site": "home"
+    },
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "amber lamp",
+        "location": "study",
+        "site": "home",
+        "state": "on"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-wrong-card-site-2",
+    "utterances": [
+      "Turn the copper fan in the loft at home off.",
+      "Please switch the copper fan in the loft at home off.",
+      "I want the copper fan in the loft at home off."
+    ],
+    "card_target": {
+      "device_name": "violet fan",
+      "location": "loft",
+      "site": "home"
+    },
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "The selected card is for the violet fan in the loft at home. Did you mean that card or the copper fan in the loft at home?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-wrong-card-site-2-pair",
+    "utterances": [
+      "Turn the violet fan in the loft at home off.",
+      "Please switch the violet fan in the loft at home off.",
+      "I want the violet fan in the loft at home off."
+    ],
+    "card_target": {
+      "device_name": "violet fan",
+      "location": "loft",
+      "site": "home"
+    },
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "violet fan",
+        "location": "loft",
+        "site": "home",
+        "state": "off"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-wrong-card-site-3",
+    "utterances": [
+      "Turn the indigo light in the pantry at cabin on.",
+      "Please switch the indigo light in the pantry at cabin on.",
+      "I want the indigo light in the pantry at cabin on."
+    ],
+    "card_target": {
+      "device_name": "silver light",
+      "location": "pantry",
+      "site": "cabin"
+    },
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "The selected card is for the silver light in the pantry at cabin. Did you mean that card or the indigo light in the pantry at cabin?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-wrong-card-site-3-pair",
+    "utterances": [
+      "Turn the silver light in the pantry at cabin on.",
+      "Please switch the silver light in the pantry at cabin on.",
+      "I want the silver light in the pantry at cabin on."
+    ],
+    "card_target": {
+      "device_name": "silver light",
+      "location": "pantry",
+      "site": "cabin"
+    },
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "silver light",
+        "location": "pantry",
+        "site": "cabin",
+        "state": "on"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-wrong-card-site-4",
+    "utterances": [
+      "Turn the pearl humidifier in the guest room at cabin off.",
+      "Please switch the pearl humidifier in the guest room at cabin off.",
+      "I want the pearl humidifier in the guest room at cabin off."
+    ],
+    "card_target": {
+      "device_name": "pearl humidifier",
+      "location": "guest room",
+      "site": "home"
+    },
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "The selected card is for the pearl humidifier in the guest room at home. Did you mean that card or the pearl humidifier in the guest room at cabin?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-wrong-card-site-4-pair",
+    "utterances": [
+      "Turn the pearl humidifier in the guest room at home off.",
+      "Please switch the pearl humidifier in the guest room at home off.",
+      "I want the pearl humidifier in the guest room at home off."
+    ],
+    "card_target": {
+      "device_name": "pearl humidifier",
+      "location": "guest room",
+      "site": "home"
+    },
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "pearl humidifier",
+        "location": "guest room",
+        "site": "home",
+        "state": "off"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-wrong-card-site-5",
+    "utterances": [
+      "Turn the coral lamp in the attic at home off.",
+      "Please switch the coral lamp in the attic at home off.",
+      "I want the coral lamp in the attic at home off."
+    ],
+    "card_target": {
+      "device_name": "coral lamp",
+      "location": "attic",
+      "site": "cabin"
+    },
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "The selected card is for the coral lamp in the attic at cabin. Did you mean that card or the coral lamp in the attic at home?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-wrong-card-site-5-pair",
+    "utterances": [
+      "Turn the coral lamp in the attic at cabin off.",
+      "Please switch the coral lamp in the attic at cabin off.",
+      "I want the coral lamp in the attic at cabin off."
+    ],
+    "card_target": {
+      "device_name": "coral lamp",
+      "location": "attic",
+      "site": "cabin"
+    },
+    "target": {
+      "intent": "set_device_state",
+      "slots": {
+        "device_name": "coral lamp",
+        "location": "attic",
+        "site": "cabin",
+        "state": "off"
+      },
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-schedule-no-zone-1",
+    "utterances": [
+      "Schedule the selected device to turn on at 2032-02-12T08:10:00.",
+      "At 2032-02-12T08:10:00, turn the selected device on.",
+      "Please arrange for the selected device to switch on at 2032-02-12T08:10:00."
+    ],
+    "card_target": {
+      "device_name": "amber lamp",
+      "location": "study",
+      "site": "home"
+    },
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Which time zone or UTC offset applies to that date and time?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-schedule-no-zone-1-pair",
+    "utterances": [
+      "Schedule the selected device to turn on at 2032-02-12T08:10:00+02:00.",
+      "At 2032-02-12T08:10:00+02:00, turn the selected device on.",
+      "Please arrange for the selected device to switch on at 2032-02-12T08:10:00+02:00."
+    ],
+    "card_target": {
+      "device_name": "amber lamp",
+      "location": "study",
+      "site": "home"
+    },
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "time_once",
+          "at": "2032-02-12T08:10:00+02:00"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "amber lamp",
+              "location": "study",
+              "site": "home"
+            },
+            "operation": "on",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b2-schedule-no-zone-2",
+    "utterances": [
+      "Schedule the selected device to turn off at 2032-03-16T19:20:00.",
+      "At 2032-03-16T19:20:00, turn the selected device off.",
+      "Please arrange for the selected device to switch off at 2032-03-16T19:20:00."
+    ],
+    "card_target": {
+      "device_name": "violet fan",
+      "location": "loft",
+      "site": "cabin"
+    },
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Which time zone or UTC offset applies to that date and time?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-schedule-no-zone-2-pair",
+    "utterances": [
+      "Schedule the selected device to turn off at 2032-03-16T19:20:00-04:00.",
+      "At 2032-03-16T19:20:00-04:00, turn the selected device off.",
+      "Please arrange for the selected device to switch off at 2032-03-16T19:20:00-04:00."
+    ],
+    "card_target": {
+      "device_name": "violet fan",
+      "location": "loft",
+      "site": "cabin"
+    },
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "time_once",
+          "at": "2032-03-16T19:20:00-04:00"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "violet fan",
+              "location": "loft",
+              "site": "cabin"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b2-schedule-no-zone-3",
+    "utterances": [
+      "Schedule the selected device to turn on at 2032-04-21T06:35:00.",
+      "At 2032-04-21T06:35:00, turn the selected device on.",
+      "Please arrange for the selected device to switch on at 2032-04-21T06:35:00."
+    ],
+    "card_target": {
+      "device_name": "silver light",
+      "location": "pantry",
+      "site": "home"
+    },
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Which time zone or UTC offset applies to that date and time?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-schedule-no-zone-3-pair",
+    "utterances": [
+      "Schedule the selected device to turn on at 2032-04-21T06:35:00+01:00.",
+      "At 2032-04-21T06:35:00+01:00, turn the selected device on.",
+      "Please arrange for the selected device to switch on at 2032-04-21T06:35:00+01:00."
+    ],
+    "card_target": {
+      "device_name": "silver light",
+      "location": "pantry",
+      "site": "home"
+    },
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "time_once",
+          "at": "2032-04-21T06:35:00+01:00"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "silver light",
+              "location": "pantry",
+              "site": "home"
+            },
+            "operation": "on",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b2-schedule-no-zone-4",
+    "utterances": [
+      "Schedule the selected device to turn off at 2032-05-25T21:45:00.",
+      "At 2032-05-25T21:45:00, turn the selected device off.",
+      "Please arrange for the selected device to switch off at 2032-05-25T21:45:00."
+    ],
+    "card_target": {
+      "device_name": "pearl humidifier",
+      "location": "guest room",
+      "site": "cabin"
+    },
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Which time zone or UTC offset applies to that date and time?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-schedule-no-zone-4-pair",
+    "utterances": [
+      "Schedule the selected device to turn off at 2032-05-25T21:45:00-07:00.",
+      "At 2032-05-25T21:45:00-07:00, turn the selected device off.",
+      "Please arrange for the selected device to switch off at 2032-05-25T21:45:00-07:00."
+    ],
+    "card_target": {
+      "device_name": "pearl humidifier",
+      "location": "guest room",
+      "site": "cabin"
+    },
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "time_once",
+          "at": "2032-05-25T21:45:00-07:00"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "pearl humidifier",
+              "location": "guest room",
+              "site": "cabin"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "train-s2b2-schedule-no-zone-5",
+    "utterances": [
+      "Schedule the selected device to turn off at 2032-06-09T17:50:00.",
+      "At 2032-06-09T17:50:00, turn the selected device off.",
+      "Please arrange for the selected device to switch off at 2032-06-09T17:50:00."
+    ],
+    "card_target": {
+      "device_name": "coral lamp",
+      "location": "attic",
+      "site": "home"
+    },
+    "target": {
+      "intent": "clarify",
+      "slots": {},
+      "requires_confirmation": false,
+      "clarification": "Which time zone or UTC offset applies to that date and time?",
+      "automation": null
+    }
+  },
+  {
+    "id": "train-s2b2-schedule-no-zone-5-pair",
+    "utterances": [
+      "Schedule the selected device to turn off at 2032-06-09T17:50:00+05:30.",
+      "At 2032-06-09T17:50:00+05:30, turn the selected device off.",
+      "Please arrange for the selected device to switch off at 2032-06-09T17:50:00+05:30."
+    ],
+    "card_target": {
+      "device_name": "coral lamp",
+      "location": "attic",
+      "site": "home"
+    },
+    "target": {
+      "intent": "propose_automation",
+      "slots": {},
+      "requires_confirmation": true,
+      "clarification": null,
+      "automation": {
+        "trigger": {
+          "kind": "time_once",
+          "at": "2032-06-09T17:50:00+05:30"
+        },
+        "conditions": [],
+        "actions": [
+          {
+            "target": {
+              "device_name": "coral lamp",
+              "location": "attic",
+              "site": "home"
+            },
+            "operation": "off",
+            "attribute": null,
+            "value": null,
+            "unit": null,
+            "delay_seconds": 0
+          }
+        ]
+      }
+    }
   }
 ]
