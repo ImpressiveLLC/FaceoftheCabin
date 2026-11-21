@@ -28,12 +28,15 @@ only (every other token has label -100), replacing the single `text` field that 
 is set; (5) `--check-only` tokenizes and masks the data without importing torch or loading any model. The model
 path below is NOT_RUN on any host: it has not been executed against the pinned dependency lock.
 
-CHANGED 2026-11-20 (#543 section 2A, dev-sft-r1 run capture): a real run needs `--run-dir`, an existing empty
-directory (the run_capture wrapper creates it). The adapter and tokenizer go to RUN_DIR/adapter/ and the trainer's
+CHANGED 2026-11-20 (#543 section 2A, dev-sft-r1 run capture): a real run needs `--run-dir`, an existing directory
+holding no earlier trainer output (the run_capture wrapper creates it and may already have written its pre-run
+evidence there). The dataset is read once: the recorded hash is of the bytes that were parsed, and training aborts if
+the file changed before it starts. The adapter and tokenizer go to RUN_DIR/adapter/ and the trainer's
 own output to RUN_DIR/trainer/, so a second run can no longer overwrite the first one's evidence; the fixed
 data/adapter/ path is not written. Before training it writes RUN_DIR/resolved-training-args.json (the resolved
 TrainingArguments plus the pins and counts it checked); after training RUN_DIR/loss.jsonl (the trainer's log
-history). Every file is created exclusively and never replaced. `--max-steps N` caps the run (default: unset, so
+history, also written if training fails). Every file is created exclusively and never replaced; paths inside RUN_DIR
+are recorded as RUN_DIR/..., and the model load dtype is recorded. `--max-steps N` caps the run (default: unset, so
 num_train_epochs applies). Hyperparameters, mask, template, seed and dtype are unchanged.
 """
 import argparse
@@ -50,12 +53,19 @@ MAX_LENGTH = 2048
 
 
 def load_dataset_dicts(path: Path = DATA_PATH) -> list[dict]:
+    return load_dataset_snapshot(path)[0]
+
+
+def load_dataset_snapshot(path: Path = DATA_PATH) -> tuple[list[dict], str]:
+    """Reads the dataset once and returns (examples, sha256 of exactly those bytes), so the recorded hash is the hash of
+    the bytes that were parsed and trained on, not of a later re-read."""
     if not path.exists():
         raise SystemExit(
             f"{path} does not exist -- run export_grades_to_sft.py first."
         )
+    raw = path.read_bytes()
     examples = []
-    for number, line in enumerate(path.open(encoding="utf-8"), start=1):
+    for number, line in enumerate(raw.decode("utf-8").split("\n"), start=1):
         if not line.strip():
             continue
         try:
@@ -71,7 +81,14 @@ def load_dataset_dicts(path: Path = DATA_PATH) -> list[dict]:
             "pipeline mechanics, not producing a meaningfully improved model "
             "-- see README.md's Known limitations section."
         )
-    return examples
+    return examples, hashlib.sha256(raw).hexdigest()
+
+
+def check_dataset_unchanged(path: Path, expected_sha256: str) -> None:
+    """Aborts before training if the dataset file no longer has the bytes that were loaded."""
+    current = hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
+    if current != expected_sha256:
+        raise SystemExit(f"{path} changed after it was loaded (sha256 {expected_sha256} -> {current}); nothing was trained")
 
 
 def load_pinned_tokenizer():
@@ -110,28 +127,55 @@ RESOLVED_ARGS_FILE = "resolved-training-args.json"
 LOSS_FILE = "loss.jsonl"
 
 
+def run_relative(value, run_dir: Path):
+    """Records a path inside RUN_DIR as RUN_DIR/<relative> so the evidence carries no host path."""
+    text = str(value)
+    base = str(run_dir)
+    if text == base:
+        return "RUN_DIR"
+    if text.startswith(base.rstrip("/\\") + "/") or text.startswith(base.rstrip("/\\") + "\\"):
+        return "RUN_DIR/" + Path(text).relative_to(run_dir).as_posix()
+    return value
+
+
+def load_training_modules():
+    """The heavy imports, in one place so tests can supply stand-ins without torch."""
+    import torch
+    from peft import LoraConfig, get_peft_model
+    from transformers import AutoModelForCausalLM, Trainer, TrainingArguments, set_seed
+    return dict(torch=torch, LoraConfig=LoraConfig, get_peft_model=get_peft_model,
+                AutoModelForCausalLM=AutoModelForCausalLM, Trainer=Trainer,
+                TrainingArguments=TrainingArguments, set_seed=set_seed)
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--check-only", action="store_true", help="tokenize and mask the data, then stop; no torch, no model")
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--data", type=Path, default=DATA_PATH)
     parser.add_argument("--run-dir", type=Path, default=None,
-                        help="existing empty run directory (made by run_capture.py); required unless --check-only")
+                        help="existing run directory with no earlier trainer output (made by run_capture.py); required unless --check-only")
     parser.add_argument("--max-steps", type=int, default=None, help="cap the number of optimizer steps (default: unset)")
     args = parser.parse_args(argv)
     if args.max_steps is not None and args.max_steps < 1:
         parser.error("--max-steps must be at least 1")
     if not args.check_only and args.run_dir is None:
-        parser.error("a real run needs --run-dir (an existing empty directory); use --check-only for a dry check")
+        parser.error("a real run needs --run-dir (an existing run directory); use --check-only for a dry check")
     return args
 
 
+TRAINER_OUTPUTS = ("adapter", "trainer", "resolved-training-args.json", "loss.jsonl")
+
+
 def prepare_run_dir(run_dir: Path) -> tuple[Path, Path]:
-    """Checks RUN_DIR is a real, empty directory and returns (adapter_dir, trainer_dir). Never reuses earlier output."""
+    """Checks RUN_DIR is a real directory with none of this trainer's outputs in it, then creates adapter/ and trainer/
+    and returns them. Files the run_capture wrapper wrote first (repo.json, image-facts.json, host facts and so on) are
+    left alone. Only RUN_DIR itself and the names below are checked; the wrapper owns the exclusive creation of RUN_DIR."""
     if run_dir.is_symlink() or not run_dir.is_dir():
         raise SystemExit(f"--run-dir {run_dir} must be an existing directory, not a symlink; nothing was trained")
-    if any(run_dir.iterdir()):
-        raise SystemExit(f"--run-dir {run_dir} is not empty; refusing to overwrite earlier evidence")
+    present = [name for name in TRAINER_OUTPUTS if (run_dir / name).exists() or (run_dir / name).is_symlink()]
+    if present:
+        raise SystemExit(f"--run-dir {run_dir} already holds trainer output {present}; refusing to overwrite earlier evidence")
     adapter_dir, trainer_dir = run_dir / "adapter", run_dir / "trainer"
     adapter_dir.mkdir()
     trainer_dir.mkdir()
@@ -183,7 +227,7 @@ def write_loss(run_dir: Path, log_history: list) -> Path:
 def main(argv=None):
     args = parse_args(argv)
 
-    examples = load_dataset_dicts(args.data)
+    examples, dataset_sha256 = load_dataset_snapshot(args.data)
     tokenizer = load_pinned_tokenizer()
     tokenized = tokenize_examples(examples, tokenizer)
     trained = sum(1 for e in tokenized for label in e["labels"] if label != -100)
@@ -193,9 +237,11 @@ def main(argv=None):
         return
     adapter_dir, trainer_dir = prepare_run_dir(args.run_dir)
 
-    import torch
-    from peft import LoraConfig, get_peft_model
-    from transformers import AutoModelForCausalLM, Trainer, TrainingArguments, set_seed
+    modules = load_training_modules()
+    torch = modules["torch"]
+    LoraConfig, get_peft_model = modules["LoraConfig"], modules["get_peft_model"]
+    AutoModelForCausalLM, Trainer = modules["AutoModelForCausalLM"], modules["Trainer"]
+    TrainingArguments, set_seed = modules["TrainingArguments"], modules["set_seed"]
 
     import sft_tokenize as st
 
@@ -238,23 +284,28 @@ def main(argv=None):
         args=TrainingArguments(**training_args_kwargs(trainer_dir, args.seed, use_gpu, args.max_steps)),
     )
 
-    write_resolved_args(args.run_dir, trainer.args.to_dict(), {
+    resolved = {key: run_relative(value, args.run_dir) for key, value in trainer.args.to_dict().items()}
+    write_resolved_args(args.run_dir, resolved, {
         "seed": args.seed,
         "max_steps": args.max_steps,
         "base_model": BASE_MODEL,
         "base_revision": BASE_REVISION,
         "tokenizer_sha256": TOKENIZER_SHA256,
-        "dataset_path": str(args.data),
-        "dataset_sha256": hashlib.sha256(args.data.read_bytes()).hexdigest(),
+        "model_load_dtype": str(dtype),
+        "dataset_name": args.data.name,
+        "dataset_sha256": dataset_sha256,
         "examples": len(tokenized),
         "tokens": total,
         "trainable_tokens": trained,
         "use_gpu": use_gpu,
     })
 
-    trainer.train()
-
-    write_loss(args.run_dir, trainer.state.log_history)
+    check_dataset_unchanged(args.data, dataset_sha256)
+    try:
+        trainer.train()
+    finally:
+        # A mid-training failure still keeps the partial loss curve as evidence.
+        write_loss(args.run_dir, trainer.state.log_history)
     model.save_pretrained(str(adapter_dir))
     tokenizer.save(str(adapter_dir / "tokenizer.json"))
     print(f"Adapter saved to {adapter_dir}")
