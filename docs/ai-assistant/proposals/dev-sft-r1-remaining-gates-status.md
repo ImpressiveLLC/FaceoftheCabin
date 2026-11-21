@@ -1,10 +1,12 @@
-# dev-sft-r1 Phase 1: what still stands before the two keys (status, 2026-11-20)
+# dev-sft-r1 Phase 1: what still stands before the two keys (status, 2026-11-21)
 
 Status: **status table only; no new design; authorizes nothing.** Assigned by Cowork on #244 (7037575183). Read on main at `257de1ae`. It reflects the [plan draft](dev-sft-r1-phase1-plan-draft.md) (content SHA-256 `6b135631...dd768`) after these merged documents:
 - [#543 run capture](dev-sft-r1-run-capture-design.md);
 - [#544 adapter scoring](dev-sft-r1-adapter-scoring-design.md);
 - [#545 reviewer elections](s4-reviewer-election-mechanics.md);
 - [#546 S2/S4 status](s2-s4-candidate-status-2026-11-20.md).
+
+Refreshed 2026-11-21 by Cowork (docs only) after the implementation merges #548 to #555; the changes are marked in the rows below. A merged implementation PR is reviewed code with synthetic tests, not run evidence.
 
 A merged design is not evidence. A decision row closes when its decision is recorded; an evidence row closes only when the work it names has run and been reviewed. Nothing here is a key, a request for a key, or permission to run anything.
 
@@ -22,7 +24,7 @@ A merged design is not evidence. A decision row closes when its decision is reco
 | N1 | Runtime (section 6) | Yes or no to Nate's Windows PC, CPU only, 4 cores, 32 GB | The M920q stays off unless Nate amends R4 for that purpose, which is not proposed |
 | N2 | Sealed sets (section 2) | Place safety 80 and test 170 on the freeze machine | Needed for S6; Phase 1 never reads them |
 | N3 | S5/S4 packet creation | Direct yes in Codex's own chat to create and distribute blind packets | Reading the sample was authorized and is done; packet creation is a separate yes |
-| N4 | Served template hash | Direct yes in Code's chat for a read-only `ollama show --template` on the served host, hash only | Covers no prompt sending or token capture (#544 section 4) |
+| N4 | Served template hash | **Closed 2026-11-20.** Nate's go in Code's chat; Code ran the read-only `ollama show --template` check (#244 comment 7057603298) | Covers no prompt sending or token capture (#544 section 4). Code disclosed one transient `/tmp` write on the host; the check was reported by Code, and Codex compared the hash to the pins without repeating the host read |
 | N5 | Adapter scoring (section 5) | Pick A, B, C, D or E | #544 recommends B, a paired base-versus-adapter comparison in one harness |
 | N6 | Conditional: only if B | Approve one constrained-decoding library in `requirements.lock` | The implementing PR names it and shows its schema coverage |
 | N7 | Conditional: only if D, now or later | Whether converting the adapter to a GGUF LoRA counts as the forbidden "GGUF export" | |
@@ -40,17 +42,17 @@ The two execution keys (contract section 4) are not Nate's to give. They are one
 | # | Plan field | Owner | Unblocked by | Design on main |
 |---|---|---|---|---|
 | P1 | Base shard hashes re-verified | Code | N1, then a metadata read on the training host | none needed |
-| P2 | Served template equals pinned copy `966de95c...6396` | Code | N4 | none needed |
+| P2 | Served template equals pinned copy `966de95c...6396` | Code | **Reported MATCH** for the base and served tags (Code, 7057603298); pin comparison by Codex (7057682150). Not an independent host read. Served-token parity stays NOT_RUN | none needed |
 | P3 | 5 real-tokenizer tests (`SFT_TOKENIZER_JSON` set) | Code | N1, and the tokenizer file on the training host | none needed |
-| P4 | Container: base digest pinned, image built from the lock | Code (digest PR), Codex (independent digest read), Code (build on host) | The digest PR has no gate, because a registry read is not a host change; the build waits on N1 | #543 section 3 |
+| P4 | Container: base digest pinned, image built from the lock | Code (digest PR), Codex (independent digest read), Code (build on host) | **Digest pin merged (#548)** with Codex's independent registry read. Still open: the capture-script COPY, the unpinned apt layer, and the image build, which waits on N1 | #543 section 3 |
 | P5 | Dtype capability test on the chosen host | Code | N1, then #543 Stage 2 | #543 section 2C |
-| P6 | Resolved `TrainingArguments` dumped | Code | The trainer-change PR (`--run-dir`, `--max-steps`, args and loss files), then Stage 2 | #543 section 2A |
-| P7 | Run manifest and log capture | Code builds, Codex verifies | PRs for the trainer change, `run_capture.py` and `verify_run_bundle.py` with Stage 1 CI, and the Dockerfile COPY and digest; then Stage 2 on N1 | #543 |
+| P6 | Resolved `TrainingArguments` dumped | Code | **Trainer-change PR merged (#549)** with synthetic tests; no run. Still open: Stage 2 on the chosen host after N1 | #543 section 2A |
+| P7 | Run manifest and log capture | Code builds, Codex verifies | Trainer change merged (#549) and digest pin merged (#548). Still open: `run_capture.py` (#556, on Codex HOLD), `verify_run_bundle.py` with Stage 1 CI, the Dockerfile COPY; then Stage 2 on N1 | #543 |
 | P8 | Wall time and resource limits | Code | Stage 2 dry run on invented rows, after N1 | #543 section 4 |
-| P9 | Locked S4 label and agreement evidence, pending the S5 audit and dispositions (not approved data until P10 closes) | Codex coordinates; elected labelers A and B | N3; eligibility screening before any row access; packet-builder implementation (#541); 155 legacy rows held until family resolution | #539, #541, #545, #546 |
+| P9 | Locked S4 label and agreement evidence, pending the S5 audit and dispositions (not approved data until P10 closes) | Codex coordinates; elected labelers A and B | N3; eligibility screening before any row access; the rest of the packet-builder implementation (#541: the versioned in-memory core #550, JSONL intake fixes #551 and #552 and the read-only path preflight #555 are merged; filesystem finalization, recipient isolation and import/audit integration are not); 155 legacy rows held until family resolution | #539, #541, #545, #546 |
 | P10 | S5 rulings and the 20% audit, at 90% or better | Elected auditor, not the families' authors or labelers | P9 complete; auditor election with family-level conflict checks; precommitted sample | #545 |
 | P11 | S6 freeze, C0 to C7 passing, `screen-train` over the train file | Code (tooling), Nate (N2) | Real freeze: N2; completed applicable S4 and S5 evidence (P9, P10) with governed dispute closure; `round_ledger.py freeze` implemented; freeze machine. Synthetic-data tooling work needs none of those, and is not a freeze | #527 |
-| P12 | S7 tooling gaps G1 to G11 | Code (PRs), Codex and Cowork review | Each gap's own PR; none is implemented yet | #529, #536 (G1 build spec) |
+| P12 | S7 tooling gaps G1 to G11 | Code (PRs), Codex and Cowork review | Each gap's own PR. G2 (split renamed to holdout) merged (#553). G1 (#554) is on Codex HOLD; the rest are not started | #529, #536 (G1 build spec) |
 | P13 | Train manifest (`train-manifest.json`) | Code | The completed data gates P9, P10, P11 and the S7 tooling P12 | #529 |
 | P14 | Adapter generation step and its comparability checks | Code builds, Codex reviews | N5, plus N6 if B; then the checks in #544 section 4. Served-token parity stays NOT_RUN until a separate capture go | #544 |
 | P15 | Phase 2 items (quantized like the baseline, release evaluation) | n/a | Later phase: not applicable to Phase 1, never blocks the keys | plan section 8 |
