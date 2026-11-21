@@ -8,6 +8,16 @@ It is coordinator-side code: its complete result includes protected mapping and
 source commitments and must never be handed wholesale to a reviewer. Only the
 explicit blind projection may become reviewer material after delivery gates pass.
 
+Rebuilds require `expected_mapping_sha256`, pinned separately from the protected
+`frozen_mapping` bytes at initial creation. The caller must retain that pin in trusted,
+immutable custody; replacing both mapping and pin defeats authentication. Reordered
+entries or a changed run ID are refused against the original pin. Hash consistency
+alone does not establish reviewer eligibility or source authenticity.
+
+Packet JSONL uses LF delimiters. Decode with UTF-8 and split on `"\n"`, not
+`str.splitlines()`: valid text can contain raw U+2028/U+2029 separators, which are
+content, not record boundaries. Canonical v1 preserves these characters.
+
 This slice does not read source files, write operational packets, deliver data,
 appoint reviewers, import labels, run an audit or promote training rows. The existing
 `make-packet` CLI and its legacy hashes are unchanged; they are not upgraded Track B

@@ -24,6 +24,8 @@ class BlindPacketTests(unittest.TestCase):
         self.families = {"private-family": [r["id"] for r in self.rows]}
 
     def build(self, **kwargs):
+        if "frozen_mapping" in kwargs and "expected_mapping_sha256" not in kwargs:
+            kwargs["expected_mapping_sha256"] = hashlib.sha256(kwargs["frozen_mapping"]).hexdigest()
         return bp.build_packet(self.rows, recipient_id="a", family_map=self.families, **kwargs)
 
     def test_projection_and_commitments(self):
@@ -31,7 +33,7 @@ class BlindPacketTests(unittest.TestCase):
         private = bp.strict_loads(result.protected_bytes)
         crosswalk = {e["opaque_id"]: e for e in private["crosswalk"]}
         sources_by_id = {r["id"]: r for r in self.rows}
-        for line in result.packet_bytes.splitlines():
+        for line in result.packet_bytes.removesuffix(b"\n").split(b"\n"):
             item = bp.strict_loads(line)
             self.assertEqual(set(item), {"id", "text", "card_target"})
             self.assertRegex(item["id"], r"^[0-9a-f]{32}$")
@@ -45,7 +47,65 @@ class BlindPacketTests(unittest.TestCase):
         self.assertEqual(private["status"], "BUILT_NOT_DELIVERED")
         self.assertTrue(result.packet_bytes.endswith(b"\n"))
         self.assertNotIn(b"\r", result.packet_bytes)
-        self.assertEqual(len(result.packet_bytes.splitlines()), 3)
+        self.assertEqual(len(result.packet_bytes.removesuffix(b"\n").split(b"\n")), 3)
+
+    def test_real_shuffle_changes_sorted_source_order(self):
+        # Exercise the real SystemRandom.shuffle, with deterministic draws.
+        # A removed call or no-op shuffle cannot satisfy this test.
+        with patch.object(bp.secrets.SystemRandom, "_randbelow", return_value=0) as draw:
+            mapping = bp.strict_loads(self.build().frozen_mapping)
+        draw.assert_called()
+        self.assertEqual([e["source_id"] for e in mapping["entries"]],
+                         [self.rows[n]["id"] for n in (1, 2, 0)])
+
+    def test_metadata_commitment_covers_provenance_and_flags(self):
+        before = bp.strict_loads(self.build().protected_bytes)
+        for field, value in (("license", "synthetic-revised"), ("sha256", "1" * 64)):
+            self.setUp()
+            self.rows[0]["provenance"][field] = value
+            after = bp.strict_loads(self.build().protected_bytes)
+            self.assertNotEqual(before["metadata_sha256"], after["metadata_sha256"])
+            self.assertEqual(before["cohort_sha256"], after["cohort_sha256"])
+        self.setUp()
+        self.rows[0]["suspect_source_label"] = False
+        after = bp.strict_loads(self.build().protected_bytes)
+        self.assertNotEqual(before["metadata_sha256"], after["metadata_sha256"])
+
+    def test_metadata_commitment_covers_family_map(self):
+        before = bp.strict_loads(self.build().protected_bytes)
+        # Change only the map serialization, keeping source metadata fixed.
+        self.families["private-family"].reverse()
+        after = bp.strict_loads(self.build().protected_bytes)
+        self.assertNotEqual(before["metadata_sha256"], after["metadata_sha256"])
+        self.assertEqual(before["cohort_sha256"], after["cohort_sha256"])
+
+    def test_mapping_pin_rejects_order_and_run_id_changes(self):
+        original = self.build()
+        pin = hashlib.sha256(original.frozen_mapping).hexdigest()
+        for change in (lambda m: m["entries"].reverse(),
+                       lambda m: m.update(run_id="0" * 32 if m["run_id"] != "0" * 32 else "1" * 32)):
+            mapping = bp.strict_loads(original.frozen_mapping)
+            change(mapping)
+            with self.assertRaisesRegex(ValueError, "differs from pin"):
+                self.build(frozen_mapping=bp.canonical_bytes(mapping), expected_mapping_sha256=pin)
+        self.assertEqual(original, self.build(frozen_mapping=original.frozen_mapping,
+                                             expected_mapping_sha256=pin))
+
+    def test_mapping_pin_required_only_for_rebuild(self):
+        original = self.build()
+        for pin in (None, "", "x" * 64, 123):
+            with self.subTest(pin=pin), self.assertRaisesRegex(ValueError, "pinned mapping"):
+                self.build(frozen_mapping=original.frozen_mapping, expected_mapping_sha256=pin)
+        with self.assertRaisesRegex(ValueError, "requires a frozen mapping"):
+            self.build(expected_mapping_sha256="0" * 64)
+
+    def test_unicode_line_separators_are_text_not_jsonl_delimiters(self):
+        self.rows[0]["text"] = "synthetic\u2028line\u2029paragraph"
+        packet = self.build().packet_bytes.decode("utf-8")
+        records = packet.removesuffix("\n").split("\n")
+        self.assertEqual(len(records), len(self.rows))
+        self.assertIn(self.rows[0]["text"], [bp.strict_loads(line)["text"] for line in records])
+        self.assertGreater(len(packet.splitlines()), len(records))
 
     def test_frozen_rebuild_immutable_and_null(self):
         result = self.build()
@@ -122,7 +182,7 @@ class BlindPacketTests(unittest.TestCase):
             with self.subTest(text=text), self.assertRaisesRegex(ValueError, "nonblank source text"):
                 self.build()
         self.rows[0]["text"] = " \t valid synthetic text \n"
-        shown = [bp.strict_loads(line)["text"] for line in self.build().packet_bytes.splitlines()]
+        shown = [bp.strict_loads(line)["text"] for line in self.build().packet_bytes.removesuffix(b"\n").split(b"\n")]
         self.assertIn(self.rows[0]["text"], shown)
 
     def test_malformed_objects_raise_validation_errors(self):

@@ -93,7 +93,8 @@ def select_audit(agreed_rows, seed):
     return sorted(random.Random(seed).sample(ordered, audit_size(len(ordered))), key=lambda r: r["id"]) if ordered else []
 
 
-def build_blind_packet_v1(rows, *, recipient_id, family_map, frozen_mapping=None):
+def build_blind_packet_v1(rows, *, recipient_id, family_map, frozen_mapping=None,
+                          expected_mapping_sha256=None):
     """Coordinator-only in-memory projection; does not authorize or deliver data.
 
     The result contains protected material. This versioned path is separate from
@@ -102,7 +103,8 @@ def build_blind_packet_v1(rows, *, recipient_id, family_map, frozen_mapping=None
     from grading.blind_packet import build_packet
 
     return build_packet(rows, recipient_id=recipient_id, family_map=family_map,
-                        frozen_mapping=frozen_mapping)
+                        frozen_mapping=frozen_mapping,
+                        expected_mapping_sha256=expected_mapping_sha256)
 
 
 def make_packet(sample_path, track, out_dir, size=50):

@@ -120,17 +120,31 @@ class Packet:
     frozen_mapping: bytes
 
 
-def build_packet(rows, *, recipient_id, family_map, frozen_mapping=None):
+def build_packet(rows, *, recipient_id, family_map, frozen_mapping=None,
+                 expected_mapping_sha256=None):
     """Build one recipient's exact cohort, or reproduce a pinned mapping.
 
     ``family_map`` is {canonical_family: [source_id, ...]} for exactly this
     recipient's cohort. ``frozen_mapping`` is the private bytes from a prior
-    result. New calls allocate independent random 128-bit IDs and shuffle;
+    result. Rebuilds require its SHA-256 pinned separately by the caller in
+    ``expected_mapping_sha256``; a digest supplied with an untrusted mapping is
+    not an authenticity anchor. New calls allocate random 128-bit IDs and shuffle;
     rebuilds consume no randomness and require unchanged sources/metadata.
     Admission, reviewer eligibility and policy pinning belong to the caller.
     Malformed JSON/bindings raise ValueError; schema failures retain the existing
     contract ValidationError. Source IDs are nonblank strings, not path names.
     """
+    if frozen_mapping is None:
+        if expected_mapping_sha256 is not None:
+            raise ValueError("mapping digest requires a frozen mapping")
+    else:
+        if type(frozen_mapping) is not bytes:
+            raise ValueError("frozen mapping must be immutable bytes")
+        if (type(expected_mapping_sha256) is not str
+                or not re.fullmatch(r"[0-9a-f]{64}", expected_mapping_sha256)):
+            raise ValueError("rebuild requires a pinned mapping SHA-256")
+        if hashlib.sha256(frozen_mapping).hexdigest() != expected_mapping_sha256:
+            raise ValueError("frozen mapping SHA-256 differs from pin")
     if not _name(recipient_id):
         raise ValueError("recipient ID required")
     by_id, families = _sources(rows, family_map)
@@ -160,8 +174,6 @@ def build_packet(rows, *, recipient_id, family_map, frozen_mapping=None):
         secrets.SystemRandom().shuffle(entries)
         mapping = {**binding, "run_id": secrets.token_hex(16), "entries": entries}
     else:
-        if type(frozen_mapping) is not bytes:
-            raise ValueError("frozen mapping must be immutable bytes")
         mapping = strict_loads(frozen_mapping)
     _check_mapping(mapping, binding, by_id, commitments)
     frozen = canonical_bytes(mapping)

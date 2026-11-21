@@ -1,4 +1,5 @@
 """Synthetic-only checks of the existing pipeline's versioned entry point."""
+import hashlib
 import json
 import unittest
 from grading import review_packets as rp
@@ -11,6 +12,14 @@ class VersionedEntry(unittest.TestCase):
                     target(device_name="invented lamp", state="on"))]
         result = rp.build_blind_packet_v1(
             rows, recipient_id="synthetic-reviewer", family_map={rows[0]["group"]: [rows[0]["id"]]})
+        pin = hashlib.sha256(result.frozen_mapping).hexdigest()
+        self.assertEqual(result, rp.build_blind_packet_v1(
+            rows, recipient_id="synthetic-reviewer", family_map={rows[0]["group"]: [rows[0]["id"]]},
+            frozen_mapping=result.frozen_mapping, expected_mapping_sha256=pin))
+        with self.assertRaisesRegex(ValueError, "differs from pin"):
+            rp.build_blind_packet_v1(
+                rows, recipient_id="synthetic-reviewer", family_map={rows[0]["group"]: [rows[0]["id"]]},
+                frozen_mapping=result.frozen_mapping, expected_mapping_sha256="0" * 64)
         projected = json.loads(result.packet_bytes)
         self.assertEqual(set(projected), {"id", "text", "card_target"})
         self.assertNotEqual(projected["id"], rows[0]["id"])
