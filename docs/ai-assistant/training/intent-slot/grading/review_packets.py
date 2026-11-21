@@ -107,6 +107,13 @@ def build_blind_packet_v1(rows, *, recipient_id, family_map, frozen_mapping=None
                         expected_mapping_sha256=expected_mapping_sha256)
 
 
+def check_blind_packet_paths_v1(**paths):
+    """Read-only layout snapshot; no content access, authority or recipient isolation."""
+    from grading.packet_paths import preflight_paths
+
+    return preflight_paths(**paths)
+
+
 def make_packet(sample_path, track, out_dir, size=50):
     rows = read_jsonl(sample_path)
     unique_rows(rows, "sample")
