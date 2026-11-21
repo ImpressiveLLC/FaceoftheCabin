@@ -344,3 +344,104 @@ def test_real_tokenizer_leading_newline_content_merges_with_header_and_is_refuse
     encode = lambda text: tok.encode(text, add_special_tokens=False).ids  # noqa: E731
     with pytest.raises(ValueError, match="segment-wise"):
         st.check_segmentation(_conv(role, content), encode, tok.token_to_id("<|begin_of_text|>"))
+
+
+# --- train_sft.py run directory, step cap and evidence files (#543 section 2A). No torch, no model. ---
+
+def test_real_run_requires_run_dir_and_check_only_does_not(capsys):
+    import train_sft
+    with pytest.raises(SystemExit):
+        train_sft.parse_args(["--data", "x.jsonl"])
+    assert "needs --run-dir" in capsys.readouterr().err
+    args = train_sft.parse_args(["--check-only"])
+    assert args.run_dir is None and args.max_steps is None
+
+
+def test_max_steps_must_be_positive(capsys):
+    import train_sft
+    for bad in ("0", "-3"):
+        with pytest.raises(SystemExit):
+            train_sft.parse_args(["--check-only", "--max-steps", bad])
+    assert train_sft.parse_args(["--run-dir", "r", "--max-steps", "5"]).max_steps == 5
+
+
+def test_main_refuses_a_real_run_without_run_dir_before_loading_anything(tmp_path):
+    import train_sft
+    with pytest.raises(SystemExit):
+        train_sft.main(["--data", str(tmp_path / "missing.jsonl")])
+
+
+def test_prepare_run_dir_refuses_missing_and_non_empty_directories(tmp_path):
+    import train_sft
+    with pytest.raises(SystemExit, match="existing directory"):
+        train_sft.prepare_run_dir(tmp_path / "absent")
+    full = tmp_path / "full"
+    full.mkdir()
+    (full / "earlier.txt").write_text("evidence", encoding="utf-8")
+    with pytest.raises(SystemExit, match="not empty"):
+        train_sft.prepare_run_dir(full)
+    assert (full / "earlier.txt").read_text(encoding="utf-8") == "evidence"
+    assert not (full / "adapter").exists()
+
+
+def test_prepare_run_dir_refuses_a_symlink(tmp_path):
+    import train_sft
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    try:
+        link.symlink_to(real, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("this platform does not allow creating symlinks here")
+    with pytest.raises(SystemExit, match="symlink"):
+        train_sft.prepare_run_dir(link)
+
+
+def test_prepare_run_dir_creates_adapter_and_trainer_dirs(tmp_path):
+    import train_sft
+    run = tmp_path / "run"
+    run.mkdir()
+    adapter, trainer = train_sft.prepare_run_dir(run)
+    assert adapter == run / "adapter" and adapter.is_dir()
+    assert trainer == run / "trainer" and trainer.is_dir()
+    with pytest.raises(SystemExit, match="not empty"):
+        train_sft.prepare_run_dir(run)
+
+
+def test_training_args_keep_the_pinned_values_and_add_max_steps_only_when_given(tmp_path):
+    import train_sft
+    base = train_sft.training_args_kwargs(tmp_path / "trainer", 7, use_gpu=False)
+    assert base["output_dir"] == str(tmp_path / "trainer")
+    assert "max_steps" not in base
+    assert (base["learning_rate"], base["num_train_epochs"], base["per_device_train_batch_size"]) == (2e-4, 3, 1)
+    assert (base["gradient_accumulation_steps"], base["save_strategy"], base["bf16"]) == (4, "no", False)
+    assert (base["seed"], base["data_seed"], base["use_cpu"], base["fp16"]) == (7, 7, True, False)
+    capped = train_sft.training_args_kwargs(tmp_path / "trainer", 7, use_gpu=True, max_steps=3)
+    assert capped["max_steps"] == 3 and capped["fp16"] is True and capped["use_cpu"] is False
+    assert {k: v for k, v in capped.items() if k not in ("max_steps", "fp16", "use_cpu")} == \
+        {k: v for k, v in base.items() if k not in ("fp16", "use_cpu")}
+
+
+def test_resolved_args_and_loss_files_are_written_once_and_never_replaced(tmp_path):
+    import json
+    import train_sft
+    resolved = {"learning_rate": 2e-4, "lr_scheduler_type": "linear", "output_dir": str(tmp_path)}
+    path = train_sft.write_resolved_args(tmp_path, resolved, {"seed": 7, "max_steps": None})
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["training_arguments"] == resolved and data["seed"] == 7 and data["max_steps"] is None
+    with pytest.raises(FileExistsError):
+        train_sft.write_resolved_args(tmp_path, {"changed": True}, {})
+    assert json.loads(path.read_text(encoding="utf-8")) == data
+
+    history = [{"step": 1, "loss": 2.5}, {"step": 2, "loss": 2.1}, {"train_runtime": 9.0}]
+    loss = train_sft.write_loss(tmp_path, history)
+    assert [json.loads(line) for line in loss.read_text(encoding="utf-8").splitlines()] == history
+    assert loss.read_bytes().endswith(b"\n") and b"\r" not in loss.read_bytes()
+    with pytest.raises(FileExistsError):
+        train_sft.write_loss(tmp_path, [])
+
+
+def test_trainer_no_longer_writes_the_fixed_adapter_path():
+    source = (Path(__file__).parent / "train_sft.py").read_text(encoding="utf-8")
+    assert "ADAPTER_OUT" not in source
+    assert 'exist_ok=True' not in source

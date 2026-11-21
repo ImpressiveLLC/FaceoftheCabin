@@ -129,7 +129,7 @@ exported model; `train_sft.py` performs LoRA training with Transformers/PEFT.
    base model revision/license, Python dependencies and dataset hashes. Schedule
    CPU/RAM budget so training cannot starve the cabin's production services.
 2. Use an isolated copy of the existing training directory and data volume.
-   Its trainer hardcodes `data/sft_dataset.jsonl` and `data/adapter/`; copy only
+   Its trainer defaults to `data/sft_dataset.jsonl` and writes each run to its own `--run-dir`; copy only
    the reviewed **train** split to that isolated data path. Retain provenance.
    Do not overwrite the existing POC1 data or mix held-out rows into training.
 3. Use the existing trainer/merge/GGUF process, reviewing its paths and model

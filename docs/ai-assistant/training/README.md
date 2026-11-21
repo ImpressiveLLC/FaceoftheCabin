@@ -54,7 +54,7 @@ grade_pipeline.py output (existing)
 export_grades_to_sft.py   ->  data/sft_dataset.jsonl
         |
         v
-train_sft.py (QLoRA/Unsloth)  ->  data/adapter/
+train_sft.py --run-dir RUN_DIR  ->  RUN_DIR/adapter/ (one new directory per run)
         |
         v
 export_to_ollama.sh (merge -> GGUF -> ollama create)
@@ -100,7 +100,7 @@ Paste in order:
 # as notebook cells, or clone this repo path and run them as scripts
 ```
 
-Download the resulting `data/adapter/` directory and run
+Download the run's `RUN_DIR/adapter/` directory (merge_and_convert.py still reads `data/adapter/`; copy it there first) and run
 `export_to_ollama.sh` locally against it.
 
 ## Tier 2 — evaluating the trained tag
