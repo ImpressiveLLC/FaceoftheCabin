@@ -2,6 +2,9 @@
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 import os
+import json
+import subprocess
+import sys
 import stat
 import tempfile
 from types import SimpleNamespace
@@ -105,6 +108,85 @@ class PacketPaths(unittest.TestCase):
             with self.subTest(mode=mode, attrs=attrs), patch.object(Path, "lstat", metadata):
                 with self.assertRaisesRegex(ValueError, "symlink or reparse"):
                     self.check()
+
+    def test_trailing_dot_space_and_case_alias_outputs_refused(self):
+        for name in ("final.", "final "):
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "trailing dot or space"):
+                self.check(destination=self.args["coordinator_root"] / name)
+        with self.assertRaisesRegex(ValueError, "must differ"):
+            self.check(staging=self.args["coordinator_root"] / "Run",
+                       destination=self.args["coordinator_root"] / "run")
+        with self.assertRaisesRegex(ValueError, "Git marker"):
+            self.check(destination=self.args["coordinator_root"] / ".git")
+
+    def test_existing_root_aliases_use_physical_identity(self):
+        original = Path.lstat
+        target = self.args["coordinator_root"]
+        for name in ("COORDI~1", "case-alias"):
+            alias = self.root / name
+            alias.mkdir(exist_ok=True)
+            def metadata(path, *args, **kwargs):
+                return original(target if path == alias else path, *args, **kwargs)
+            with self.subTest(name=name), patch.object(Path, "lstat", metadata):
+                with self.assertRaisesRegex(ValueError, "overlap or alias"):
+                    self.check(recipient_roots=[alias])
+
+    def test_nested_root_through_aliased_ancestor_is_refused(self):
+        alias = self.root / "alias-parent"
+        alias.mkdir()
+        nested = alias / "nested"
+        nested.mkdir()
+        original = Path.lstat
+        def metadata(path, *args, **kwargs):
+            return original(self.args["coordinator_root"] if path == alias else path, *args, **kwargs)
+        with patch.object(Path, "lstat", metadata), self.assertRaisesRegex(ValueError, "overlap or alias"):
+            self.check(recipient_roots=[nested])
+
+    def test_nonroot_directory_source_and_file_ancestor_and_recipient_refused(self):
+        directory = self.source.parent / "nested"
+        directory.mkdir()
+        with self.assertRaisesRegex(ValueError, "not a regular file"):
+            self.check(source_files=[directory])
+        with self.assertRaisesRegex(ValueError, "ancestor is not a directory"):
+            self.check(source_files=[self.source / "child"])
+        with self.assertRaisesRegex(ValueError, "root is not a directory"):
+            self.check(recipient_roots=[self.source])
+        with self.assertRaisesRegex(ValueError, "outside approved source root"):
+            self.check(source_files=[self.args["source_root"]])
+
+    def test_metadata_access_errors_have_value_error_contract(self):
+        original = Path.lstat
+        for target in (self.source, self.args["coordinator_root"] / ".git"):
+            for error in (PermissionError, NotADirectoryError):
+                def metadata(path, *args, **kwargs):
+                    if path == target:
+                        raise error("synthetic metadata refusal")
+                    return original(path, *args, **kwargs)
+                with self.subTest(target=target, error=error), patch.object(Path, "lstat", metadata):
+                    with self.assertRaisesRegex(ValueError, "cannot inspect"):
+                        self.check()
+
+    def test_audit_hook_proves_no_open_or_filesystem_mutation(self):
+        # A child process keeps the permanent audit hook out of other tests.
+        script = """
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from grading.review_packets import check_blind_packet_paths_v1
+args = json.loads(sys.argv[2])
+def audit(event, args):
+    if event == 'open' or event in {'os.mkdir', 'os.rename', 'os.remove', 'os.rmdir', 'os.link', 'os.symlink', 'os.chmod'}:
+        raise AssertionError('unexpected I/O: ' + event)
+# Import the lazy wrapper dependency before enforcing the I/O contract.
+import grading.packet_paths
+sys.addaudithook(audit)
+check_blind_packet_paths_v1(**args)
+print('READ_ONLY')
+"""
+        args = {key: [str(p) for p in value] if isinstance(value, list) else str(value)
+                for key, value in self.args.items()}
+        result = subprocess.run([sys.executable, "-B", "-c", script, str(Path(__file__).parent),
+                                 json.dumps(args)], capture_output=True, text=True, check=True)
+        self.assertEqual(result.stdout.strip(), "READ_ONLY")
 
     def test_real_symlink_and_broken_destination_refused(self):
         link = self.root / "source-link"
