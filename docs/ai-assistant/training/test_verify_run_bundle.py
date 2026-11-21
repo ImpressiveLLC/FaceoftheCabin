@@ -319,3 +319,57 @@ def test_a_lock_check_without_its_freeze_fails(env):
         {"pip-freeze.txt": {"status": "NOT_PRODUCED", "reason": "x"}}))
     with pytest.raises(vb.IntegrityError, match="pip-freeze.txt is not"):
         vb.verify(run_dir, reseal(run_dir), env["lock"])
+
+
+
+# --- Cowork 7063667626 (non-blocking): the bundle-line checks each need a test that kills them. ---
+
+def _rewrite_bundle(run_dir, lines):
+    (run_dir / vb.BUNDLE).write_text("".join(line + "\n" for line in lines), encoding="utf-8", newline="\n")
+    return hashlib.sha256((run_dir / vb.BUNDLE).read_bytes()).hexdigest()
+
+
+def test_an_unsorted_bundle_fails(env):
+    run_dir, _, _ = make(env)
+    writable(run_dir)
+    lines = bundle_text_lines(run_dir)
+    posted = _rewrite_bundle(run_dir, [lines[1], lines[0]] + lines[2:])
+    with pytest.raises(vb.IntegrityError, match="not sorted"):
+        vb.verify(run_dir, posted, env["lock"])
+
+
+def test_a_duplicate_bundle_path_fails(env):
+    run_dir, _, _ = make(env)
+    writable(run_dir)
+    lines = bundle_text_lines(run_dir)
+    posted = _rewrite_bundle(run_dir, [lines[0], lines[0]] + lines[1:])
+    with pytest.raises(vb.IntegrityError, match="twice"):
+        vb.verify(run_dir, posted, env["lock"])
+
+
+@pytest.mark.parametrize("bad", ["/etc/passwd", "../outside.txt", "adapter/../../x", "C:/x.txt", "a\\b.txt",
+                                 "bundle.sha256"])
+def test_unsafe_or_self_bundle_paths_fail(env, bad):
+    run_dir, _, _ = make(env)
+    writable(run_dir)
+    lines = bundle_text_lines(run_dir)
+    posted = _rewrite_bundle(run_dir, sorted(lines + ["0" * 64 + "  " + bad], key=lambda l: l.split("  ", 1)[1]))
+    with pytest.raises(vb.IntegrityError, match="invalid path"):
+        vb.verify(run_dir, posted, env["lock"])
+
+
+def test_a_symlink_inside_the_run_fails_even_when_resealed(env):
+    run_dir, _, _ = make(env)
+    writable(run_dir)
+    outside = env["tmp"] / "outside.txt"
+    outside.write_text("outside", encoding="utf-8")
+    try:
+        (run_dir / "link.txt").symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("this platform does not allow creating symlinks here")
+    with pytest.raises(vb.IntegrityError, match="symlink"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])
+
+
+def bundle_text_lines(run_dir):
+    return (run_dir / vb.BUNDLE).read_text(encoding="utf-8").split("\n")[:-1]
