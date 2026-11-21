@@ -100,7 +100,7 @@ def main():
     c.add_argument("current", type=Path)
     a = p.parse_args()
     if a.cmd == "record":
-        gold = [json.loads(x) for x in a.gold.read_text(encoding="utf-8").splitlines() if x.strip()]
+        gold = [json.loads(x) for x in a.gold.read_text(encoding="utf-8").split("\n") if x.strip()]
         report = json.loads(a.report.read_text(encoding="utf-8"))
         for key, path in (("prompt_sha256", a.prompt), ("schema_sha256", a.schema)):
             if report.get(key) != sha(path):
