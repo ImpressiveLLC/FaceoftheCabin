@@ -35,11 +35,11 @@ HOST_SUPPLIED = ("repo.json", "image-facts.json")
 TRAINER_ARTIFACTS = ("resolved-training-args.json", "loss.jsonl", "adapter")
 CAPTURE_ARTIFACTS = ("train.stdout", "train.stderr", "events.jsonl", "host-facts.json", "pip-freeze.txt",
                      "lock-check.json", "dpkg.txt") + HOST_SUPPLIED
-_LOCK_LINE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s\\]+)")
+_LOCK_LINE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==([0-9][A-Za-z0-9.+!_-]*)(?: \\)?$")
 # Every line shape a uv/pip-compile --generate-hashes lock may contain. Anything else is refused (Codex 7061467844).
 _LOCK_SHAPES = (re.compile(r""), re.compile(r"#.*"), re.compile(r"    --hash=sha256:[0-9a-f]{64}( \\)?"),
-                re.compile(r"    #( .*)?"), re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*==[^\s\\;]+( \\)?"),
-                re.compile(r"--[a-z][a-z-]*(=| ).*"))
+                re.compile(r"    #( .*)?"), re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*==[0-9][A-Za-z0-9.+!_-]*( \\)?"),
+                re.compile(r"--(index-url|extra-index-url)[= ]https://[^\s]+"))
 
 
 def now():
@@ -168,11 +168,13 @@ def _pump(stream, sink, name, events, lock, failures, on_failure):
         on_failure()
 
 
-def run_trainer(cmd, run_dir):
+def run_trainer(cmd, run_dir, scrub=lambda text: text):
     """Runs CMD with stdout and stderr written unchanged; returns the exit code. Timestamps go only to events.jsonl.
     If either stream cannot be captured, the child is killed and reaped, the partial streams and events are kept, and
     StreamCaptureError reaches the capture finalizer."""
-    events, lock, failures = [{"t": now(), "event": "start", "cmd": cmd}], threading.Lock(), []
+    # Host paths become run-relative names; any other absolute path (a custom trainer) is recorded by basename.
+    recorded = [Path(p).name if Path(p).is_absolute() else p for p in (scrub(part) for part in cmd)]
+    events, lock, failures = [{"t": now(), "event": "start", "cmd": recorded}], threading.Lock(), []
     code = None
     with open(run_dir / "train.stdout", "xb") as out, open(run_dir / "train.stderr", "xb") as err:
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=str(HERE))
@@ -259,11 +261,27 @@ def fact_problems(name, value, fields):
     return problems
 
 
+def missing_trainer_outputs(run_dir):
+    """Trainer artifacts a completed run must have: the two files, and an adapter directory holding at least one file."""
+    missing = [name for name in ("resolved-training-args.json", "loss.jsonl") if not (run_dir / name).is_file()]
+    adapter = run_dir / "adapter"
+    if not (adapter.is_dir() and any(p.is_file() for p in adapter.rglob("*"))):
+        missing.append("adapter")
+    return missing
+
+
 def capture(*, run_id, runs_dir, incoming_dir, data, seed, lock_path, trainer_cmd=None, max_steps=None,
             data_manifest=None, invented_data=False, freeze_cmd=None, dpkg_cmd=None, facts_fn=host_facts):
-    """Captures one run and returns (run_dir, bundle_sha256, manifest). Raises SystemExit, writing nothing, only when
-    the run directory cannot be created exclusively. After that, every failure is recorded and finalized: the manifest
-    and bundle are always written, and nothing incomplete is labelled completed."""
+    """Captures one run and returns (run_dir, bundle_sha256, manifest).
+
+    Raises SystemExit and writes nothing when the run id is not a plain name, the runs directory is a symlink, or the run
+    directory already exists. After the run directory is created, every failure in preflight, trainer launch, stream
+    capture or the trainer itself is recorded and finalized as aborted_preflight or failed; completed needs exit 0, no
+    capture error and every trainer artifact. The manifest and bundle are then written unless the filesystem itself
+    refuses those final writes, in which case the error propagates and the run directory is left incomplete.
+
+    Known limits: only the direct child is killed on a stream failure (not grandchildren); there is no trainer timeout;
+    KeyboardInterrupt and other BaseExceptions are not caught, so an interrupted capture leaves no manifest."""
     # Resolve every filesystem argument at entry, before anything (the trainer subprocess included) changes directory.
     runs_dir, incoming_dir = Path(runs_dir).absolute(), Path(incoming_dir).absolute()
     data, lock_path = Path(data).absolute(), Path(lock_path).absolute()
@@ -279,6 +297,17 @@ def capture(*, run_id, runs_dir, incoming_dir, data, seed, lock_path, trainer_cm
         raise SystemExit(f"{run_dir} already exists; earlier evidence is never reopened and nothing was written")
 
     started = now()
+    replacements = sorted({str(run_dir): "RUN_DIR", str(runs_dir): "RUNS_DIR", str(incoming_dir): "INCOMING_DIR",
+                           str(lock_path): lock_path.name, str(data): data.name, str(HERE): "TRAINING_DIR",
+                           sys.executable: "python"}.items(), key=lambda item: -len(item[0]))
+
+    def scrub(text):
+        """Replaces host paths with run-relative names or basenames (#556 Cowork HOLD, non-blocking c)."""
+        text = str(text)
+        for path, name in replacements:
+            text = text.replace(path, name)
+        return text
+
     reasons, problems = {}, []
     state = {"stage": "preflight", "exit_code": None, "status": None, "capture_error": None}
     repo = None
@@ -345,7 +374,7 @@ def capture(*, run_id, runs_dir, incoming_dir, data, seed, lock_path, trainer_cm
             if max_steps is not None:
                 cmd += ["--max-steps", str(max_steps)]
             state["stage"] = "trainer_started"
-            state["exit_code"] = run_trainer(cmd, run_dir)
+            state["exit_code"] = run_trainer(cmd, run_dir, scrub)
             state["stage"] = "trainer_exited"
     except Exception as exc:  # noqa: BLE001 - recorded as evidence and finalized, never reported as success
         state["capture_error"] = f"{exc.__class__.__name__}: {exc}"
@@ -355,14 +384,23 @@ def capture(*, run_id, runs_dir, incoming_dir, data, seed, lock_path, trainer_cm
         status = "aborted_preflight"
         for name in TRAINER_ARTIFACTS + ("train.stdout", "train.stderr", "events.jsonl"):
             reasons.setdefault(name, "preflight refused the run: " + "; ".join(problems))
-    elif state["capture_error"] is None and state["exit_code"] == 0:
+    elif state["capture_error"] is None and state["exit_code"] == 0 and not missing_trainer_outputs(run_dir):
         status = "completed"
+    elif state["capture_error"] is None and state["exit_code"] == 0:
+        status = "failed"
+        for name in missing_trainer_outputs(run_dir):
+            reasons[name] = "trainer exited 0 without writing it"
+            problems.append(f"trainer exited 0 but did not write {name}")
     else:
         status = "failed"
         for name in TRAINER_ARTIFACTS + ("train.stdout", "train.stderr", "events.jsonl"):
             reasons.setdefault(name, state["capture_error"] or f"trainer exited {state['exit_code']} before writing it")
     for name in CAPTURE_ARTIFACTS:
         reasons.setdefault(name, "not written: " + ("; ".join(problems) or "capture stopped"))
+    problems = [scrub(p) for p in problems]
+    reasons = {name: scrub(reason) for name, reason in reasons.items()}
+    if state["capture_error"] is not None:
+        state["capture_error"] = scrub(state["capture_error"])
 
     manifest = {
         "attribution": ATTRIBUTION,
