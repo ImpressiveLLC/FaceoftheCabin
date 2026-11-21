@@ -21,7 +21,13 @@
 #    no longer used since load_in_4bit was dropped) are now genuinely
 #    unused dead weight for -- removed both rather than leave ~1GB+ of
 #    unused NVIDIA CUDA wheels, xformers, and triton installed.
-FROM python:3.11-slim
+# Base image pinned by digest (#543 section 3). Index digest read 2026-11-20 with
+# `docker buildx imagetools inspect python:3.11-slim` (registry read only); the tag then
+# resolved to 3.11.18-slim-trixie, created 2026-11-05, linux/amd64 manifest
+# sha256:b701198cb708b68d9413ca67d6311bd97c9389a2c5fe4da0511fc652642366cd.
+# Change the digest only in a reviewed PR that updates this comment too. The apt layer
+# below is still unpinned (recorded at run time, not reproducible).
+FROM python:3.11-slim@sha256:07d4824036af339fa1b6ef769cc99d9c10a141769538b52b3b597c84f7a7b535
 
 WORKDIR /app
 
