@@ -1,5 +1,26 @@
 # Local human grading (POC2 / UC-17 / D27)
 
+## Versioned blind-packet core (synthetic implementation slice)
+
+The in-memory blind-packet core implements the projection and commitment portion
+of the [S4 packet-builder specification](../../../proposals/s4-packet-builder-spec.md).
+It is coordinator-side code: its complete result includes protected mapping and
+source commitments and must never be handed wholesale to a reviewer. Only the
+explicit blind projection may become reviewer material after delivery gates pass.
+
+This slice does not read source files, write operational packets, deliver data,
+appoint reviewers, import labels, run an audit or promote training rows. The existing
+`make-packet` CLI and its legacy hashes are unchanged; they are not upgraded Track B
+compliance. No automatic migration of old evidence is performed.
+
+Remaining implementation gates include authorized path preflight, isolated recipient
+storage, no-overwrite atomic finalization, source-change checks, immutable submission
+intake and audit/promotion integration. Actual recipient access isolation must be
+verified separately; synthetic in-memory tests do not prove it. Private source/output
+authorization and family-level reviewer eligibility remain prerequisites, independent
+of this code or a merged PR. No S4/S5 completion is claimed.
+
+
 This screen reviews expected labels and, separately, actual model responses.
 No model is trained or called by the screen. No devices are controlled.
 Serve it with Python; opening index.html directly cannot load or save data.
