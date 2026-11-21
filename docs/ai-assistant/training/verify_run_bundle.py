@@ -15,15 +15,18 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from run_capture import ATTRIBUTION, BUNDLE, MANIFEST, lock_check  # noqa: E402
+from run_capture import (ATTRIBUTION, BUNDLE, CAPTURE_ARTIFACTS, IMAGE_FIELDS, MANIFEST, REPO_FIELDS,  # noqa: E402
+                         TRAINER_ARTIFACTS, fact_problems, lock_check)
 
 STATUSES = ("completed", "failed", "aborted_preflight")
 STAGES = ("preflight", "trainer_started", "trainer_exited", "post_capture")
 FACTS = ("repo.json", "image-facts.json", "pip-freeze.txt", "lock-check.json")
-REQUIRED_FOR_COMPLETED = ("resolved-training-args.json", "loss.jsonl", "adapter", "train.stdout", "train.stderr",
-                          "events.jsonl", "host-facts.json", "pip-freeze.txt", "lock-check.json", "repo.json",
-                          "image-facts.json")
+# One artifact list shared with run_capture.py: a completed run must have produced every one of them.
+REQUIRED_FOR_COMPLETED = TRAINER_ARTIFACTS + CAPTURE_ARTIFACTS
+STAGE_FOR_STATUS = {"completed": ("post_capture",), "aborted_preflight": ("preflight",),
+                    "failed": ("trainer_started", "trainer_exited")}
 _LINE = re.compile(r"([0-9a-f]{64})  (\S(?:.*\S)?)")
+_HEX64 = re.compile(r"[0-9a-f]{64}")
 
 
 class IntegrityError(Exception):
@@ -82,15 +85,27 @@ def check_artifact(name, entry, listed):
             raise IntegrityError(f"artifact {name} is marked NOT_PRODUCED but is present")
         return False
     if "sha256" in entry:
-        if listed.get(name) != entry["sha256"]:
+        digest = entry["sha256"]
+        if not isinstance(digest, str) or not _HEX64.fullmatch(digest):
+            raise IntegrityError(f"artifact {name} has a malformed sha256 {digest!r}")
+        if name not in listed or listed[name] != digest:
             raise IntegrityError(f"artifact {name} hash does not match the bundle")
         return True
     if "files" in entry and isinstance(entry["files"], dict) and entry["files"]:
+        if not all(isinstance(d, str) and _HEX64.fullmatch(d) for d in entry["files"].values()):
+            raise IntegrityError(f"artifact {name} has a malformed file hash")
         inside = {rel: d for rel, d in listed.items() if rel.startswith(name + "/")}
         if inside != entry["files"]:
             raise IntegrityError(f"artifact {name} file hashes do not match the bundle")
         return True
     raise IntegrityError(f"artifact {name} is neither produced nor NOT_PRODUCED with a reason")
+
+
+def load_json(run_dir, name):
+    try:
+        return json.loads((run_dir / name).read_text(encoding="utf-8"))
+    except ValueError as exc:
+        raise IntegrityError(f"{name} is not valid JSON ({exc})")
 
 
 def verify(run_dir, posted, lock_path=HERE / "requirements.lock"):
@@ -100,15 +115,19 @@ def verify(run_dir, posted, lock_path=HERE / "requirements.lock"):
     check_files(run_dir, listed)
     if MANIFEST not in listed:
         raise IntegrityError(f"{MANIFEST} is not in the bundle")
-    manifest = json.loads((run_dir / MANIFEST).read_text(encoding="utf-8"))
+    manifest = load_json(run_dir, MANIFEST)
+    if not isinstance(manifest, dict):
+        raise IntegrityError(f"{MANIFEST} is not a JSON object")
     status, stage = manifest.get("status"), manifest.get("stage")
     if status not in STATUSES or stage not in STAGES:
         raise IntegrityError(f"manifest status {status!r} or stage {stage!r} is not a known value")
+    if stage not in STAGE_FOR_STATUS[status]:
+        raise IntegrityError(f"manifest stage {stage!r} is inconsistent with status {status!r}")
     if manifest.get("attribution") != ATTRIBUTION:
         raise IntegrityError("manifest attribution is not the exact section 5 string")
     for field in ("started_at", "ended_at", "run_id"):
-        if not manifest.get(field):
-            raise IntegrityError(f"manifest field {field} is empty")
+        if not isinstance(manifest.get(field), str) or not manifest[field].strip():
+            raise IntegrityError(f"manifest field {field} is empty or not a string")
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, dict):
         raise IntegrityError("manifest has no artifacts map")
@@ -122,7 +141,7 @@ def verify(run_dir, posted, lock_path=HERE / "requirements.lock"):
                                 (run_dir / "pip-freeze.txt").read_text(encoding="utf-8"))
         if not produced.get("lock-check.json"):
             raise IntegrityError("pip-freeze.txt is present but lock-check.json is not")
-        recorded = json.loads((run_dir / "lock-check.json").read_text(encoding="utf-8"))
+        recorded = load_json(run_dir, "lock-check.json")
         if recorded != recomputed:
             raise IntegrityError("lock-check.json disagrees with the recomputed lock-to-freeze check")
 
@@ -130,10 +149,15 @@ def verify(run_dir, posted, lock_path=HERE / "requirements.lock"):
         missing = [name for name in REQUIRED_FOR_COMPLETED if not produced.get(name)]
         if missing:
             raise IntegrityError(f"a completed run lacks {', '.join(missing)}")
-        repo = json.loads((run_dir / "repo.json").read_text(encoding="utf-8"))
-        if repo.get("status_porcelain"):
+        repo = load_json(run_dir, "repo.json")
+        problems = fact_problems("repo.json", repo, REPO_FIELDS) + fact_problems(
+            "image-facts.json", load_json(run_dir, "image-facts.json"), IMAGE_FIELDS)
+        if problems:
+            raise IntegrityError("a completed run's host facts break the capture contract: " + "; ".join(problems))
+        if repo["status_porcelain"] != "":
             raise IntegrityError("a completed run's repo.json shows a dirty tree")
-        if json.loads((run_dir / "lock-check.json").read_text(encoding="utf-8")).get("result") != "pass":
+        check = load_json(run_dir, "lock-check.json")
+        if not isinstance(check, dict) or check.get("result") != "pass":
             raise IntegrityError("a completed run's lock check is not a pass")
         if manifest.get("exit_code") != 0:
             raise IntegrityError("a completed run's trainer exit code is not 0")

@@ -173,3 +173,79 @@ def test_wrong_attribution_or_unknown_status_fails(env):
     edit_manifest(run_dir, lambda m: m.update(attribution=vb.ATTRIBUTION, status="success"))
     with pytest.raises(vb.IntegrityError, match="not a known value"):
         vb.verify(run_dir, reseal(run_dir), env["lock"])
+
+
+# --- Codex HOLD 7060663663 probes: incomplete evidence must never verify as completed. ---
+
+def test_null_or_malformed_artifact_hash_never_counts_as_produced(env):
+    run_dir, _, _ = make(env)
+    writable(run_dir)
+    (run_dir / "loss.jsonl").unlink()
+    edit_manifest(run_dir, lambda m: m["artifacts"].update({"loss.jsonl": {"sha256": None}}))
+    with pytest.raises(vb.IntegrityError, match="malformed sha256"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])
+    edit_manifest(run_dir, lambda m: m["artifacts"].update({"loss.jsonl": {"sha256": "0" * 64}}))
+    with pytest.raises(vb.IntegrityError, match="loss.jsonl hash does not match"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])
+
+
+@pytest.mark.parametrize("repo", [{}, [], {"commit": "c", "plan_id": "p", "plan_sha256": "ab" * 32},
+                                  {"commit": "c", "status_porcelain": 0, "plan_id": "p", "plan_sha256": "ab" * 32}])
+def test_completed_run_with_malformed_repo_facts_fails_cleanly(env, repo):
+    run_dir, _, _ = make(env)
+    writable(run_dir)
+    path = run_dir / "repo.json"
+    path.write_text(json.dumps(repo), encoding="utf-8", newline="\n")
+    edit_manifest(run_dir, lambda m: m["artifacts"].update(
+        {"repo.json": {"sha256": hashlib.sha256(path.read_bytes()).hexdigest()}}))
+    with pytest.raises(vb.IntegrityError, match="break the capture contract"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])
+
+
+def test_completed_run_needs_the_apt_inventory(env):
+    run_dir, _, _ = make(env)
+    writable(run_dir)
+    (run_dir / "dpkg.txt").unlink()
+    edit_manifest(run_dir, lambda m: m["artifacts"].pop("dpkg.txt"))
+    with pytest.raises(vb.IntegrityError, match="completed run lacks dpkg.txt"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])
+    edit_manifest(run_dir, lambda m: m["artifacts"].update({"dpkg.txt": {"status": "NOT_PRODUCED", "reason": "no dpkg"}}))
+    with pytest.raises(vb.IntegrityError, match="completed run lacks dpkg.txt"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])
+
+
+def test_required_artifacts_are_the_capture_list():
+    assert set(vb.REQUIRED_FOR_COMPLETED) == set(vb.TRAINER_ARTIFACTS + vb.CAPTURE_ARTIFACTS)
+    assert "dpkg.txt" in vb.REQUIRED_FOR_COMPLETED
+
+
+def test_status_and_stage_must_agree_and_timestamps_must_be_strings(env):
+    run_dir, _, _ = make(env)
+    writable(run_dir)
+    edit_manifest(run_dir, lambda m: m.update(stage="preflight"))
+    with pytest.raises(vb.IntegrityError, match="inconsistent with status"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])
+    edit_manifest(run_dir, lambda m: m.update(stage="post_capture", started_at=["2026"]))
+    with pytest.raises(vb.IntegrityError, match="started_at is empty or not a string"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])
+
+
+def test_a_non_object_manifest_fails_cleanly(env):
+    run_dir, _, _ = make(env)
+    writable(run_dir)
+    (run_dir / vb.MANIFEST).write_text("[]\n", encoding="utf-8", newline="\n")
+    with pytest.raises(vb.IntegrityError, match="not a JSON object"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])
+
+
+def test_completed_run_with_a_dirty_tree_fails(env):
+    run_dir, _, _ = make(env)
+    writable(run_dir)
+    path = run_dir / "repo.json"
+    repo = json.loads(path.read_text(encoding="utf-8"))
+    repo["status_porcelain"] = " M train_sft.py"
+    path.write_text(json.dumps(repo), encoding="utf-8", newline="\n")
+    edit_manifest(run_dir, lambda m: m["artifacts"].update(
+        {"repo.json": {"sha256": hashlib.sha256(path.read_bytes()).hexdigest()}}))
+    with pytest.raises(vb.IntegrityError, match="dirty tree"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])
