@@ -1,0 +1,218 @@
+"""Stage 1 tests for run_capture.py (#543 section 4): a stub trainer and invented data, no torch, no model, no host."""
+import hashlib
+import json
+import os
+import stat
+import sys
+import textwrap
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent))
+import run_capture as rc  # noqa: E402
+
+LOCK = "accelerate==1.15.0 \\\n    --hash=sha256:aa\n    # via peft\ntorch==2.7.0+cpu \\\n    --hash=sha256:bb\nTokenizers==0.22.1 \\\n"
+FREEZE_OK = "accelerate==1.15.0\npip==25.0\nsetuptools==80.0\ntokenizers==0.22.1\ntorch==2.7.0+cpu\n"
+STUB_OUT = b"step 1 loss 2.0\n\xe2\x9c\x93 raw bytes \x00 kept\r\nno newline at end"
+
+STUB = textwrap.dedent('''
+    import json, sys
+    from pathlib import Path
+    args = sys.argv[1:]
+    run = Path(args[args.index("--run-dir") + 1])
+    (run.parent.parent / "stub-called.txt").write_text(" ".join(args), encoding="utf-8")
+    sys.stdout.buffer.write(STUB_OUT)
+    sys.stderr.buffer.write(b"warn\\n")
+    (run / "resolved-training-args.json").write_text("{}\\n", encoding="utf-8")
+    (run / "loss.jsonl").write_text('{"loss": 2.0, "step": 1}\\n', encoding="utf-8")
+    if "FAIL" in str(run):
+        sys.exit(3)
+    (run / "adapter").mkdir()
+    (run / "adapter" / "adapter_model.safetensors").write_bytes(b"fake")
+''').replace("STUB_OUT", repr(STUB_OUT))
+
+
+def _unseal(path):
+    for p in sorted(Path(path).rglob("*")) + [Path(path)]:
+        try:
+            p.chmod(p.stat().st_mode | stat.S_IWUSR)
+        except OSError:
+            pass
+
+
+@pytest.fixture
+def env(tmp_path):
+    stub = tmp_path / "stub_trainer.py"
+    stub.write_text(STUB, encoding="utf-8")
+    lock = tmp_path / "requirements.lock"
+    lock.write_text(LOCK, encoding="utf-8")
+    data = tmp_path / "invented.jsonl"
+    data.write_text('{"messages": []}\n', encoding="utf-8")
+    runs = tmp_path / "data" / "runs"
+    yield {"tmp": tmp_path, "stub": stub, "lock": lock, "data": data, "runs": runs}
+    _unseal(tmp_path)
+
+
+def incoming(env, run_id, *, repo=None, image=True):
+    folder = env["tmp"] / "data" / "runs-incoming" / run_id
+    folder.mkdir(parents=True, exist_ok=True)
+    if repo is not False:
+        (folder / "repo.json").write_text(json.dumps(repo or {"commit": "c0ffee", "status_porcelain": "",
+                                                              "plan_id": "dev-sft-r1-phase1", "plan_sha256": "ab" * 32}),
+                                          encoding="utf-8")
+    if image:
+        (folder / "image-facts.json").write_text('{"image_id": "sha256:feed", "base_digest": "sha256:07d4"}', encoding="utf-8")
+    return folder
+
+
+def run(env, run_id, *, freeze=FREEZE_OK, invented=True, max_steps=None, **kw):
+    freeze_file = env["tmp"] / f"freeze-{run_id}.txt"
+    freeze_file.write_text(freeze, encoding="utf-8")
+    return rc.capture(run_id=run_id, runs_dir=env["runs"], incoming_dir=env["tmp"] / "data" / "runs-incoming" / run_id,
+                      data=env["data"], seed=11, lock_path=env["lock"], max_steps=max_steps, invented_data=invented,
+                      trainer_cmd=[sys.executable, str(env["stub"])],
+                      freeze_cmd=[sys.executable, "-c", f"import sys; sys.stdout.write(open({str(freeze_file)!r}).read())"],
+                      dpkg_cmd=[sys.executable, "-c", "print('libc6\\t2.41')"],
+                      facts_fn=lambda: {"python": "stub", "dtype_test": "NOT_PRODUCED: stub"}, **kw)
+
+
+def bundle_lines(run_dir):
+    return (run_dir / rc.BUNDLE).read_text(encoding="utf-8").split("\n")[:-1]
+
+
+def test_lock_pins_and_lock_to_freeze_check():
+    assert rc.lock_pins(LOCK) == {"accelerate": "1.15.0", "torch": "2.7.0+cpu", "tokenizers": "0.22.1"}
+    ok = rc.lock_check(LOCK, FREEZE_OK)
+    assert ok["result"] == "pass" and ok["extra_installed"] == ["pip", "setuptools"]
+    bad = rc.lock_check(LOCK, FREEZE_OK.replace("torch==2.7.0+cpu", "torch==2.8.0"))
+    assert bad["result"] == "mismatch"
+    assert bad["mismatches"] == [{"package": "torch", "locked": "2.7.0+cpu", "found": "2.8.0"}]
+    missing = rc.lock_check(LOCK, "accelerate==1.15.0\n")
+    assert {m["package"] for m in missing["mismatches"]} == {"tokenizers", "torch"}
+
+
+def test_completed_run_captures_everything_and_seals_it(env):
+    incoming(env, "run-a")
+    run_dir, bundle, manifest = run(env, "run-a", max_steps=2)
+    assert (manifest["status"], manifest["stage"], manifest["exit_code"]) == ("completed", "post_capture", 0)
+    assert manifest["attribution"] == rc.ATTRIBUTION and manifest["seed"] == 11 and manifest["max_steps"] == 2
+    assert manifest["run_kind"] == "invented_data_dry_run" and manifest["commit"] == "c0ffee"
+    assert (run_dir / "train.stdout").read_bytes() == STUB_OUT
+    assert (run_dir / "train.stderr").read_bytes() == b"warn\n"
+    events = [json.loads(line) for line in (run_dir / "events.jsonl").read_text(encoding="utf-8").split("\n") if line]
+    assert events[0]["event"] == "start" and events[-1] == dict(events[-1], event="exit", code=0)
+    assert sum(e["length"] for e in events if e.get("stream") == "stdout") == len(STUB_OUT)
+    for name, entry in manifest["artifacts"].items():
+        assert "status" not in entry, name
+    assert "--max-steps 2" in (env["tmp"] / "data" / "stub-called.txt").read_text(encoding="utf-8")
+    listed = {line.split("  ", 1)[1]: line.split("  ", 1)[0] for line in bundle_lines(run_dir)}
+    files = {p.relative_to(run_dir).as_posix() for p in run_dir.rglob("*") if p.is_file()}
+    assert set(listed) == files - {rc.BUNDLE} and rc.BUNDLE not in listed and rc.MANIFEST in listed
+    assert all(listed[name] == rc.sha256_file(run_dir / name) for name in listed)
+    assert list(listed) == sorted(listed)
+    assert bundle == hashlib.sha256((run_dir / rc.BUNDLE).read_bytes()).hexdigest()
+    assert b"\r" not in (run_dir / rc.BUNDLE).read_bytes()
+    assert not any(p.stat().st_mode & stat.S_IWUSR for p in run_dir.rglob("*") if p.is_file())
+    if os.name != "nt":  # Windows has no write bit for directories
+        assert not any(p.stat().st_mode & stat.S_IWUSR for p in [run_dir, *run_dir.rglob("*")])
+
+
+def test_existing_run_dir_is_refused_and_left_untouched(env):
+    incoming(env, "run-a")
+    run_dir, _, _ = run(env, "run-a")
+    before = {p: p.read_bytes() for p in run_dir.rglob("*") if p.is_file()}
+    with pytest.raises(SystemExit, match="already exists"):
+        run(env, "run-a")
+    assert {p: p.read_bytes() for p in run_dir.rglob("*") if p.is_file()} == before
+
+
+def test_a_second_run_gets_its_own_directory_and_leaves_the_first_byte_identical(env):
+    incoming(env, "run-a")
+    first, _, _ = run(env, "run-a")
+    before = {p.relative_to(first): p.read_bytes() for p in first.rglob("*") if p.is_file()}
+    incoming(env, "run-b")
+    second, _, _ = run(env, "run-b")
+    assert second != first
+    assert {p.relative_to(first): p.read_bytes() for p in first.rglob("*") if p.is_file()} == before
+
+
+def test_symlinked_runs_dir_is_refused(env):
+    real = env["tmp"] / "elsewhere"
+    real.mkdir()
+    env["runs"].parent.mkdir(parents=True)
+    try:
+        env["runs"].symlink_to(real, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("this platform does not allow creating symlinks here")
+    with pytest.raises(SystemExit, match="symlink"):
+        run(env, "run-a")
+    assert list(real.iterdir()) == []
+
+
+def test_bad_run_id_writes_nothing(env):
+    with pytest.raises(SystemExit, match="plain name"):
+        rc.capture(run_id="../escape", runs_dir=env["runs"], incoming_dir=env["tmp"], data=env["data"], seed=1,
+                   lock_path=env["lock"], invented_data=True)
+    assert not env["runs"].exists()
+
+
+def assert_aborted(manifest, run_dir, env, reason):
+    assert (manifest["status"], manifest["stage"], manifest["exit_code"]) == ("aborted_preflight", "preflight", None)
+    assert any(reason in p for p in manifest["problems"]), manifest["problems"]
+    for name in ("resolved-training-args.json", "loss.jsonl", "adapter", "train.stdout"):
+        assert manifest["artifacts"][name]["status"] == "NOT_PRODUCED"
+        assert manifest["artifacts"][name]["reason"].startswith("preflight refused the run")
+    assert not (env["tmp"] / "data" / "stub-called.txt").exists(), "the trainer must not start"
+    assert (run_dir / rc.BUNDLE).is_file() and (run_dir / rc.MANIFEST).is_file()
+
+
+def test_missing_image_facts_aborts_with_a_sealed_bundle(env):
+    incoming(env, "run-a", image=False)
+    run_dir, _, manifest = run(env, "run-a")
+    assert_aborted(manifest, run_dir, env, "image-facts.json")
+    assert manifest["artifacts"]["image-facts.json"]["status"] == "NOT_PRODUCED"
+
+
+def test_missing_repo_facts_aborts(env):
+    incoming(env, "run-a", repo=False)
+    run_dir, _, manifest = run(env, "run-a")
+    assert_aborted(manifest, run_dir, env, "repo.json")
+
+
+def test_dirty_tree_aborts_and_keeps_the_status_as_evidence(env):
+    incoming(env, "run-a", repo={"commit": "c0ffee", "status_porcelain": " M train_sft.py"})
+    run_dir, _, manifest = run(env, "run-a")
+    assert_aborted(manifest, run_dir, env, "dirty tree")
+    assert json.loads((run_dir / "repo.json").read_text(encoding="utf-8"))["status_porcelain"] == " M train_sft.py"
+
+
+def test_lock_mismatch_aborts_with_lock_check_evidence(env):
+    incoming(env, "run-a")
+    run_dir, _, manifest = run(env, "run-a", freeze=FREEZE_OK.replace("torch==2.7.0+cpu", "torch==2.8.0"))
+    assert_aborted(manifest, run_dir, env, "differ from the installed set")
+    check = json.loads((run_dir / "lock-check.json").read_text(encoding="utf-8"))
+    assert check["mismatches"] == [{"package": "torch", "locked": "2.7.0+cpu", "found": "2.8.0"}]
+
+
+def test_a_real_run_without_an_s7_manifest_is_refused(env):
+    incoming(env, "run-a")
+    run_dir, _, manifest = run(env, "run-a", invented=False)
+    assert_aborted(manifest, run_dir, env, "no S7 train manifest")
+
+
+def test_mid_training_failure_keeps_partial_evidence(env):
+    incoming(env, "run-FAIL")
+    run_dir, _, manifest = run(env, "run-FAIL")
+    assert (manifest["status"], manifest["stage"], manifest["exit_code"]) == ("failed", "trainer_exited", 3)
+    assert manifest["artifacts"]["adapter"]["status"] == "NOT_PRODUCED"
+    assert "trainer exited 3" in manifest["artifacts"]["adapter"]["reason"]
+    assert "sha256" in manifest["artifacts"]["loss.jsonl"]
+    assert (run_dir / "train.stdout").read_bytes() == STUB_OUT
+
+
+def test_cli_requires_a_data_manifest_or_invented_data(env):
+    with pytest.raises(SystemExit):
+        rc.main(["--run-id", "x", "--data", str(env["data"])])
+    with pytest.raises(SystemExit):
+        rc.main(["--run-id", "x", "--data", str(env["data"]), "--invented-data", "--data-manifest", "m.json"])
