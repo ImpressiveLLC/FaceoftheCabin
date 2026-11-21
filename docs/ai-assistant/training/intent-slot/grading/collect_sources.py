@@ -42,7 +42,7 @@ def main():
     raw_dir.mkdir(exist_ok=True)
     manifest, rows, excluded = [], [], []
     seen = {" ".join(json.loads(line)["text"].casefold().split()) for line in
-            (args.package / "gold.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()}
+            (args.package / "gold.jsonl").read_text(encoding="utf-8").split("\n") if line.strip()}
 
     def fetch(name, url):
         request = urllib.request.Request(url, headers={"User-Agent": "FaceoftheCabin-review/1.0"})
@@ -71,7 +71,7 @@ def main():
     for source, revision, license_name, path, url in sources:
         raw = fetch(source + "-" + path.replace("/", "-"), url)
         sha = hashlib.sha256(raw).hexdigest()
-        data = ([json.loads(line) for line in raw.decode().splitlines() if line.strip()] if source == "enfuse"
+        data = ([json.loads(line) for line in raw.decode("utf-8").split("\n") if line.strip()] if source == "enfuse"
                 else yaml.safe_load(raw) if source == "ha" else json.loads(raw))
         units = ([([r], r) for r in data] if source == "enfuse" else
                  [({"tests": [r]}, r) for r in data["tests"]] if source == "ha" else
