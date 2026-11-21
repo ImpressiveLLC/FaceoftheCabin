@@ -49,7 +49,7 @@ def split_rows(rows, gold):
         raise ValueError("Empty dataset")
     forbidden_text = {normalize(r["text"]) for r in gold}
     forbidden_group = {r["group"] for r in gold}
-    result = {"train": [], "validation": [], "test": []}
+    result = {"train": [], "validation": [], "holdout": []}
     seen = set()
     for row in rows:
         provenance = row["provenance"]
@@ -70,14 +70,15 @@ def split_rows(rows, gold):
             problems = {"canonical": "a room or site is not in its canonical form; approve it in the grading screen, which normalizes it"}
         if problems:
             raise ValueError(f"Room, site or need not in the vocabulary ({row['id']}): {'; '.join(problems.values())}")
+        # S7 G2: the internal 10 percent hash-bucket split is "holdout", not "test"; "test" means only the S6 frozen test.
         bucket = int(hashlib.sha256(row["group"].encode()).hexdigest(), 16) % 10
-        split = "test" if bucket == 0 else "validation" if bucket == 1 else "train"
+        split = "holdout" if bucket == 0 else "validation" if bucket == 1 else "train"
         result[split].append({"messages": [{"role": "system", "content": SYSTEM},
                                             {"role": "user", "content": request_content(row["text"], row.get("card_target"))},
                                             {"role": "assistant", "content": json.dumps(row["target"])}],
                               "id": row["id"], "group": row["group"], "provenance": provenance})
     if any(not result[k] for k in result):
-        raise ValueError("Need enough independent reviewed families for nonempty train/validation/test")
+        raise ValueError("Need enough independent reviewed families for nonempty train/validation/holdout")
     return result
 
 
