@@ -172,7 +172,7 @@ class FrozenExclusionTests(unittest.TestCase):
         ev = self.evidence(); ev.screen["freeze_id"] = "freeze-other"
         self.assert_refused(ev, "another freeze_id")
         ev = self.evidence(); ev.screen["tool"] = {"screen-train": "e" * 64}
-        self.assert_refused(ev, "tool hashes")
+        self.assert_refused(ev, "is not the one the freeze record lists")
         ev = self.evidence(); ev.screen["quarantine_ids"] = ev.screen["quarantine_ids"][:-1]
         self.assert_refused(ev, "quarantine_ids do not hash")
 
@@ -221,8 +221,10 @@ class FrozenExclusionTests(unittest.TestCase):
         random.Random(7).shuffle(shuffled)
         b = split_rows_with_report(shuffled, self.gold, frozen=frozen)
         self.assertEqual(json.dumps(a[1], sort_keys=True), json.dumps(b[1], sort_keys=True))
-        self.assertEqual({k: sorted(r["id"] for r in v) for k, v in a[0].items()},
-                         {k: sorted(r["id"] for r in v) for k, v in b[0].items()})
+        self.assertEqual(json.dumps(a[0], sort_keys=True, ensure_ascii=False).encode("utf-8"),
+                         json.dumps(b[0], sort_keys=True, ensure_ascii=False).encode("utf-8"))
+        reversed_run = split_rows_with_report(list(reversed(self.rows)), self.gold, frozen=frozen)
+        self.assertEqual(a[0], reversed_run[0])
         self.assertEqual(a[2], b[2])
 
     # --- source never reads frozen material ---------------------------------------------------------------------
@@ -243,7 +245,7 @@ class CliTests(unittest.TestCase):
     def run_main(self, *extra):
         buffer = io.StringIO()
         with redirect_stdout(buffer):
-            report = prepare_sft.main([str(self.ev.input), str(self.out), *extra])
+            report = prepare_sft.main([str(self.ev.input), str(self.out), *extra], _synthetic_test_only=True)
         return report, buffer.getvalue()
 
     def s6_flags(self):
@@ -289,7 +291,76 @@ class CliTests(unittest.TestCase):
         f = self.ev.files()
         with self.assertRaises(SystemExit):
             prepare_sft.main([str(f["export"]), str(self.out), "--freeze-record", str(f["record"]),
+                              "--family-export", str(f["export"]), "--screen-result", str(f["screen"])],
+                             _synthetic_test_only=True)
+
+
+class G1RepairTests(unittest.TestCase):
+    """Codex HOLD 7059474381: screen-tool identity, one family-map predicate, the refusal until G8 and the read order."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.rows = reviewed_rows()
+
+    def evidence(self):
+        return Evidence(self.tmp, self.rows)
+
+    def test_screen_tool_must_be_exactly_the_screening_tool(self):
+        ev = self.evidence()
+        ev.screen["tool"] = {"round_ledger": ev.record["tool"]["round_ledger"]}  # matching but unrelated key
+        with self.assertRaisesRegex(S6Error, "not exactly"):
+            ev.load()
+        ev = self.evidence()
+        ev.screen["tool"] = dict(ev.screen["tool"], round_ledger=ev.record["tool"]["round_ledger"])  # extra key
+        with self.assertRaisesRegex(S6Error, "not exactly"):
+            ev.load()
+        ev = self.evidence(); ev.screen["tool"] = {}
+        with self.assertRaisesRegex(S6Error, "not exactly"):
+            ev.load()
+        ev = self.evidence(); ev.screen["tool"] = {"screen-train": "A" * 64}
+        ev.record["tool"]["screen-train"] = "A" * 64
+        with self.assertRaisesRegex(S6Error, "not a SHA-256"):
+            ev.load()
+        ev = self.evidence(); del ev.record["tool"]["screen-train"]
+        with self.assertRaisesRegex(S6Error, "does not pin a SHA-256"):
+            ev.load()
+
+    def test_one_family_map_predicate_for_discovery_and_reverse_check(self):
+        for name in ("sft/s1/families.json", "sft/s2-batch2-families.json", "sft/retired-families-map.json",
+                     "sft/families.json"):
+            self.assertTrue(prepare_sft.is_family_map(name), name)
+        for name in ("sft/s1/other.json", "sft/nested/x-families.json", "gold.jsonl", "sft/families.txt"):
+            self.assertFalse(prepare_sft.is_family_map(name), name)
+        ev = self.evidence()
+        ev.record["inputs"]["sft/retired-families-map.json"] = "1" * 64  # suffix after "families"
+        with self.assertRaisesRegex(S6Error, "lists sft/retired-families-map.json but it is not found"):
+            ev.load()
+
+    def test_cli_refuses_frozen_aware_runs_until_g8_lands(self):
+        self.assertFalse(prepare_sft.G8_BOUND_FAMILIES)
+        ev = self.evidence()
+        f = ev.files()
+        out = self.tmp / "out"
+        with self.assertRaisesRegex(SystemExit, "refused until S7 G8"):
+            prepare_sft.main([str(ev.input), str(out), "--freeze-record", str(f["record"]),
                               "--family-export", str(f["export"]), "--screen-result", str(f["screen"])])
+        self.assertFalse(out.exists())
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            prepare_sft.main([str(ev.input), str(out), "--dry-run-no-s6"])  # the dry run still works
+        self.assertTrue(buffer.getvalue().startswith("NOT_RUN: S6"))
+
+    def test_frozen_set_bytes_are_refused_before_input_is_parsed(self):
+        ev = self.evidence()
+        ev.input.write_bytes(b"sealed text that is not JSON" + bytes([10]))
+        ev.screen["train_file_sha256"] = sha(ev.input)
+        ev.record["sets"]["safety"]["sha256"] = sha(ev.input)
+        f = ev.files()
+        with self.assertRaisesRegex(SystemExit, "frozen safety set"):
+            prepare_sft.main([str(ev.input), str(self.tmp / "out"), "--freeze-record", str(f["record"]),
+                              "--family-export", str(f["export"]), "--screen-result", str(f["screen"])],
+                             _synthetic_test_only=True)
 
 
 if __name__ == "__main__":

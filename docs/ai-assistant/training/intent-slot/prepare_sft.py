@@ -5,10 +5,17 @@ screen quarantined are dropped, every identity is checked against the freeze bef
 family is a frozen test or safety family but was not quarantined fails the run. Without S6 evidence the only way to run is
 --dry-run-no-s6, which writes no training files and reports s6 and frozen_family_check as NOT_RUN. The tool never opens a
 frozen set, the refusal pack, keyed hashes or the key; the family export is ids only. VALIDATED ONLY WHEN S6 AND
-screen-train EXIST: until then this is tested on synthetic evidence only. Step 5 (frozen family) uses the row's `group`
-as its family, which is the bound family only once G8 lands.
+screen-train EXIST: until then this is tested on synthetic evidence only.
+
+Two #536 gates are not met yet, so a frozen-aware run from the command line is REFUSED (Codex HOLD 7059474381):
+- G8 (pair families bound to `group` before the split) has not landed; step 5 would check source groups, not families.
+- The approved-input read boundary of #536 section 3.7 is only partly enforced: INPUT may not be an S6 file, and its
+  bytes are hashed and checked against the freeze record's frozen-set hashes before they are parsed, but there is no
+  approved-input list yet, so a path the caller passes is still opened. Cowork rules on whether that is enough.
+Only --dry-run-no-s6 runs from the CLI until both are resolved; the frozen-aware path is exercised by synthetic tests.
 """
 import argparse
+import fnmatch
 import hashlib
 import json
 import re
@@ -56,6 +63,9 @@ def rows_refused_by_training(splits):
 
 
 EMPTY_LIST_SHA256 = hashlib.sha256(b"").hexdigest()
+REQUIRED_SCREEN_TOOLS = ("screen-train",)  # the screening tool identity a screen result must carry, nothing else
+G8_BOUND_FAMILIES = False  # flips to True only in the PR that lands G8 (#536 section 6)
+_HEX64 = re.compile(r"[0-9a-f]{64}")
 FAMILY_EXPORT_KEYS = {"freeze_id", "test_family_ids", "safety_family_ids"}
 _BAD_ID = re.compile(r"[\x00-\x1f\x7f\u0085\u2028\u2029]")
 
@@ -89,14 +99,24 @@ def read_rows_snapshot(path):
     return rows, hashlib.sha256(raw).hexdigest()
 
 
+def is_family_map(name):
+    """The one predicate for a committed family map, used for discovery and for the reverse check: sft/s1/families.json
+    or any direct child of sft/ matching *families*.json."""
+    if name == "sft/s1/families.json":
+        return True
+    head, _, tail = name.partition("/")
+    return head == "sft" and "/" not in tail and fnmatch.fnmatchcase(tail, "*families*.json")
+
+
 def recompute_inputs(gold_path, root=None):
     """The committed files S6 must have hashed, keyed as the freeze record's `inputs` names them (relative to the package)."""
     root = Path(root) if root else ROOT
     files = {"gold.jsonl": Path(gold_path), "system.txt": root / "system.txt",
              "intent-slot.schema.json": root / "intent-slot.schema.json",
              "sft/s1/families.json": root / "sft" / "s1" / "families.json"}
-    for path in sorted((root / "sft").glob("*families*.json")):
-        files[f"sft/{path.name}"] = path
+    for path in sorted((root / "sft").iterdir()):
+        if path.is_file() and is_family_map(f"sft/{path.name}"):
+            files[f"sft/{path.name}"] = path
     return files
 
 
@@ -152,9 +172,19 @@ def load_frozen(freeze_record, family_export, screen_result, input_sha256, recom
         raise S6Error(f"screen result is {screen.get('result')!r}, not pass")
     if screen.get("freeze_id") != freeze_id:
         raise S6Error("screen result is for another freeze_id")
-    record_tool, screen_tool = record.get("tool") or {}, screen.get("tool") or {}
-    if not isinstance(screen_tool, dict) or not screen_tool or any(record_tool.get(k) != v for k, v in screen_tool.items()):
-        raise S6Error("screen result's tool hashes are not the ones the freeze record lists")
+    record_tool, screen_tool = record.get("tool"), screen.get("tool")
+    if not isinstance(record_tool, dict) or not isinstance(screen_tool, dict):
+        raise S6Error("freeze record and screen result must each carry a tool map")
+    if set(screen_tool) != set(REQUIRED_SCREEN_TOOLS):
+        raise S6Error(f"screen result tool keys {sorted(screen_tool)} are not exactly {list(REQUIRED_SCREEN_TOOLS)}")
+    for key in REQUIRED_SCREEN_TOOLS:
+        value, pinned = screen_tool[key], record_tool.get(key)
+        if not isinstance(value, str) or not _HEX64.fullmatch(value):
+            raise S6Error(f"screen result tool {key} is not a SHA-256 hex digest")
+        if not isinstance(pinned, str) or not _HEX64.fullmatch(pinned):
+            raise S6Error(f"freeze record does not pin a SHA-256 for tool {key}")
+        if value != pinned:
+            raise S6Error(f"screen result tool {key} is not the one the freeze record lists")
     if screen.get("train_file_sha256") != input_sha256:
         raise S6Error("screen result is stale: it was made for different INPUT bytes; run screen-train again")
     quarantine = screen.get("quarantine_ids")
@@ -172,7 +202,7 @@ def load_frozen(freeze_record, family_export, screen_result, input_sha256, recom
         if file_sha256(path) != inputs[name]:
             raise S6Error(f"recompute input {name} has changed since the freeze")
     for name in inputs:
-        if (name in ("gold.jsonl", "system.txt", "intent-slot.schema.json") or name.endswith("families.json")) and name not in recompute:
+        if (name in ("gold.jsonl", "system.txt", "intent-slot.schema.json") or is_family_map(name)) and name not in recompute:
             raise S6Error(f"freeze record lists {name} but it is not found here")
     for name in ("test", "safety"):
         if (sets.get(name) or {}).get("sha256") == input_sha256:
@@ -198,6 +228,9 @@ def split_rows_with_report(rows, gold, *, frozen=None):
             raise S6Error(f"{len(leaked)} row(s) in a frozen test or safety family were not quarantined by the screen: "
                           + ", ".join(leaked))
     result = _split_rows(rows, gold)
+    if frozen is not None:
+        # #536 section 3.8: frozen-aware output does not depend on input order.
+        result = {k: sorted(v, key=lambda row: row["id"]) for k, v in result.items()}
     report = {
         "s6": "FROZEN" if frozen is not None else "NOT_RUN",
         "freeze_id": frozen.freeze_id if frozen is not None else None,
@@ -251,7 +284,7 @@ def _split_rows(rows, gold):
     return result
 
 
-def main(argv=None):
+def main(argv=None, *, _synthetic_test_only=False):
     p = argparse.ArgumentParser()
     p.add_argument("input", type=Path)
     p.add_argument("output_dir", type=Path)
@@ -275,14 +308,20 @@ def main(argv=None):
     if len(set(paths)) != len(paths):
         p.error("INPUT and the S6 evidence files must be different files")
 
-    rows, input_sha256 = read_rows_snapshot(args.input)
+    if not args.dry_run_no_s6 and not _synthetic_test_only and not G8_BOUND_FAMILIES:
+        raise SystemExit("frozen-aware runs are refused until S7 G8 (bound families) lands and Cowork rules on the "
+                         "#536 read boundary; use --dry-run-no-s6. Nothing was read or written")
+    raw = args.input.read_bytes()
+    input_sha256 = hashlib.sha256(raw).hexdigest()
     frozen = None
     if not args.dry_run_no_s6:
         try:
+            # The frozen-set bytes check runs here, before INPUT is parsed.
             frozen = load_frozen(args.freeze_record, args.family_export, args.screen_result, input_sha256,
                                  recompute_inputs(args.gold))
         except S6Error as exc:
             raise SystemExit(f"S6 check failed: {exc}; nothing was split or written")
+    rows = [json.loads(line) for line in raw.decode("utf-8").split("\n") if line.strip()]
     try:
         splits, report, quarantined_ids = split_rows_with_report(rows, read_jsonl(args.gold), frozen=frozen)
     except S6Error as exc:
