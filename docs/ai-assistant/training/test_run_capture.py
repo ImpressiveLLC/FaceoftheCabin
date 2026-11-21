@@ -73,8 +73,8 @@ def run(env, run_id, *, freeze=FREEZE_OK, invented=True, max_steps=None, **kw):
                       data=env["data"], seed=11, lock_path=env["lock"], max_steps=max_steps, invented_data=invented,
                       trainer_cmd=[sys.executable, str(env["stub"])],
                       freeze_cmd=[sys.executable, "-c", f"import sys; sys.stdout.write(open({str(freeze_file)!r}).read())"],
-                      dpkg_cmd=[sys.executable, "-c", "print('libc6\\t2.41')"],
-                      facts_fn=lambda: {"python": "stub", "dtype_test": "NOT_PRODUCED: stub"}, **kw)
+                      **{"dpkg_cmd": [sys.executable, "-c", "print('libc6\\t2.41')"],
+                         "facts_fn": lambda: {"python": "stub", "dtype_test": "NOT_PRODUCED: stub"}, **kw})
 
 
 def bundle_lines(run_dir):
@@ -195,10 +195,106 @@ def test_lock_mismatch_aborts_with_lock_check_evidence(env):
     assert check["mismatches"] == [{"package": "torch", "locked": "2.7.0+cpu", "found": "2.8.0"}]
 
 
-def test_a_real_run_without_an_s7_manifest_is_refused(env):
+def test_a_run_on_real_data_is_refused_until_s7_exists(env):
     incoming(env, "run-a")
     run_dir, _, manifest = run(env, "run-a", invented=False)
-    assert_aborted(manifest, run_dir, env, "no S7 train manifest")
+    assert_aborted(manifest, run_dir, env, "refused until the S7 train-manifest check exists")
+    assert manifest["run_kind"] == "refused_real_data" and manifest["data"]["manifest"] is None
+
+
+def test_missing_lock_file_aborts_with_a_sealed_bundle(env):
+    incoming(env, "run-a")
+    env["lock"].unlink()
+    run_dir, _, manifest = run(env, "run-a")
+    assert_aborted(manifest, run_dir, env, "is missing")
+    assert manifest["artifacts"]["lock-check.json"]["status"] == "NOT_PRODUCED"
+
+
+@pytest.mark.parametrize("text", ["", "# no pins" + chr(10), "garbage line" + chr(10) + "    --hash=sha256:aa" + chr(10)])
+def test_empty_or_unpinned_lock_fails_closed(env, text):
+    incoming(env, "run-a")
+    env["lock"].write_text(text, encoding="utf-8")
+    run_dir, _, manifest = run(env, "run-a")
+    assert_aborted(manifest, run_dir, env, "has no name==version pins")
+
+
+@pytest.mark.parametrize("repo,reason", [([], "repo.json is not a JSON object"),
+                                         ({"status_porcelain": ""}, "repo.json field commit is missing"),
+                                         ({"commit": "c", "status_porcelain": "", "plan_id": "p", "plan_sha256": "xyz"},
+                                          "plan_sha256 is not a SHA-256"),
+                                         ({"commit": "c", "plan_id": "p", "plan_sha256": "ab" * 32},
+                                          "status_porcelain is missing")])
+def test_malformed_repo_facts_abort(env, repo, reason):
+    folder = incoming(env, "run-a")
+    (folder / "repo.json").write_text(json.dumps(repo), encoding="utf-8")
+    run_dir, _, manifest = run(env, "run-a")
+    assert_aborted(manifest, run_dir, env, reason)
+
+
+def test_malformed_image_facts_abort(env):
+    folder = incoming(env, "run-a")
+    (folder / "image-facts.json").write_text('{"image_id": ""}', encoding="utf-8")
+    run_dir, _, manifest = run(env, "run-a")
+    assert_aborted(manifest, run_dir, env, "image-facts.json field")
+
+
+def test_missing_apt_inventory_aborts(env):
+    incoming(env, "run-a")
+    run_dir, _, manifest = run(env, "run-a", dpkg_cmd=[sys.executable, "-c", "import sys; sys.exit(4)"])
+    assert_aborted(manifest, run_dir, env, "no apt inventory")
+    assert manifest["artifacts"]["dpkg.txt"]["status"] == "NOT_PRODUCED"
+
+
+def test_a_facts_error_is_finalized_not_lost(env):
+    incoming(env, "run-a")
+
+    def broken():
+        raise RuntimeError("facts boom")
+
+    run_dir, _, manifest = run(env, "run-a", facts_fn=broken)
+    assert_aborted(manifest, run_dir, env, "capture error at stage preflight: RuntimeError: facts boom")
+    assert manifest["capture_error"] == "RuntimeError: facts boom"
+
+
+def test_a_trainer_that_cannot_start_is_recorded_as_failed(env):
+    incoming(env, "run-a")
+    freeze_file = env["tmp"] / "freeze.txt"
+    freeze_file.write_text(FREEZE_OK, encoding="utf-8")
+    run_dir, bundle, manifest = rc.capture(
+        run_id="run-a", runs_dir=env["runs"], incoming_dir=env["tmp"] / "data" / "runs-incoming" / "run-a",
+        data=env["data"], seed=1, lock_path=env["lock"], invented_data=True,
+        trainer_cmd=[str(env["tmp"] / "no-such-trainer.exe")],
+        freeze_cmd=[sys.executable, "-c", f"import sys; sys.stdout.write(open({str(freeze_file)!r}).read())"],
+        dpkg_cmd=[sys.executable, "-c", "print('libc6')"], facts_fn=lambda: {})
+    assert (manifest["status"], manifest["stage"]) == ("failed", "trainer_started")
+    assert manifest["capture_error"] and manifest["exit_code"] is None
+    assert manifest["artifacts"]["adapter"]["status"] == "NOT_PRODUCED"
+    assert (run_dir / rc.MANIFEST).is_file() and (run_dir / rc.BUNDLE).is_file()
+
+
+def test_missing_training_data_aborts(env):
+    incoming(env, "run-a")
+    env["data"].unlink()
+    run_dir, _, manifest = run(env, "run-a")
+    assert_aborted(manifest, run_dir, env, "does not exist")
+
+
+def test_relative_paths_are_resolved_at_entry(env, monkeypatch):
+    incoming(env, "run-a")
+    monkeypatch.chdir(env["tmp"])
+    freeze_file = env["tmp"] / "freeze.txt"
+    freeze_file.write_text(FREEZE_OK, encoding="utf-8")
+    run_dir, _, manifest = rc.capture(
+        run_id="run-a", runs_dir=Path("data") / "runs", incoming_dir=Path("data") / "runs-incoming" / "run-a",
+        data=Path("invented.jsonl"), seed=1, lock_path=Path("requirements.lock"), invented_data=True,
+        trainer_cmd=[sys.executable, str(env["stub"])],
+        freeze_cmd=[sys.executable, "-c", f"import sys; sys.stdout.write(open({str(freeze_file)!r}).read())"],
+        dpkg_cmd=[sys.executable, "-c", "print('libc6')"], facts_fn=lambda: {})
+    assert manifest["status"] == "completed"
+    called = (env["tmp"] / "data" / "stub-called.txt").read_text(encoding="utf-8").split()
+    assert Path(called[called.index("--run-dir") + 1]).is_absolute()
+    assert Path(called[called.index("--data") + 1]) == env["data"]
+    assert run_dir == env["runs"] / "run-a"
 
 
 def test_mid_training_failure_keeps_partial_evidence(env):
@@ -211,7 +307,7 @@ def test_mid_training_failure_keeps_partial_evidence(env):
     assert (run_dir / "train.stdout").read_bytes() == STUB_OUT
 
 
-def test_cli_requires_a_data_manifest_or_invented_data(env):
+def test_cli_requires_invented_data(env):
     with pytest.raises(SystemExit):
         rc.main(["--run-id", "x", "--data", str(env["data"])])
     with pytest.raises(SystemExit):
