@@ -113,7 +113,8 @@ leakage, not arbitrary semantic paraphrases. Keep the held-out families separate
 # With S6 evidence (S7 G1). REFUSED from the CLI until S7 G8 lands and Cowork rules on the read boundary.
 # Once enabled it drops the rows screen-train quarantined, refuses on any identity mismatch,
 # writes train/validation/holdout splits and report.json (counts only) plus quarantined.private.json.
-python prepare_sft.py /path/to/reviewed.jsonl /tmp/intent-r1/splits \n  --freeze-record freeze.json --family-export family-export.json --screen-result screen.json
+python prepare_sft.py /path/to/reviewed.jsonl /tmp/intent-r1/splits \
+  --freeze-record freeze.json --family-export family-export.json --screen-result screen.json
 # Without S6 evidence: gates only, writes report.json alone and reports s6 NOT_RUN.
 python prepare_sft.py /path/to/reviewed.jsonl /tmp/intent-r1/splits --dry-run-no-s6
 ```

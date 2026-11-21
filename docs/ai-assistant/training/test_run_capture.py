@@ -373,3 +373,83 @@ def test_cli_requires_invented_data(env):
         rc.main(["--run-id", "x", "--data", str(env["data"])])
     with pytest.raises(SystemExit):
         rc.main(["--run-id", "x", "--data", str(env["data"]), "--invented-data", "--data-manifest", "m.json"])
+
+
+
+# --- Cowork HOLD 7062482875 on 827fcfef: exit 0 is not completion without the trainer's artifacts. ---
+
+def _capture_with(env, trainer_source, run_id="run-a"):
+    incoming(env, run_id)
+    stub = env["tmp"] / f"{run_id}-trainer.py"
+    stub.write_text(trainer_source, encoding="utf-8")
+    freeze_file = env["tmp"] / f"{run_id}-freeze.txt"
+    freeze_file.write_text(FREEZE_OK, encoding="utf-8")
+    return rc.capture(
+        run_id=run_id, runs_dir=env["runs"], incoming_dir=env["tmp"] / "data" / "runs-incoming" / run_id,
+        data=env["data"], seed=1, lock_path=env["lock"], invented_data=True, trainer_cmd=[sys.executable, str(stub)],
+        freeze_cmd=[sys.executable, "-c", f"import sys; sys.stdout.write(open({str(freeze_file)!r}).read())"],
+        dpkg_cmd=[sys.executable, "-c", "print('libc6')"], facts_fn=lambda: {})
+
+
+ARGS = "import sys\nfrom pathlib import Path\nrun = Path(sys.argv[sys.argv.index('--run-dir') + 1])\n"
+
+
+def test_exit_zero_without_any_trainer_output_is_failed_with_reasons(env):
+    run_dir, _, manifest = _capture_with(env, "print('done')\n")
+    assert (manifest["status"], manifest["exit_code"]) == ("failed", 0)
+    for name in ("resolved-training-args.json", "loss.jsonl", "adapter"):
+        assert manifest["artifacts"][name] == {"status": "NOT_PRODUCED", "reason": "trainer exited 0 without writing it"}
+        assert f"trainer exited 0 but did not write {name}" in manifest["problems"]
+
+
+def test_exit_zero_with_only_an_adapter_is_failed(env):
+    run_dir, _, manifest = _capture_with(env, ARGS + "(run / 'adapter').mkdir()\n(run / 'adapter' / 'a.bin').write_bytes(b'x')\n")
+    assert manifest["status"] == "failed"
+    assert "files" in manifest["artifacts"]["adapter"]
+    assert manifest["artifacts"]["loss.jsonl"]["status"] == "NOT_PRODUCED"
+
+
+def test_an_empty_adapter_directory_is_not_an_adapter(env):
+    run_dir, _, manifest = _capture_with(env, ARGS + "(run / 'adapter').mkdir()\n"
+                                         "(run / 'loss.jsonl').write_text('{}')\n"
+                                         "(run / 'resolved-training-args.json').write_text('{}')\n")
+    assert manifest["status"] == "failed"
+    assert manifest["artifacts"]["adapter"]["reason"] == "trainer exited 0 without writing it"
+
+
+@pytest.mark.parametrize("extra", ["torch==2.*\n", "accelerate==1,<2\n", "--index-url=http://mirror.example\n",
+                                   "--trusted-host mirror.example\n", "torch==v2\n"])
+def test_inexact_versions_and_unlisted_options_are_refused(env, extra):
+    incoming(env, "run-a")
+    env["lock"].write_text(LOCK + extra, encoding="utf-8")
+    run_dir, _, manifest = run(env, "run-a")
+    assert_aborted(manifest, run_dir, env, "not a supported pinned-lock line")
+
+
+def test_https_index_options_are_accepted():
+    lock = "--extra-index-url https://download.pytorch.org/whl/cpu\n--index-url=https://pypi.org/simple\n" + LOCK
+    assert rc.lock_syntax_problems(lock) == []
+
+
+def test_no_host_paths_in_the_recorded_evidence(env):
+    incoming(env, "run-a", image=False)
+    env["lock"].write_text("", encoding="utf-8")
+    run_dir, _, manifest = run(env, "run-a")
+    def strings(value):
+        if isinstance(value, dict):
+            return [s for v in value.values() for s in strings(v)]
+        if isinstance(value, list):
+            return [s for v in value for s in strings(v)]
+        return [value] if isinstance(value, str) else []
+
+    texts = strings(manifest)
+    assert not [t for t in texts if str(env["tmp"]) in t]
+    assert any("INCOMING_DIR" in t for t in manifest["problems"])
+    env["lock"].write_text(LOCK, encoding="utf-8")
+    incoming(env, "run-b")
+    run_dir, _, manifest_b = run(env, "run-b")
+    assert manifest_b["status"] == "completed"
+    start = json.loads((run_dir / "events.jsonl").read_text(encoding="utf-8").split("\n")[0])
+    assert not [part for part in start["cmd"] if str(env["tmp"]) in part]
+    assert "RUN_DIR" in start["cmd"] and start["cmd"][0] == "python"
+    assert not [t for t in strings(manifest_b) if str(env["tmp"]) in t]
