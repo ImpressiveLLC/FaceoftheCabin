@@ -249,3 +249,73 @@ def test_completed_run_with_a_dirty_tree_fails(env):
         {"repo.json": {"sha256": hashlib.sha256(path.read_bytes()).hexdigest()}}))
     with pytest.raises(vb.IntegrityError, match="dirty tree"):
         vb.verify(run_dir, reseal(run_dir), env["lock"])
+
+
+
+# --- Codex HOLD on 8336d336: real capture failure bundles with no lock check must verify as failure evidence. ---
+
+@pytest.mark.parametrize("lock_text", [None, "", "# no pins\n", "untracked-package>=99\n"])
+def test_capture_bundles_with_an_unusable_lock_verify_as_aborted_evidence(env, lock_text):
+    incoming(env, "run-a")
+    if lock_text is None:
+        env["lock"].unlink()
+    else:
+        env["lock"].write_text(lock_text, encoding="utf-8")
+    run_dir, bundle, manifest = run(env, "run-a")
+    assert manifest["status"] == "aborted_preflight"
+    assert manifest["artifacts"]["lock-check.json"]["status"] == "NOT_PRODUCED"
+    assert "sha256" in manifest["artifacts"]["pip-freeze.txt"]
+    assert vb.verify(run_dir, bundle, env["lock"]) == "aborted_preflight"
+
+
+def test_a_partly_pinned_lock_bundle_verifies_as_aborted(env):
+    from test_run_capture import LOCK
+    incoming(env, "run-a")
+    env["lock"].write_text(LOCK + "untracked-package>=99\n", encoding="utf-8")
+    run_dir, bundle, manifest = run(env, "run-a")
+    assert manifest["status"] == "aborted_preflight"
+    assert vb.verify(run_dir, bundle, env["lock"]) == "aborted_preflight"
+
+
+def test_a_stream_failure_bundle_verifies_as_failed_never_completed(env, monkeypatch):
+    import run_capture as rc
+    incoming(env, "run-a")
+
+    def failing(sink, chunk):
+        raise OSError("synthetic write failure")
+
+    monkeypatch.setattr(rc, "_write_chunk", failing)
+    run_dir, bundle, manifest = run(env, "run-a")
+    assert manifest["status"] == "failed"
+    assert vb.verify(run_dir, bundle, env["lock"]) == "failed"
+
+
+def test_a_completed_claim_without_a_lock_check_fails(env):
+    incoming(env, "run-a")
+    env["lock"].write_text("", encoding="utf-8")
+    run_dir, _, _ = run(env, "run-a")
+    writable(run_dir)
+    edit_manifest(run_dir, lambda m: m.update(status="completed", stage="post_capture", exit_code=0))
+    with pytest.raises(vb.IntegrityError, match="completed run"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])
+
+
+def test_a_produced_lock_check_still_needs_a_usable_lock_to_recompute(env):
+    run_dir, bundle, _ = make(env)
+    missing = env["tmp"] / "absent.lock"
+    with pytest.raises(vb.IntegrityError, match="is missing"):
+        vb.verify(run_dir, bundle, missing)
+    broken = env["tmp"] / "broken.lock"
+    broken.write_text("untracked-package>=99\n", encoding="utf-8")
+    with pytest.raises(vb.IntegrityError, match="not a usable pinned lock"):
+        vb.verify(run_dir, bundle, broken)
+
+
+def test_a_lock_check_without_its_freeze_fails(env):
+    run_dir, _, _ = make(env)
+    writable(run_dir)
+    (run_dir / "pip-freeze.txt").unlink()
+    edit_manifest(run_dir, lambda m: m["artifacts"].update(
+        {"pip-freeze.txt": {"status": "NOT_PRODUCED", "reason": "x"}}))
+    with pytest.raises(vb.IntegrityError, match="pip-freeze.txt is not"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])

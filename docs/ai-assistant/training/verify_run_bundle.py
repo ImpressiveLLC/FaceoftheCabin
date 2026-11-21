@@ -16,7 +16,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from run_capture import (ATTRIBUTION, BUNDLE, CAPTURE_ARTIFACTS, IMAGE_FIELDS, MANIFEST, REPO_FIELDS,  # noqa: E402
-                         TRAINER_ARTIFACTS, fact_problems, lock_check)
+                         TRAINER_ARTIFACTS, fact_problems, lock_check, lock_syntax_problems)
 
 STATUSES = ("completed", "failed", "aborted_preflight")
 STAGES = ("preflight", "trainer_started", "trainer_exited", "post_capture")
@@ -136,14 +136,23 @@ def verify(run_dir, posted, lock_path=HERE / "requirements.lock"):
         if name not in artifacts:
             raise IntegrityError(f"artifact {name} is not accounted for (produced or NOT_PRODUCED)")
 
-    if produced.get("pip-freeze.txt"):
-        recomputed = lock_check(Path(lock_path).read_text(encoding="utf-8"),
-                                (run_dir / "pip-freeze.txt").read_text(encoding="utf-8"))
-        if not produced.get("lock-check.json"):
-            raise IntegrityError("pip-freeze.txt is present but lock-check.json is not")
+    if produced.get("lock-check.json"):
+        # A produced check is always recomputed and must agree, whatever the run's status.
+        if not produced.get("pip-freeze.txt"):
+            raise IntegrityError("lock-check.json is present but pip-freeze.txt is not")
+        lock_path = Path(lock_path)
+        if not lock_path.is_file():
+            raise IntegrityError(f"cannot recompute the lock check: {lock_path} is missing")
+        lock_text = lock_path.read_text(encoding="utf-8")
+        if lock_syntax_problems(lock_text):
+            raise IntegrityError(f"cannot recompute the lock check: {lock_path.name} is not a usable pinned lock")
+        recomputed = lock_check(lock_text, (run_dir / "pip-freeze.txt").read_text(encoding="utf-8"))
         recorded = load_json(run_dir, "lock-check.json")
         if recorded != recomputed:
             raise IntegrityError("lock-check.json disagrees with the recomputed lock-to-freeze check")
+    elif status == "completed":
+        raise IntegrityError("a completed run has no lock check")
+    # Otherwise the lock check was recorded as NOT_PRODUCED with a reason (checked above): failure evidence only.
 
     if status == "completed":
         missing = [name for name in REQUIRED_FOR_COMPLETED if not produced.get(name)]
