@@ -39,8 +39,8 @@ def out(intent):
         base["clarification"] = "Which one do you mean?"
     if intent == "propose_automation":
         # a real, contract-valid automation: the package's own gold example
-        gold = next(json.loads(line) for line in (HERE.parent / "gold.jsonl").read_text(encoding="utf-8").splitlines()
-                    if json.loads(line)["target"]["intent"] == "propose_automation")
+        gold = next(json.loads(line) for line in (HERE.parent / "gold.jsonl").read_text(encoding="utf-8").split("\n")
+                    if line.strip() and json.loads(line)["target"]["intent"] == "propose_automation")
         return gold["target"]
     return base
 

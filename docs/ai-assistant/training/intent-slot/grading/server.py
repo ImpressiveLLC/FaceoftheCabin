@@ -63,7 +63,7 @@ class ReviewStore:
         self.check_command = None  # tests substitute a stub; None runs the package's own unit tests
         raw = Path(dataset or self.package / "gold.jsonl").read_bytes()
         self.dataset_hash = digest(raw)
-        self.rows = [json.loads(line) for line in raw.decode("utf-8-sig").splitlines() if line.strip()]
+        self.rows = [json.loads(line) for line in raw.decode("utf-8-sig").split("\n") if line.strip()]
         self.by_id = {row["id"]: row for row in self.rows}
         if not self.rows or len(self.rows) != len(self.by_id):
             raise ValueError("Gold must contain unique IDs and at least one example")
