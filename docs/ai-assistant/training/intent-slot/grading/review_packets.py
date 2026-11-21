@@ -27,7 +27,7 @@ def sha256_file(path):
 
 
 def read_jsonl(path):
-    return [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [json.loads(line) for line in Path(path).read_text(encoding="utf-8").split("\n") if line.strip()]
 
 
 def unique_rows(rows, what):

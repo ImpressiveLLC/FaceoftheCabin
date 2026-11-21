@@ -19,7 +19,7 @@ EXPECTED = 30
 
 
 def texts_of(path):
-    return [json.loads(line)["text"] for line in Path(path).read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [json.loads(line)["text"] for line in Path(path).read_text(encoding="utf-8").split("\n") if line.strip()]
 
 
 def overlaps(words, others):
@@ -60,7 +60,7 @@ def main():
     parser.add_argument("--committed-output", type=Path, required=True)
     parser.add_argument("--also-check", type=Path, nargs="*", default=[], help="JSONL files with a text field, e.g. the sealed sets")
     args = parser.parse_args()
-    rows = [json.loads(line) for line in args.candidates.read_text(encoding="utf-8").splitlines() if line.strip()]
+    rows = [json.loads(line) for line in args.candidates.read_text(encoding="utf-8").split("\n") if line.strip()]
     family_map = json.loads(args.families.read_text(encoding="utf-8"))
     others = texts_of(args.package / "gold.jsonl")
     templates = json.loads((args.package / "synthesis-templates.json").read_text(encoding="utf-8"))
