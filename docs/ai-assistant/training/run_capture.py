@@ -39,7 +39,7 @@ _LOCK_LINE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==([0-9][A-Za-z0-9.+!_-]*
 # Every line shape a uv/pip-compile --generate-hashes lock may contain. Anything else is refused (Codex 7061467844).
 _LOCK_SHAPES = (re.compile(r""), re.compile(r"#.*"), re.compile(r"    --hash=sha256:[0-9a-f]{64}( \\)?"),
                 re.compile(r"    #( .*)?"), re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*==[0-9][A-Za-z0-9.+!_-]*( \\)?"),
-                re.compile(r"--(index-url|extra-index-url)[= ]https://[^\s]+"))
+                re.compile(r"--(index-url|extra-index-url)[= ]https://[^\s@/]+(/[^\s@]*)?"))  # no userinfo
 
 
 def now():
