@@ -239,7 +239,7 @@ def main():
     parser.add_argument("--seed", default=DEFAULT_SEED)
     parser.add_argument("--target", type=int, default=DEFAULT_TARGET)
     args = parser.parse_args()
-    rows = [json.loads(line) for line in args.candidates.read_text(encoding="utf-8").splitlines() if line.strip()]
+    rows = [json.loads(line) for line in args.candidates.read_text(encoding="utf-8").split("\n") if line.strip()]
     manifest, sample, family_map = build(rows, args.seed, args.target)
     manifest["candidate_sha256"] = hashlib.sha256(args.candidates.read_bytes()).hexdigest()
     args.private_output.mkdir(parents=True, exist_ok=True)

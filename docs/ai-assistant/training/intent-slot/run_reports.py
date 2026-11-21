@@ -32,7 +32,7 @@ def _fmt(value, unit="", digits=2):
 
 def gold_intents(gold_path):
     return {row["id"]: row["target"]["intent"]
-            for row in map(json.loads, filter(str.strip, Path(gold_path).read_text(encoding="utf-8").splitlines()))}
+            for row in map(json.loads, filter(str.strip, Path(gold_path).read_text(encoding="utf-8").split("\n")))}
 
 
 def baseline_evidence(report, gold_path=ROOT / "gold.jsonl", peak_rss_mib=None, digest=None, preflight=None):

@@ -118,7 +118,7 @@ def main(argv=None):
         token = "CabinSession " + resident_session()
     else:
         token = args.token_file.read_text(encoding="utf-8").strip()
-    rows = [json.loads(line) for line in args.candidates.read_text(encoding="utf-8").splitlines() if line.strip()]
+    rows = [json.loads(line) for line in args.candidates.read_text(encoding="utf-8").split("\n") if line.strip()]
     results = {r["id"]: post(args.base, token, r["text"], args.timeout) for r in rows}
     report = score(rows, results)
     args.output.write_text(json.dumps(report, indent=2), encoding="utf-8")
