@@ -37,6 +37,9 @@ the supplied source list. Git checks detect ancestor `.git` files/directories
 (including worktree markers) and forbid a `.git` output name. They do not discover
 bare repositories, `GIT_DIR` overrides or external gitdir arrangements without
 an ancestor marker. Callers must approve storage with those limits in mind.
+Absent-path preflight comparisons do not resolve NFC/NFD or future 8.3 aliases.
+Dot/space refusal applies to every existing ancestor component too (for example,
+`/data/proj.` is refused), not only new output names.
 This is a metadata snapshot, not a race-safe handle or an authorization record.
 Sibling delivery directories do not prove that recipients cannot access each other.
 
@@ -47,6 +50,23 @@ verified separately; synthetic in-memory tests do not prove it. Private source/o
 authorization and family-level reviewer eligibility remain prerequisites, independent
 of this code or a merged PR. No S4/S5 completion is claimed.
 
+
+`grading.atomic_publish.publish_directory` supplies a Linux-only atomic publication
+primitive for a verified, coordinator-only staging directory. It uses one opened
+parent descriptor and `renameat2(RENAME_NOREPLACE)`; unavailable support fails
+without a copy/delete or replacing-rename fallback. Existing destinations, including
+empty directories, are never replaced. Opaque ASCII hex names avoid Unicode/short-name
+spellings for the new names. Parent and staging must be owned by the caller with no
+group/other access. The caller must be the sole staging writer; another process with
+the same identity is outside this primitive's protection.
+
+This is not the complete finalizer: authority, source/projection/hash verification,
+staging creation, incomplete-build records, recipient identity isolation and delivery
+are still unimplemented. It does not fsync a bundle or claim crash durability; the
+intended filesystem must be validated separately. Windows publication is refused.
+No automatic cleanup/retry is performed on error; preserve and inspect staging.
+The Linux syscall semantics are documented in the
+[Linux rename manual](https://man7.org/linux/man-pages/man2/rename.2.html).
 
 This screen reviews expected labels and, separately, actual model responses.
 No model is trained or called by the screen. No devices are controlled.
