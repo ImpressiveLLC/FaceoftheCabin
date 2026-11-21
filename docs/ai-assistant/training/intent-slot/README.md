@@ -110,7 +110,11 @@ near-duplicates as well: the tool catches exact normalized text and shared group
 leakage, not arbitrary semantic paraphrases. Keep the held-out families separate.
 
 ```sh
-python prepare_sft.py /path/to/reviewed.jsonl /tmp/intent-r1/splits
+# With S6 evidence (S7 G1): drops the rows screen-train quarantined, refuses on any identity mismatch,
+# writes train/validation/holdout splits and report.json (counts only) plus quarantined.private.json.
+python prepare_sft.py /path/to/reviewed.jsonl /tmp/intent-r1/splits \n  --freeze-record freeze.json --family-export family-export.json --screen-result screen.json
+# Without S6 evidence: gates only, writes report.json alone and reports s6 NOT_RUN.
+python prepare_sft.py /path/to/reviewed.jsonl /tmp/intent-r1/splits --dry-run-no-s6
 ```
 
 The small seeds are not a production dataset. Expand reviewed normal, ambiguous,

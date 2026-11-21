@@ -1,7 +1,18 @@
-"""Require per-record review and, for agent labels, a passed audit by the elected auditor; keep paraphrase groups and gold out of training."""
+"""Require per-record review and, for agent labels, a passed audit by the elected auditor; keep paraphrase groups and gold out of training.
+
+S7 G1 (#536 build spec): with S6 evidence (freeze record, ids-only family export, screen-train result) the train rows the
+screen quarantined are dropped, every identity is checked against the freeze before any row is split, and a row whose
+family is a frozen test or safety family but was not quarantined fails the run. Without S6 evidence the only way to run is
+--dry-run-no-s6, which writes no training files and reports s6 and frozen_family_check as NOT_RUN. The tool never opens a
+frozen set, the refusal pack, keyed hashes or the key; the family export is ids only. VALIDATED ONLY WHEN S6 AND
+screen-train EXIST: until then this is tested on synthetic evidence only. Step 5 (frozen family) uses the row's `group`
+as its family, which is the bound family only once G8 lands.
+"""
 import argparse
 import hashlib
 import json
+import re
+from dataclasses import dataclass
 from pathlib import Path
 from contract import ROOT, SYSTEM, read_jsonl, validate, write_jsonl, request_content
 from vocabulary import field_errors, normalize_target
@@ -44,7 +55,165 @@ def rows_refused_by_training(splits):
     return refused
 
 
-def split_rows(rows, gold):
+EMPTY_LIST_SHA256 = hashlib.sha256(b"").hexdigest()
+FAMILY_EXPORT_KEYS = {"freeze_id", "test_family_ids", "safety_family_ids"}
+_BAD_ID = re.compile(r"[\x00-\x1f\x7f\u0085\u2028\u2029]")
+
+
+class S6Error(ValueError):
+    """S6 evidence is missing, inconsistent or unsafe; nothing is split or written."""
+
+
+def list_hash(ids, *, what, allow_empty=False):
+    """sha256 of the ids sorted by code point, joined by one LF, no trailing newline, UTF-8 (#536 section 2.3)."""
+    if not isinstance(ids, list):
+        raise S6Error(f"{what} must be a list of ids")
+    if not ids and not allow_empty:
+        raise S6Error(f"{what} is empty; a freeze has non-empty sets")
+    for value in ids:
+        if not isinstance(value, str) or not value or _BAD_ID.search(value):
+            raise S6Error(f"{what} holds an id that is not a plain non-empty string without control characters: {value!r}")
+    if len(set(ids)) != len(ids):
+        raise S6Error(f"{what} holds a duplicate id")
+    return hashlib.sha256("\n".join(sorted(ids)).encode("utf-8")).hexdigest()
+
+
+def file_sha256(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def read_rows_snapshot(path):
+    """Reads INPUT once, LF-only, and returns (rows, sha256 of exactly those bytes)."""
+    raw = Path(path).read_bytes()
+    rows = [json.loads(line) for line in raw.decode("utf-8").split("\n") if line.strip()]
+    return rows, hashlib.sha256(raw).hexdigest()
+
+
+def recompute_inputs(gold_path, root=None):
+    """The committed files S6 must have hashed, keyed as the freeze record's `inputs` names them (relative to the package)."""
+    root = Path(root) if root else ROOT
+    files = {"gold.jsonl": Path(gold_path), "system.txt": root / "system.txt",
+             "intent-slot.schema.json": root / "intent-slot.schema.json",
+             "sft/s1/families.json": root / "sft" / "s1" / "families.json"}
+    for path in sorted((root / "sft").glob("*families*.json")):
+        files[f"sft/{path.name}"] = path
+    return files
+
+
+def _load_json(path, what):
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise S6Error(f"{what} {path} does not exist")
+    except ValueError as exc:
+        raise S6Error(f"{what} {path} is not valid JSON ({exc})")
+
+
+@dataclass(frozen=True)
+class Frozen:
+    freeze_id: str
+    exclusion: tuple
+    quarantine_ids: frozenset
+    quarantine_ids_sha256: str
+
+
+def load_frozen(freeze_record, family_export, screen_result, input_sha256, recompute):
+    """Checks the three S6 files against each other, the INPUT bytes and the committed recompute inputs (#536 section 3,
+    items 2 and 3). Every failure raises S6Error naming the mismatch; nothing is returned partially."""
+    record = _load_json(freeze_record, "freeze record")
+    export = _load_json(family_export, "family export")
+    screen = _load_json(screen_result, "screen result")
+    if not isinstance(record, dict) or record.get("kind") != "freeze":
+        raise S6Error("freeze record kind is not 'freeze'")
+    if record.get("result") != "FROZEN":
+        raise S6Error(f"freeze result is {record.get('result')!r}, not FROZEN; FROZEN_WITH_GAPS does not satisfy S6")
+    freeze_id = record.get("freeze_id")
+    if not isinstance(freeze_id, str) or not freeze_id:
+        raise S6Error("freeze record has no freeze_id")
+    sets = record.get("sets") or {}
+    expected = {name: (sets.get(name) or {}).get("family_ids_sha256") for name in ("test", "safety")}
+    if not all(isinstance(v, str) and len(v) == 64 for v in expected.values()):
+        raise S6Error("freeze record lacks a per-set family_ids_sha256 for both test and safety")
+
+    if not isinstance(export, dict) or set(export) != FAMILY_EXPORT_KEYS:
+        raise S6Error(f"family export must hold exactly {sorted(FAMILY_EXPORT_KEYS)}; refusing it as custody-unsafe")
+    if export["freeze_id"] != freeze_id:
+        raise S6Error("family export is for another freeze_id")
+    test_ids, safety_ids = export["test_family_ids"], export["safety_family_ids"]
+    for name, ids in (("test", test_ids), ("safety", safety_ids)):
+        if list_hash(ids, what=f"{name}_family_ids") != expected[name]:
+            raise S6Error(f"{name}_family_ids do not hash to the freeze record's family_ids_sha256")
+    if set(test_ids) & set(safety_ids):
+        raise S6Error("test and safety family ids overlap (S6 check C6)")
+
+    if not isinstance(screen, dict) or screen.get("kind") != "screen-train":
+        raise S6Error("screen result kind is not 'screen-train'")
+    if screen.get("result") != "pass":
+        raise S6Error(f"screen result is {screen.get('result')!r}, not pass")
+    if screen.get("freeze_id") != freeze_id:
+        raise S6Error("screen result is for another freeze_id")
+    record_tool, screen_tool = record.get("tool") or {}, screen.get("tool") or {}
+    if not isinstance(screen_tool, dict) or not screen_tool or any(record_tool.get(k) != v for k, v in screen_tool.items()):
+        raise S6Error("screen result's tool hashes are not the ones the freeze record lists")
+    if screen.get("train_file_sha256") != input_sha256:
+        raise S6Error("screen result is stale: it was made for different INPUT bytes; run screen-train again")
+    quarantine = screen.get("quarantine_ids")
+    if list_hash(quarantine, what="quarantine_ids", allow_empty=True) != screen.get("quarantine_ids_sha256"):
+        raise S6Error("quarantine_ids do not hash to quarantine_ids_sha256")
+
+    inputs = record.get("inputs")
+    if not isinstance(inputs, dict):
+        raise S6Error("freeze record has no inputs map")
+    for name, path in sorted(recompute.items()):
+        if name not in inputs:
+            raise S6Error(f"recompute input {name} is not in the freeze record's inputs")
+        if not Path(path).is_file():
+            raise S6Error(f"recompute input {name} ({path}) is not present here")
+        if file_sha256(path) != inputs[name]:
+            raise S6Error(f"recompute input {name} has changed since the freeze")
+    for name in inputs:
+        if (name in ("gold.jsonl", "system.txt", "intent-slot.schema.json") or name.endswith("families.json")) and name not in recompute:
+            raise S6Error(f"freeze record lists {name} but it is not found here")
+    for name in ("test", "safety"):
+        if (sets.get(name) or {}).get("sha256") == input_sha256:
+            raise S6Error(f"INPUT has the bytes of the frozen {name} set; refusing to read a frozen set as training input")
+    return Frozen(freeze_id, tuple(sorted(set(test_ids) | set(safety_ids))), frozenset(quarantine),
+                  screen["quarantine_ids_sha256"])
+
+
+def split_rows(rows, gold, *, frozen=None):
+    """The train/validation/holdout splits. With frozen=None this is the gate as before (plus the G2 rename)."""
+    return split_rows_with_report(rows, gold, frozen=frozen)[0]
+
+
+def split_rows_with_report(rows, gold, *, frozen=None):
+    rows_in = len(rows)
+    quarantined_ids = []
+    if frozen is not None:
+        quarantined_ids = sorted(r["id"] for r in rows if r["id"] in frozen.quarantine_ids)
+        rows = [r for r in rows if r["id"] not in frozen.quarantine_ids]
+        exclusion = set(frozen.exclusion)
+        leaked = sorted(r["id"] for r in rows if r["group"] in exclusion)
+        if leaked:
+            raise S6Error(f"{len(leaked)} row(s) in a frozen test or safety family were not quarantined by the screen: "
+                          + ", ".join(leaked))
+    result = _split_rows(rows, gold)
+    report = {
+        "s6": "FROZEN" if frozen is not None else "NOT_RUN",
+        "freeze_id": frozen.freeze_id if frozen is not None else None,
+        "rows_in": rows_in,
+        "quarantined": {"count": len(quarantined_ids),
+                        "quarantine_ids_sha256": frozen.quarantine_ids_sha256 if frozen is not None else None},
+        "dropped_gold": 0,
+        "rows_out": sum(len(v) for v in result.values()),
+        "splits": {k: len(v) for k, v in sorted(result.items())},
+        "families": {k: len({r["group"] for r in v}) for k, v in sorted(result.items())},
+        "frozen_family_check": "pass" if frozen is not None else "NOT_RUN",
+    }
+    return result, report, quarantined_ids
+
+
+def _split_rows(rows, gold):
     if not rows:
         raise ValueError("Empty dataset")
     forbidden_text = {normalize(r["text"]) for r in gold}
@@ -82,17 +251,60 @@ def split_rows(rows, gold):
     return result
 
 
-if __name__ == "__main__":
+def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("input", type=Path)
     p.add_argument("output_dir", type=Path)
     p.add_argument("--gold", type=Path, default=ROOT / "gold.jsonl")
-    args = p.parse_args()
-    splits = split_rows(read_jsonl(args.input), read_jsonl(args.gold))
-    for split, rows in splits.items():
-        write_jsonl(args.output_dir / f"{split}.jsonl", rows)
-    print(json.dumps({k: len(v) for k, v in splits.items()}))
+    p.add_argument("--freeze-record", type=Path)
+    p.add_argument("--family-export", type=Path)
+    p.add_argument("--screen-result", type=Path)
+    p.add_argument("--dry-run-no-s6", action="store_true",
+                   help="run the gates without S6 evidence; writes only report.json, never training files")
+    args = p.parse_args(argv)
+    s6_paths = {"--freeze-record": args.freeze_record, "--family-export": args.family_export,
+                "--screen-result": args.screen_result}
+    given = [flag for flag, value in s6_paths.items() if value is not None]
+    if args.dry_run_no_s6 and given:
+        p.error("--dry-run-no-s6 cannot be combined with S6 evidence")
+    if not args.dry_run_no_s6 and len(given) != 3:
+        missing = [flag for flag, value in s6_paths.items() if value is None]
+        p.error("S6 evidence is required: give --freeze-record, --family-export and --screen-result together, or "
+                f"--dry-run-no-s6 (missing: {', '.join(missing)})")
+    paths = [args.input.resolve()] + [Path(v).resolve() for v in s6_paths.values() if v is not None]
+    if len(set(paths)) != len(paths):
+        p.error("INPUT and the S6 evidence files must be different files")
+
+    rows, input_sha256 = read_rows_snapshot(args.input)
+    frozen = None
+    if not args.dry_run_no_s6:
+        try:
+            frozen = load_frozen(args.freeze_record, args.family_export, args.screen_result, input_sha256,
+                                 recompute_inputs(args.gold))
+        except S6Error as exc:
+            raise SystemExit(f"S6 check failed: {exc}; nothing was split or written")
+    try:
+        splits, report, quarantined_ids = split_rows_with_report(rows, read_jsonl(args.gold), frozen=frozen)
+    except S6Error as exc:
+        raise SystemExit(f"S6 check failed: {exc}; nothing was split or written")
+    if args.dry_run_no_s6:
+        print("NOT_RUN: S6 (dry run; no training files written)")
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    (args.output_dir / "report.json").write_text(json.dumps(report, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    if not args.dry_run_no_s6:
+        for split, split_rows_out in splits.items():
+            write_jsonl(args.output_dir / f"{split}.jsonl", split_rows_out)
+        # Private: ids of dropped rows, never posted to the hub (counts only there).
+        (args.output_dir / "quarantined.private.json").write_text(
+            json.dumps({"freeze_id": frozen.freeze_id, "quarantined_ids": quarantined_ids}, indent=2) + "\n",
+            encoding="utf-8")
+    print(json.dumps(report, sort_keys=True))
     refused = rows_refused_by_training(splits)
     print(json.dumps({"refused_by_training_leading_newline": len(refused), "rows": refused}))
     if refused:
         raise SystemExit(f"{len(refused)} row(s) would be refused by the training tokenizer; fix or drop them: " + ", ".join(r["id"] for r in refused))
+    return report
+
+
+if __name__ == "__main__":
+    main()
