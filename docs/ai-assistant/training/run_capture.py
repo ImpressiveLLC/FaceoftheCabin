@@ -4,8 +4,10 @@
 Creates data/runs/<run_id>/ exclusively, copies in the host's pre-run facts (repo.json, image-facts.json from
 data/runs-incoming/<run_id>/), records host facts, pip freeze, a lock-to-freeze check and dpkg, runs train_sft.py with
 its stdout and stderr captured byte for byte, then always writes run-manifest.json and bundle.sha256 and makes the
-run read-only. A preflight problem (missing host facts, a dirty tree, a lock mismatch, no S7 data manifest without
---invented-data) aborts before training but still leaves a sealed bundle as evidence. Only an existing run directory
+run read-only. A preflight problem (missing or malformed host facts, a dirty tree, an empty or mismatched lock, no apt
+inventory, missing data, or any run on real data, which stays refused until the S7 train-manifest check exists) aborts
+before training but still leaves a sealed bundle as evidence. Any later failure (trainer launch, capture error) is
+finalized the same way and recorded as failed, never completed. Only an existing run directory
 or a symlinked runs directory leaves nothing behind.
 
 The printed bundle hash is the tamper anchor: post it on #244 at the time of the run. Read-only file modes stop
@@ -182,11 +184,35 @@ def seal(run_dir):
     run_dir.chmod(run_dir.stat().st_mode & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))
 
 
+REPO_FIELDS = {"commit": "nonempty", "status_porcelain": "str", "plan_id": "nonempty", "plan_sha256": "sha256"}
+IMAGE_FIELDS = {"image_id": "nonempty", "base_digest": "nonempty"}
+_HEX64 = re.compile(r"[0-9a-f]{64}")
+
+
+def fact_problems(name, value, fields):
+    """Problems with one host-supplied fact file against the shared capture contract (also used by the verifier)."""
+    if not isinstance(value, dict):
+        return [f"{name} is not a JSON object"]
+    problems = []
+    for field, kind in fields.items():
+        item = value.get(field)
+        if not isinstance(item, str):
+            problems.append(f"{name} field {field} is missing or not a string")
+        elif kind == "nonempty" and not item.strip():
+            problems.append(f"{name} field {field} is empty")
+        elif kind == "sha256" and not _HEX64.fullmatch(item):
+            problems.append(f"{name} field {field} is not a SHA-256 hex digest")
+    return problems
+
+
 def capture(*, run_id, runs_dir, incoming_dir, data, seed, lock_path, trainer_cmd=None, max_steps=None,
             data_manifest=None, invented_data=False, freeze_cmd=None, dpkg_cmd=None, facts_fn=host_facts):
     """Captures one run and returns (run_dir, bundle_sha256, manifest). Raises SystemExit, writing nothing, only when
-    the run directory cannot be created exclusively."""
-    runs_dir, incoming_dir = Path(runs_dir), Path(incoming_dir)
+    the run directory cannot be created exclusively. After that, every failure is recorded and finalized: the manifest
+    and bundle are always written, and nothing incomplete is labelled completed."""
+    # Resolve every filesystem argument at entry, before anything (the trainer subprocess included) changes directory.
+    runs_dir, incoming_dir = Path(runs_dir).absolute(), Path(incoming_dir).absolute()
+    data, lock_path = Path(data).absolute(), Path(lock_path).absolute()
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", run_id or ""):
         raise SystemExit(f"run id {run_id!r} is not a plain name; nothing was written")
     if runs_dir.is_symlink():
@@ -197,78 +223,108 @@ def capture(*, run_id, runs_dir, incoming_dir, data, seed, lock_path, trainer_cm
         os.mkdir(run_dir)
     except FileExistsError:
         raise SystemExit(f"{run_dir} already exists; earlier evidence is never reopened and nothing was written")
+
     started = now()
     reasons, problems = {}, []
-    stage, exit_code = "preflight", None
-
-    for name in HOST_SUPPLIED:
-        source = incoming_dir / name
-        if source.is_file() and not source.is_symlink():
-            shutil.copyfile(source, run_dir / name)
-        else:
-            reasons[name] = f"host step did not supply {name} in {incoming_dir}"
-            problems.append(reasons[name])
+    state = {"stage": "preflight", "exit_code": None, "status": None, "capture_error": None}
     repo = None
-    if (run_dir / "repo.json").is_file():
-        try:
-            repo = json.loads((run_dir / "repo.json").read_text(encoding="utf-8"))
-        except ValueError as exc:
-            problems.append(f"repo.json is not valid JSON ({exc})")
-        if repo is not None and repo.get("status_porcelain"):
-            problems.append("repo.json shows a dirty tree; a real run needs a clean, committed checkout")
+    data_sha = None
+    try:
+        for name, fields in (("repo.json", REPO_FIELDS), ("image-facts.json", IMAGE_FIELDS)):
+            source = incoming_dir / name
+            if not (source.is_file() and not source.is_symlink()):
+                reasons[name] = f"host step did not supply {name} in {incoming_dir}"
+                problems.append(reasons[name])
+                continue
+            shutil.copyfile(source, run_dir / name)
+            try:
+                value = json.loads((run_dir / name).read_text(encoding="utf-8"))
+            except ValueError as exc:
+                problems.append(f"{name} is not valid JSON ({exc})")
+                continue
+            problems.extend(fact_problems(name, value, fields))
+            if name == "repo.json" and isinstance(value, dict):
+                repo = value
+                if isinstance(value.get("status_porcelain"), str) and value["status_porcelain"]:
+                    problems.append("repo.json shows a dirty tree; a real run needs a clean, committed checkout")
 
-    write_json(run_dir / "host-facts.json", facts_fn())
-    freeze_text, why = run_text(freeze_cmd or [sys.executable, "-m", "pip", "freeze", "--all"])
-    if freeze_text is None:
-        reasons["pip-freeze.txt"] = reasons["lock-check.json"] = why
-        problems.append(why)
-    else:
-        write_new(run_dir / "pip-freeze.txt", freeze_text)
-        check = lock_check(Path(lock_path).read_text(encoding="utf-8"), freeze_text)
-        write_json(run_dir / "lock-check.json", check)
-        if check["result"] != "pass":
-            problems.append(f"{len(check['mismatches'])} locked package(s) differ from the installed set")
-    dpkg_text, why = run_text(dpkg_cmd or ["dpkg-query", "-W"])
-    if dpkg_text is None:
-        reasons["dpkg.txt"] = why  # recorded, not a preflight failure: the apt layer is unpinned by design
-    else:
-        write_new(run_dir / "dpkg.txt", dpkg_text)
-    if data_manifest is None and not invented_data:
-        problems.append("no S7 train manifest: a real run is refused until S7 exists; use --invented-data for a dry run")
+        write_json(run_dir / "host-facts.json", facts_fn())
+        freeze_text, why = run_text(freeze_cmd or [sys.executable, "-m", "pip", "freeze", "--all"])
+        if freeze_text is None:
+            reasons["pip-freeze.txt"] = reasons["lock-check.json"] = why
+            problems.append(why)
+        else:
+            write_new(run_dir / "pip-freeze.txt", freeze_text)
+            if not lock_path.is_file():
+                reasons["lock-check.json"] = f"lock file {lock_path} is missing"
+                problems.append(reasons["lock-check.json"])
+            else:
+                lock_text = lock_path.read_text(encoding="utf-8")
+                if not lock_pins(lock_text):
+                    reasons["lock-check.json"] = f"lock file {lock_path.name} has no name==version pins"
+                    problems.append(reasons["lock-check.json"])
+                else:
+                    check = lock_check(lock_text, freeze_text)
+                    write_json(run_dir / "lock-check.json", check)
+                    if check["result"] != "pass":
+                        problems.append(f"{len(check['mismatches'])} locked package(s) differ from the installed set")
+        dpkg_text, why = run_text(dpkg_cmd or ["dpkg-query", "-W"])
+        if dpkg_text is None:
+            reasons["dpkg.txt"] = why
+            problems.append(f"no apt inventory: {why}")
+        else:
+            write_new(run_dir / "dpkg.txt", dpkg_text)
 
-    data_sha = sha256_file(data) if Path(data).is_file() else None
-    if problems:
+        if not invented_data:
+            # The S7 train-manifest schema is not implemented yet, so no path is accepted as S7 readiness.
+            problems.append("a run on real data is refused until the S7 train-manifest check exists; "
+                            "only --invented-data dry runs are supported")
+        if data.is_file():
+            data_sha = sha256_file(data)
+        else:
+            problems.append(f"training data {data} does not exist")
+
+        if not problems:
+            cmd = (trainer_cmd or [sys.executable, str(HERE / "train_sft.py")]) + [
+                "--run-dir", str(run_dir), "--seed", str(seed), "--data", str(data)]
+            if max_steps is not None:
+                cmd += ["--max-steps", str(max_steps)]
+            state["stage"] = "trainer_started"
+            state["exit_code"] = run_trainer(cmd, run_dir)
+            state["stage"] = "trainer_exited"
+    except Exception as exc:  # noqa: BLE001 - recorded as evidence and finalized, never reported as success
+        state["capture_error"] = f"{exc.__class__.__name__}: {exc}"
+        problems.append(f"capture error at stage {state['stage']}: {state['capture_error']}")
+
+    if state["stage"] == "preflight":
         status = "aborted_preflight"
         for name in TRAINER_ARTIFACTS + ("train.stdout", "train.stderr", "events.jsonl"):
             reasons.setdefault(name, "preflight refused the run: " + "; ".join(problems))
+    elif state["capture_error"] is None and state["exit_code"] == 0:
+        status = "completed"
     else:
-        cmd = (trainer_cmd or [sys.executable, str(HERE / "train_sft.py")]) + [
-            "--run-dir", str(run_dir), "--seed", str(seed), "--data", str(data)]
-        if max_steps is not None:
-            cmd += ["--max-steps", str(max_steps)]
-        stage = "trainer_started"
-        exit_code = run_trainer(cmd, run_dir)
-        stage = "trainer_exited"
-        status = "completed" if exit_code == 0 else "failed"
-        for name in TRAINER_ARTIFACTS:
-            reasons.setdefault(name, f"trainer exited {exit_code} before writing it")
+        status = "failed"
+        for name in TRAINER_ARTIFACTS + ("train.stdout", "train.stderr", "events.jsonl"):
+            reasons.setdefault(name, state["capture_error"] or f"trainer exited {state['exit_code']} before writing it")
+    for name in CAPTURE_ARTIFACTS:
+        reasons.setdefault(name, "not written: " + ("; ".join(problems) or "capture stopped"))
 
     manifest = {
         "attribution": ATTRIBUTION,
         "run_id": run_id,
         "status": status,
-        "stage": "post_capture" if status == "completed" else stage,
+        "stage": "post_capture" if status == "completed" else state["stage"],
         "problems": problems,
-        "exit_code": exit_code,
+        "capture_error": state["capture_error"],
+        "exit_code": state["exit_code"],
         "started_at": started,
         "ended_at": now(),
         "plan": {"id": (repo or {}).get("plan_id"), "sha256": (repo or {}).get("plan_sha256")},
         "commit": (repo or {}).get("commit"),
         "seed": seed,
         "max_steps": max_steps,
-        "run_kind": "invented_data_dry_run" if invented_data else "s7_train_manifest",
-        "data": {"name": Path(data).name, "sha256": data_sha,
-                 "manifest": sha256_file(data_manifest) if data_manifest else None},
+        "run_kind": "invented_data_dry_run" if invented_data else "refused_real_data",
+        "data": {"name": data.name, "sha256": data_sha, "manifest": None},
         "artifacts": {name: artifact_entry(run_dir, name, reasons) for name in TRAINER_ARTIFACTS + CAPTURE_ARTIFACTS},
     }
     write_json(run_dir / MANIFEST, manifest)
@@ -286,14 +342,13 @@ def main(argv=None):
     p.add_argument("--seed", type=int, default=20261114)
     p.add_argument("--max-steps", type=int)
     p.add_argument("--lock", type=Path, default=HERE / "requirements.lock")
-    group = p.add_mutually_exclusive_group(required=True)
-    group.add_argument("--data-manifest", type=Path, help="the S7 train-manifest.json for a real run")
-    group.add_argument("--invented-data", action="store_true", help="Stage 2 dry run on invented rows only")
+    p.add_argument("--invented-data", action="store_true", required=True,
+                   help="required: only dry runs on invented rows are supported until the S7 train-manifest check exists")
     args = p.parse_args(argv)
     incoming = args.incoming_dir or (args.runs_dir.parent / "runs-incoming" / args.run_id)
     run_dir, bundle, manifest = capture(run_id=args.run_id, runs_dir=args.runs_dir, incoming_dir=incoming,
                                         data=args.data, seed=args.seed, lock_path=args.lock, max_steps=args.max_steps,
-                                        data_manifest=args.data_manifest, invented_data=args.invented_data)
+                                        invented_data=args.invented_data)
     print(f"{manifest['status']} ({manifest['stage']}) {run_dir}")
     print(f"bundle sha256 {bundle}  <- post this on #244 now")
     return 0 if manifest["status"] == "completed" else 1
