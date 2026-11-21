@@ -23,7 +23,24 @@ appoint reviewers, import labels, run an audit or promote training rows. The exi
 `make-packet` CLI and its legacy hashes are unchanged; they are not upgraded Track B
 compliance. No automatic migration of old evidence is performed.
 
-Remaining implementation gates include authorized path preflight, isolated recipient
+`review_packets.check_blind_packet_paths_v1` now checks a caller-supplied approved
+layout without opening file contents or writing anything. Existing directories,
+absolute paths, disjoint source/coordinator/recipient roots, regular unique sources,
+absent staging/final destinations, ancestor symlink/reparse refusal and storage
+outside Git are checked. Staging and final paths are direct coordinator children.
+Root identity and ancestor identity use `(st_dev, st_ino)` to catch aliases such
+as short names; absent output names are compared case-insensitively under their
+common parent. Components ending in dot/space are refused. This deliberately
+rejects some distinct names on case-sensitive filesystems for portability.
+Metadata access errors are surfaced as `ValueError`; hard-link checks cover only
+the supplied source list. Git checks detect ancestor `.git` files/directories
+(including worktree markers) and forbid a `.git` output name. They do not discover
+bare repositories, `GIT_DIR` overrides or external gitdir arrangements without
+an ancestor marker. Callers must approve storage with those limits in mind.
+This is a metadata snapshot, not a race-safe handle or an authorization record.
+Sibling delivery directories do not prove that recipients cannot access each other.
+
+Remaining implementation gates include authority verification, isolated recipient
 storage, no-overwrite atomic finalization, source-change checks, immutable submission
 intake and audit/promotion integration. Actual recipient access isolation must be
 verified separately; synthetic in-memory tests do not prove it. Private source/output
