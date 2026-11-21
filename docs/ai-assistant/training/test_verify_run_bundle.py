@@ -1,0 +1,175 @@
+"""Stage 1 tests for verify_run_bundle.py (#543 section 4): bundles made by run_capture.py with a stub trainer."""
+import hashlib
+import json
+import stat
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent))
+import verify_run_bundle as vb  # noqa: E402
+from test_run_capture import FREEZE_OK, _unseal, env, incoming, run  # noqa: E402,F401  (env is a fixture)
+
+
+def make(env, run_id="run-a", **kw):
+    incoming(env, run_id, **{k: kw.pop(k) for k in ("repo", "image") if k in kw})
+    run_dir, bundle, manifest = run(env, run_id, **kw)
+    return run_dir, bundle, manifest
+
+
+def writable(path):
+    for p in [path, *path.rglob("*")]:
+        p.chmod(p.stat().st_mode | stat.S_IWUSR)
+
+
+def reseal(run_dir):
+    """Rewrites bundle.sha256 for the current files, the way a careful forger would; returns the new hash."""
+    lines = []
+    for p in sorted(p for p in run_dir.rglob("*") if p.is_file()):
+        rel = p.relative_to(run_dir).as_posix()
+        if rel != vb.BUNDLE:
+            lines.append(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {rel}\n")
+    (run_dir / vb.BUNDLE).write_text("".join(lines), encoding="utf-8", newline="\n")
+    return hashlib.sha256((run_dir / vb.BUNDLE).read_bytes()).hexdigest()
+
+
+def edit_manifest(run_dir, change):
+    path = run_dir / vb.MANIFEST
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    change(manifest)
+    path.write_text(json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8", newline="\n")
+
+
+def test_clean_completed_bundle_verifies(env):
+    run_dir, bundle, _ = make(env)
+    assert vb.verify(run_dir, bundle, env["lock"]) == "completed"
+
+
+def test_cli_reports_ok_and_failure(env, capsys):
+    run_dir, bundle, _ = make(env)
+    assert vb.main([str(run_dir), bundle, "--lock", str(env["lock"])]) == 0
+    assert capsys.readouterr().out.startswith("INTEGRITY_OK status=completed")
+    assert vb.main([str(run_dir), "0" * 64, "--lock", str(env["lock"])]) == 1
+    assert "INTEGRITY_FAIL" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("tamper", ["edit", "add", "delete", "edit_bundle"])
+def test_tampering_is_detected(env, tamper):
+    run_dir, bundle, _ = make(env)
+    writable(run_dir)
+    if tamper == "edit":
+        (run_dir / "train.stdout").write_bytes(b"edited")
+    elif tamper == "add":
+        (run_dir / "extra.txt").write_text("x", encoding="utf-8")
+    elif tamper == "delete":
+        (run_dir / "loss.jsonl").unlink()
+    else:
+        with open(run_dir / vb.BUNDLE, "a", encoding="utf-8", newline="\n") as f:
+            f.write("0" * 64 + "  ghost.txt\n")
+    with pytest.raises(vb.IntegrityError):
+        vb.verify(run_dir, bundle, env["lock"])
+
+
+def test_a_wrong_posted_hash_fails_even_when_files_are_intact(env):
+    run_dir, _, _ = make(env)
+    with pytest.raises(vb.IntegrityError, match="posted hash"):
+        vb.verify(run_dir, "f" * 64, env["lock"])
+
+
+def test_resealed_forgery_still_fails_against_the_original_posted_hash(env):
+    run_dir, bundle, _ = make(env)
+    writable(run_dir)
+    (run_dir / "train.stdout").write_bytes(b"forged")
+    with pytest.raises(vb.IntegrityError, match="train.stdout hash does not match"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])  # a half-done forgery trips the manifest cross-check
+    forged = hashlib.sha256(b"forged").hexdigest()
+    edit_manifest(run_dir, lambda m: m["artifacts"].update({"train.stdout": {"sha256": forged}}))
+    new = reseal(run_dir)
+    with pytest.raises(vb.IntegrityError, match="posted hash"):
+        vb.verify(run_dir, bundle, env["lock"])
+    assert vb.verify(run_dir, new, env["lock"]) == "completed"  # only the posted anchor tells them apart
+
+
+def test_bundle_does_not_list_itself_and_malformed_lines_fail(env):
+    run_dir, bundle, _ = make(env)
+    assert vb.BUNDLE not in (run_dir / vb.BUNDLE).read_text(encoding="utf-8")
+    writable(run_dir)
+    raw = (run_dir / vb.BUNDLE).read_text(encoding="utf-8")
+    (run_dir / vb.BUNDLE).write_text(raw.replace("  ", " ", 1), encoding="utf-8", newline="\n")
+    with pytest.raises(vb.IntegrityError, match="malformed"):
+        vb.verify(run_dir, hashlib.sha256((run_dir / vb.BUNDLE).read_bytes()).hexdigest(), env["lock"])
+
+
+def test_failure_bundles_verify_as_integrity_ok_but_never_completed(env):
+    for run_id, kw in (("run-img", {"image": False}), ("run-dirty", {"repo": {"commit": "c", "status_porcelain": " M x"}}),
+                       ("run-lock", {"freeze": FREEZE_OK.replace("torch==2.7.0+cpu", "torch==2.8.0")}),
+                       ("run-FAIL", {})):
+        run_dir, bundle, manifest = make(env, run_id, **kw)
+        status = vb.verify(run_dir, bundle, env["lock"])
+        assert status == manifest["status"] and status != "completed", run_id
+
+
+def test_completed_with_missing_image_facts_fails(env):
+    run_dir, _, _ = make(env)
+    writable(run_dir)
+    (run_dir / "image-facts.json").unlink()
+    edit_manifest(run_dir, lambda m: m["artifacts"].update({"image-facts.json": {"status": "NOT_PRODUCED", "reason": "x"}}))
+    with pytest.raises(vb.IntegrityError, match="completed run lacks image-facts.json"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])
+
+
+def test_completed_with_a_recorded_lock_mismatch_fails(env):
+    run_dir, _, _ = make(env, freeze=FREEZE_OK.replace("torch==2.7.0+cpu", "torch==2.8.0"))
+    writable(run_dir)
+    edit_manifest(run_dir, lambda m: m.update(status="completed", stage="post_capture", exit_code=0))
+    with pytest.raises(vb.IntegrityError, match="completed run lacks|lock check is not a pass"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])
+
+
+def test_completed_run_with_every_artifact_but_a_consistent_lock_mismatch_fails(env):
+    run_dir, _, _ = make(env)
+    writable(run_dir)
+    freeze = FREEZE_OK.replace("torch==2.7.0+cpu", "torch==2.8.0")
+    (run_dir / "pip-freeze.txt").write_text(freeze, encoding="utf-8", newline="\n")
+    check = vb.lock_check(env["lock"].read_text(encoding="utf-8"), freeze)
+    (run_dir / "lock-check.json").write_text(json.dumps(check, sort_keys=True, indent=2) + "\n", encoding="utf-8", newline="\n")
+    digests = {n: hashlib.sha256((run_dir / n).read_bytes()).hexdigest() for n in ("pip-freeze.txt", "lock-check.json")}
+    edit_manifest(run_dir, lambda m: m["artifacts"].update({n: {"sha256": d} for n, d in digests.items()}))
+    with pytest.raises(vb.IntegrityError, match="lock check is not a pass"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])
+
+
+def test_lock_check_that_disagrees_with_the_recompute_fails(env):
+    run_dir, _, _ = make(env)
+    writable(run_dir)
+    path = run_dir / "lock-check.json"
+    check = json.loads(path.read_text(encoding="utf-8"))
+    check["extra_installed"] = []
+    path.write_text(json.dumps(check), encoding="utf-8", newline="\n")
+    edit_manifest(run_dir, lambda m: m["artifacts"].update({"lock-check.json": {"sha256": hashlib.sha256(path.read_bytes()).hexdigest()}}))
+    with pytest.raises(vb.IntegrityError, match="disagrees with the recomputed"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])
+
+
+def test_not_produced_without_a_reason_or_while_present_fails(env):
+    run_dir, _, _ = make(env, "run-FAIL")
+    writable(run_dir)
+    edit_manifest(run_dir, lambda m: m["artifacts"]["adapter"].update(reason=" "))
+    with pytest.raises(vb.IntegrityError, match="without a reason"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])
+    edit_manifest(run_dir, lambda m: m["artifacts"].update({"loss.jsonl": {"status": "NOT_PRODUCED", "reason": "x"}}))
+    edit_manifest(run_dir, lambda m: m["artifacts"]["adapter"].update(reason="crashed"))
+    with pytest.raises(vb.IntegrityError, match="NOT_PRODUCED but is present"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])
+
+
+def test_wrong_attribution_or_unknown_status_fails(env):
+    run_dir, _, _ = make(env)
+    writable(run_dir)
+    edit_manifest(run_dir, lambda m: m.update(attribution="human audit"))
+    with pytest.raises(vb.IntegrityError, match="attribution"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])
+    edit_manifest(run_dir, lambda m: m.update(attribution=vb.ATTRIBUTION, status="success"))
+    with pytest.raises(vb.IntegrityError, match="not a known value"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])

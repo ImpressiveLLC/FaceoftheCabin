@@ -35,7 +35,7 @@ jobs:
         run: |
           python -m pip install pytest==8.3.4
           set -o pipefail
-          python -m pytest -q -rs test_sft_tokenize.py test_run_capture.py 2>&1 | tee "$RUNNER_TEMP/sft-tests.txt"
+          python -m pytest -q -rs test_sft_tokenize.py test_run_capture.py test_verify_run_bundle.py 2>python -m pytest -q -rs test_sft_tokenize.py test_run_capture.py 2>&11 | tee "$RUNNER_TEMP/sft-tests.txt"
       - name: Write the result to the run summary
         if: always()
         run: |
