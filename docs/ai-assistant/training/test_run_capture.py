@@ -431,6 +431,13 @@ def test_https_index_options_are_accepted():
     assert rc.lock_syntax_problems(lock) == []
 
 
+@pytest.mark.parametrize("option", ["--index-url https://u:p@pypi.org/simple", "--extra-index-url=https://token@host/x",
+                                    "--index-url https://host/a@b"])
+def test_index_options_with_userinfo_are_refused(option):
+    problems = rc.lock_syntax_problems(option + "\n" + LOCK)
+    assert problems and "not a supported pinned-lock line" in problems[0]
+
+
 def test_no_host_paths_in_the_recorded_evidence(env):
     incoming(env, "run-a", image=False)
     env["lock"].write_text("", encoding="utf-8")
