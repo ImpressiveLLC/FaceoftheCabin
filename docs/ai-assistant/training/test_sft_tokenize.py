@@ -344,3 +344,293 @@ def test_real_tokenizer_leading_newline_content_merges_with_header_and_is_refuse
     encode = lambda text: tok.encode(text, add_special_tokens=False).ids  # noqa: E731
     with pytest.raises(ValueError, match="segment-wise"):
         st.check_segmentation(_conv(role, content), encode, tok.token_to_id("<|begin_of_text|>"))
+
+
+# --- train_sft.py run directory, step cap and evidence files (#543 section 2A). No torch, no model. ---
+
+def test_real_run_requires_run_dir_and_check_only_does_not(capsys):
+    import train_sft
+    with pytest.raises(SystemExit):
+        train_sft.parse_args(["--data", "x.jsonl"])
+    assert "needs --run-dir" in capsys.readouterr().err
+    args = train_sft.parse_args(["--check-only"])
+    assert args.run_dir is None and args.max_steps is None
+
+
+def test_max_steps_must_be_positive(capsys):
+    import train_sft
+    for bad in ("0", "-3"):
+        with pytest.raises(SystemExit):
+            train_sft.parse_args(["--check-only", "--max-steps", bad])
+    assert train_sft.parse_args(["--run-dir", "r", "--max-steps", "5"]).max_steps == 5
+
+
+def test_main_refuses_a_real_run_without_run_dir_before_loading_anything(tmp_path):
+    import train_sft
+    with pytest.raises(SystemExit):
+        train_sft.main(["--data", str(tmp_path / "missing.jsonl")])
+
+
+def test_prepare_run_dir_refuses_a_missing_directory(tmp_path):
+    import train_sft
+    with pytest.raises(SystemExit, match="existing directory"):
+        train_sft.prepare_run_dir(tmp_path / "absent")
+
+
+@pytest.mark.parametrize("existing", ["adapter", "trainer", "resolved-training-args.json", "loss.jsonl"])
+def test_prepare_run_dir_refuses_any_earlier_trainer_output(tmp_path, existing):
+    import train_sft
+    run = tmp_path / "run"
+    run.mkdir()
+    target = run / existing
+    if "." in existing:
+        target.write_text("earlier", encoding="utf-8")
+    else:
+        target.mkdir()
+        (target / "earlier.bin").write_bytes(b"earlier")
+    with pytest.raises(SystemExit, match="already holds trainer output"):
+        train_sft.prepare_run_dir(run)
+    assert sorted(p.name for p in run.iterdir()) == [existing]
+
+
+def test_prepare_run_dir_accepts_the_wrappers_pre_run_evidence(tmp_path):
+    import train_sft
+    run = tmp_path / "run"
+    run.mkdir()
+    wrapper_files = {"repo.json": "{}", "image-facts.json": "{}", "host-facts.json": "{}",
+                     "pip-freeze.txt": "x==1\n", "lock-check.json": "{}", "dpkg.txt": "", "events.jsonl": ""}
+    for name, text in wrapper_files.items():
+        (run / name).write_text(text, encoding="utf-8")
+    adapter, trainer = train_sft.prepare_run_dir(run)
+    assert adapter.is_dir() and trainer.is_dir()
+    for name, text in wrapper_files.items():
+        assert (run / name).read_text(encoding="utf-8") == text
+    with pytest.raises(SystemExit, match="already holds trainer output"):
+        train_sft.prepare_run_dir(run)
+
+
+def test_prepare_run_dir_refuses_a_symlink(tmp_path):
+    import train_sft
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    try:
+        link.symlink_to(real, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("this platform does not allow creating symlinks here")
+    with pytest.raises(SystemExit, match="symlink"):
+        train_sft.prepare_run_dir(link)
+
+
+def test_prepare_run_dir_creates_adapter_and_trainer_dirs(tmp_path):
+    import train_sft
+    run = tmp_path / "run"
+    run.mkdir()
+    adapter, trainer = train_sft.prepare_run_dir(run)
+    assert adapter == run / "adapter" and adapter.is_dir()
+    assert trainer == run / "trainer" and trainer.is_dir()
+
+
+def test_training_args_keep_the_pinned_values_and_add_max_steps_only_when_given(tmp_path):
+    import train_sft
+    base = train_sft.training_args_kwargs(tmp_path / "trainer", 7, use_gpu=False)
+    assert base["output_dir"] == str(tmp_path / "trainer")
+    assert "max_steps" not in base
+    assert (base["learning_rate"], base["num_train_epochs"], base["per_device_train_batch_size"]) == (2e-4, 3, 1)
+    assert (base["gradient_accumulation_steps"], base["save_strategy"], base["bf16"]) == (4, "no", False)
+    assert (base["seed"], base["data_seed"], base["use_cpu"], base["fp16"]) == (7, 7, True, False)
+    capped = train_sft.training_args_kwargs(tmp_path / "trainer", 7, use_gpu=True, max_steps=3)
+    assert capped["max_steps"] == 3 and capped["fp16"] is True and capped["use_cpu"] is False
+    assert {k: v for k, v in capped.items() if k not in ("max_steps", "fp16", "use_cpu")} == \
+        {k: v for k, v in base.items() if k not in ("fp16", "use_cpu")}
+
+
+def test_resolved_args_and_loss_files_are_written_once_and_never_replaced(tmp_path):
+    import json
+    import train_sft
+    resolved = {"learning_rate": 2e-4, "lr_scheduler_type": "linear", "output_dir": str(tmp_path)}
+    path = train_sft.write_resolved_args(tmp_path, resolved, {"seed": 7, "max_steps": None})
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["training_arguments"] == resolved and data["seed"] == 7 and data["max_steps"] is None
+    with pytest.raises(FileExistsError):
+        train_sft.write_resolved_args(tmp_path, {"changed": True}, {})
+    assert json.loads(path.read_text(encoding="utf-8")) == data
+
+    history = [{"step": 1, "loss": 2.5}, {"step": 2, "loss": 2.1}, {"train_runtime": 9.0}]
+    loss = train_sft.write_loss(tmp_path, history)
+    assert [json.loads(line) for line in loss.read_text(encoding="utf-8").splitlines()] == history
+    assert loss.read_bytes().endswith(b"\n") and b"\r" not in loss.read_bytes()
+    with pytest.raises(FileExistsError):
+        train_sft.write_loss(tmp_path, [])
+
+
+def test_trainer_no_longer_writes_the_fixed_adapter_path():
+    source = (Path(__file__).parent / "train_sft.py").read_text(encoding="utf-8")
+    assert "ADAPTER_OUT" not in source
+    assert 'exist_ok=True' not in source
+
+
+def test_dataset_snapshot_hash_is_of_the_bytes_that_were_parsed(tmp_path):
+    import hashlib
+    import train_sft
+    path = tmp_path / "d.jsonl"
+    raw = b'{"id": "before", "messages": []}\n'
+    path.write_bytes(raw)
+    examples, digest = train_sft.load_dataset_snapshot(path)
+    assert examples == [{"id": "before", "messages": []}]
+    assert digest == hashlib.sha256(raw).hexdigest()
+    assert train_sft.load_dataset_dicts(path) == examples
+
+
+def test_a_dataset_changed_after_loading_is_refused_before_training(tmp_path):
+    import train_sft
+    path = tmp_path / "d.jsonl"
+    path.write_bytes(b'{"id": "before", "messages": []}\n')
+    _, digest = train_sft.load_dataset_snapshot(path)
+    train_sft.check_dataset_unchanged(path, digest)
+    path.write_bytes(b'{"id": "after", "messages": []}\n')
+    with pytest.raises(SystemExit, match="changed after it was loaded"):
+        train_sft.check_dataset_unchanged(path, digest)
+    path.unlink()
+    with pytest.raises(SystemExit, match="changed after it was loaded"):
+        train_sft.check_dataset_unchanged(path, digest)
+
+
+def test_run_relative_strips_host_paths_inside_the_run_dir(tmp_path):
+    import train_sft
+    run = tmp_path / "run"
+    assert train_sft.run_relative(str(run / "trainer"), run) == "RUN_DIR/trainer"
+    assert train_sft.run_relative(str(run / "trainer" / "runs" / "x"), run) == "RUN_DIR/trainer/runs/x"
+    assert train_sft.run_relative(str(run), run) == "RUN_DIR"
+    assert train_sft.run_relative(str(tmp_path / "runner"), run) == str(tmp_path / "runner")
+    assert train_sft.run_relative(2e-4, run) == 2e-4
+
+
+class _FakeRealTok:
+    def __init__(self):
+        self.saved = None
+
+    def token_to_id(self, token):
+        return 0
+
+    def save(self, path):
+        self.saved = path
+        Path(path).write_text("tok", encoding="utf-8")
+
+
+def _fake_modules(events, run_dir, fail_training=False):
+    """Stand-ins for torch, peft and transformers that record the order of main()'s steps."""
+    class Cuda:
+        @staticmethod
+        def is_available():
+            return False
+
+    class Torch:
+        float32, float16 = "torch.float32", "torch.float16"
+        cuda = Cuda()
+
+        @staticmethod
+        def tensor(value):
+            return value
+
+    class Model:
+        def print_trainable_parameters(self):
+            pass
+
+        def save_pretrained(self, path):
+            events.append(("save_adapter", path))
+            Path(path, "adapter_model.safetensors").write_bytes(b"fake")
+
+    class AutoModel:
+        @staticmethod
+        def from_pretrained(name, revision=None, torch_dtype=None):
+            events.append(("load_model", torch_dtype))
+            return Model()
+
+    class TrainingArguments:
+        def __init__(self, **kwargs):
+            events.append(("training_arguments", kwargs))
+            self.kwargs = kwargs
+
+        def to_dict(self):
+            return dict(self.kwargs, logging_dir=self.kwargs["output_dir"] + "/runs/x", lr_scheduler_type="linear")
+
+    class State:
+        log_history = [{"step": 1, "loss": 2.0}]
+
+    class Trainer:
+        def __init__(self, model, train_dataset, data_collator, args):
+            self.args, self.state = args, State()
+
+        def train(self):
+            events.append(("train", (run_dir / "resolved-training-args.json").exists(),
+                           (run_dir / "loss.jsonl").exists()))
+            if fail_training:
+                raise RuntimeError("synthetic mid-training failure")
+
+    return dict(torch=Torch(), LoraConfig=lambda **kw: kw, get_peft_model=lambda model, cfg: model,
+                AutoModelForCausalLM=AutoModel, Trainer=Trainer, TrainingArguments=TrainingArguments,
+                set_seed=lambda seed: events.append(("seed", seed)))
+
+
+def _main_with_fakes(monkeypatch, tmp_path, fail_training=False):
+    import train_sft
+    data = tmp_path / "train.jsonl"
+    data.write_bytes(b'{"id": "r1", "messages": []}\n')
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "repo.json").write_text("{}", encoding="utf-8")  # wrapper pre-run evidence
+    events = []
+    tok = _FakeRealTok()
+    monkeypatch.setattr(train_sft, "load_pinned_tokenizer", lambda: tok)
+    monkeypatch.setattr(train_sft, "tokenize_examples",
+                        lambda examples, tokenizer: [{"input_ids": [1, 2], "labels": [-100, 2]}])
+    monkeypatch.setattr(train_sft, "load_training_modules", lambda: _fake_modules(events, run, fail_training))
+    argv = ["--data", str(data), "--run-dir", str(run), "--max-steps", "2", "--seed", "11"]
+    return train_sft, argv, run, events, data
+
+
+def test_main_writes_args_before_training_and_loss_after_with_the_step_cap(monkeypatch, tmp_path):
+    import json
+    train_sft, argv, run, events, data = _main_with_fakes(monkeypatch, tmp_path)
+    train_sft.main(argv)
+    names = [e[0] for e in events]
+    assert names == ["seed", "load_model", "training_arguments", "train", "save_adapter"]
+    kwargs = next(e[1] for e in events if e[0] == "training_arguments")
+    assert kwargs["max_steps"] == 2 and kwargs["output_dir"] == str(run / "trainer") and kwargs["seed"] == 11
+    assert next(e[1] for e in events if e[0] == "load_model") == "torch.float32"
+    assert events[names.index("train")][1:] == (True, False)  # args written before train, loss not yet
+    resolved = json.loads((run / "resolved-training-args.json").read_text(encoding="utf-8"))
+    assert resolved["training_arguments"]["output_dir"] == "RUN_DIR/trainer"
+    assert resolved["training_arguments"]["logging_dir"] == "RUN_DIR/trainer/runs/x"
+    assert resolved["model_load_dtype"] == "torch.float32" and resolved["max_steps"] == 2
+    assert resolved["dataset_name"] == "train.jsonl" and str(tmp_path) not in json.dumps(resolved)
+    import hashlib
+    assert resolved["dataset_sha256"] == hashlib.sha256(data.read_bytes()).hexdigest()
+    assert (run / "loss.jsonl").read_text(encoding="utf-8") == '{"loss": 2.0, "step": 1}\n'
+    assert (run / "adapter" / "adapter_model.safetensors").exists() and (run / "adapter" / "tokenizer.json").exists()
+    assert (run / "repo.json").read_text(encoding="utf-8") == "{}"
+
+
+def test_main_keeps_the_partial_loss_curve_when_training_fails(monkeypatch, tmp_path):
+    train_sft, argv, run, events, _ = _main_with_fakes(monkeypatch, tmp_path, fail_training=True)
+    with pytest.raises(RuntimeError, match="synthetic mid-training failure"):
+        train_sft.main(argv)
+    assert (run / "loss.jsonl").exists() and (run / "resolved-training-args.json").exists()
+    assert not (run / "adapter" / "adapter_model.safetensors").exists()
+    assert "save_adapter" not in [e[0] for e in events]
+
+
+def test_main_refuses_a_dataset_changed_between_load_and_training(monkeypatch, tmp_path):
+    train_sft, argv, run, events, data = _main_with_fakes(monkeypatch, tmp_path)
+    real_modules = train_sft.load_training_modules
+
+    def mutate_then_load():
+        data.write_bytes(b'{"id": "after", "messages": []}\n')
+        return real_modules()
+
+    monkeypatch.setattr(train_sft, "load_training_modules", mutate_then_load)
+    with pytest.raises(SystemExit, match="changed after it was loaded"):
+        train_sft.main(argv)
+    assert "train" not in [e[0] for e in events]
+    assert not (run / "loss.jsonl").exists()
