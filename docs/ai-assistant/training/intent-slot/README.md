@@ -118,6 +118,8 @@ python prepare_sft.py /path/to/reviewed.jsonl /tmp/intent-r1/splits \n  --freeze
 python prepare_sft.py /path/to/reviewed.jsonl /tmp/intent-r1/splits --dry-run-no-s6
 ```
 
+S7 G1 is a library with synthetic tests only, not complete or validated until S6 and screen-train exist. Frozen-aware CLI execution remains disabled. The library and existing dry-run path accept caller-selected input; checking frozen hashes after reading does not satisfy the approved-input boundary in #536 section 3.7. G8 and an approved-input mechanism are both required before enabling frozen-aware execution. Changing `G8_BOUND_FAMILIES` requires a separate PR, fresh Cowork ruling and Codex review. This merge grants no real-data, sealed-file or training authority.
+
 The small seeds are not a production dataset. Expand reviewed normal, ambiguous,
 negated, multi-turn, unavailable, wrong-site, security and adversarial examples.
 Freeze a representative holdout (suggested minimum 200 independently reviewed
