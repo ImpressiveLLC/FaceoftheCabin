@@ -246,7 +246,8 @@ class PackageTests(unittest.TestCase):
         rows = self.reviewed()
         result = split_rows(rows, self.gold)
         groups = {key: {r["group"] for r in values} for key, values in result.items()}
-        self.assertFalse(groups["train"] & groups["test"])
+        self.assertEqual(set(result), {"train", "validation", "holdout"})
+        self.assertFalse(groups["train"] & groups["holdout"])
         self.assertFalse(groups["train"] & groups["validation"])
         reversed_result = split_rows(list(reversed(rows)), self.gold)
         self.assertEqual(groups, {k: {r["group"] for r in v} for k, v in reversed_result.items()})
