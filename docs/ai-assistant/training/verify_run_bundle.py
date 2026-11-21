@@ -52,7 +52,7 @@ def read_bundle(run_dir, posted):
         if not match:
             raise IntegrityError(f"{BUNDLE} line is malformed: {line!r}")
         digest, rel = match.groups()
-        if rel.startswith("/") or ".." in Path(rel).parts or "\\" in rel or rel == BUNDLE:
+        if rel.startswith("/") or ":" in rel or ".." in rel.split("/") or "\\" in rel or rel == BUNDLE:
             raise IntegrityError(f"{BUNDLE} lists an invalid path {rel!r}")
         if rel in listed:
             raise IntegrityError(f"{BUNDLE} lists {rel} twice")
@@ -63,6 +63,10 @@ def read_bundle(run_dir, posted):
 
 
 def check_files(run_dir, listed):
+    # A sealed run holds only regular files and directories; a symlink could point outside the run.
+    links = sorted(p.relative_to(run_dir).as_posix() for p in run_dir.rglob("*") if p.is_symlink())
+    if run_dir.is_symlink() or links:
+        raise IntegrityError(f"symlink(s) in the run directory: {', '.join(links) or run_dir.name}")
     for rel, digest in listed.items():
         path = run_dir / rel
         if not path.is_file():
