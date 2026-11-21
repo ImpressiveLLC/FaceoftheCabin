@@ -36,6 +36,10 @@ TRAINER_ARTIFACTS = ("resolved-training-args.json", "loss.jsonl", "adapter")
 CAPTURE_ARTIFACTS = ("train.stdout", "train.stderr", "events.jsonl", "host-facts.json", "pip-freeze.txt",
                      "lock-check.json", "dpkg.txt") + HOST_SUPPLIED
 _LOCK_LINE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s\\]+)")
+# Every line shape a uv/pip-compile --generate-hashes lock may contain. Anything else is refused (Codex 7061467844).
+_LOCK_SHAPES = (re.compile(r""), re.compile(r"#.*"), re.compile(r"    --hash=sha256:[0-9a-f]{64}( \\)?"),
+                re.compile(r"    #( .*)?"), re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*==[^\s\\;]+( \\)?"),
+                re.compile(r"--[a-z][a-z-]*(=| ).*"))
 
 
 def now():
@@ -58,6 +62,25 @@ def lock_pins(lock_text):
         if match:
             pins[canonical_name(match.group(1))] = match.group(2)
     return pins
+
+
+def lock_syntax_problems(lock_text):
+    """Problems that make a lock unusable as the pinned set: an unsupported line (an unpinned or ranged requirement, an
+    environment marker, anything not in _LOCK_SHAPES), a package pinned twice to different versions, or no pins."""
+    problems, seen = [], {}
+    for number, line in enumerate(lock_text.split("\n"), start=1):
+        if not any(shape.fullmatch(line) for shape in _LOCK_SHAPES):
+            problems.append(f"lock line {number} is not a supported pinned-lock line: {line[:80]!r}")
+            continue
+        match = _LOCK_LINE.match(line)
+        if match:
+            name, version = canonical_name(match.group(1)), match.group(2)
+            if name in seen and seen[name] != version:
+                problems.append(f"lock pins {name} twice ({seen[name]} and {version})")
+            seen[name] = version
+    if not seen:
+        problems.append("lock has no name==version pins")
+    return problems
 
 
 def lock_check(lock_text, freeze_text):
@@ -118,32 +141,63 @@ def run_text(cmd):
     return done.stdout.decode("utf-8", errors="replace"), None
 
 
-def _pump(stream, sink, name, events, lock):
+class StreamCaptureError(RuntimeError):
+    """A trainer output stream could not be captured; the run is failed, never completed."""
+
+
+def _write_chunk(sink, chunk):
+    sink.write(chunk)
+
+
+def _pump(stream, sink, name, events, lock, failures, on_failure):
     offset = 0
-    while True:
-        chunk = stream.read1(65536) if hasattr(stream, "read1") else stream.read(65536)
-        if not chunk:
-            break
-        sink.write(chunk)
+    try:
+        while True:
+            chunk = stream.read1(65536) if hasattr(stream, "read1") else stream.read(65536)
+            if not chunk:
+                break
+            _write_chunk(sink, chunk)
+            with lock:
+                events.append({"t": now(), "event": "chunk", "stream": name, "offset": offset, "length": len(chunk)})
+            offset += len(chunk)
+    except Exception as exc:  # noqa: BLE001 - handed to the capture finalizer, never swallowed
         with lock:
-            events.append({"t": now(), "event": "chunk", "stream": name, "offset": offset, "length": len(chunk)})
-        offset += len(chunk)
+            failures.append(f"{name}: {exc.__class__.__name__}: {exc}")
+            events.append({"t": now(), "event": "stream_error", "stream": name, "offset": offset, "error": str(exc)})
+        # Stop the child so it cannot block forever on a pipe nobody is draining any more.
+        on_failure()
 
 
 def run_trainer(cmd, run_dir):
-    """Runs CMD with stdout and stderr written unchanged; returns the exit code. Timestamps go only to events.jsonl."""
-    events, lock = [{"t": now(), "event": "start", "cmd": cmd}], threading.Lock()
+    """Runs CMD with stdout and stderr written unchanged; returns the exit code. Timestamps go only to events.jsonl.
+    If either stream cannot be captured, the child is killed and reaped, the partial streams and events are kept, and
+    StreamCaptureError reaches the capture finalizer."""
+    events, lock, failures = [{"t": now(), "event": "start", "cmd": cmd}], threading.Lock(), []
+    code = None
     with open(run_dir / "train.stdout", "xb") as out, open(run_dir / "train.stderr", "xb") as err:
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=str(HERE))
-        pumps = [threading.Thread(target=_pump, args=(process.stdout, out, "stdout", events, lock)),
-                 threading.Thread(target=_pump, args=(process.stderr, err, "stderr", events, lock))]
-        for pump in pumps:
-            pump.start()
-        for pump in pumps:
-            pump.join()
-        code = process.wait()
+
+        def stop():
+            try:
+                process.kill()
+            except OSError:
+                pass
+
+        pumps = [threading.Thread(target=_pump, args=(process.stdout, out, "stdout", events, lock, failures, stop)),
+                 threading.Thread(target=_pump, args=(process.stderr, err, "stderr", events, lock, failures, stop))]
+        try:
+            for pump in pumps:
+                pump.start()
+            for pump in pumps:
+                pump.join()
+        finally:
+            for stream in (process.stdout, process.stderr):
+                stream.close()
+            code = process.wait()
     events.append({"t": now(), "event": "exit", "code": code})
     write_new(run_dir / "events.jsonl", "".join(json.dumps(e, sort_keys=True) + "\n" for e in events))
+    if failures:
+        raise StreamCaptureError("trainer output could not be captured: " + "; ".join(failures))
     return code
 
 
@@ -260,8 +314,9 @@ def capture(*, run_id, runs_dir, incoming_dir, data, seed, lock_path, trainer_cm
                 problems.append(reasons["lock-check.json"])
             else:
                 lock_text = lock_path.read_text(encoding="utf-8")
-                if not lock_pins(lock_text):
-                    reasons["lock-check.json"] = f"lock file {lock_path.name} has no name==version pins"
+                lock_problems = lock_syntax_problems(lock_text)
+                if lock_problems:
+                    reasons["lock-check.json"] = f"lock file {lock_path.name} is not usable: " + "; ".join(lock_problems)
                     problems.append(reasons["lock-check.json"])
                 else:
                     check = lock_check(lock_text, freeze_text)
