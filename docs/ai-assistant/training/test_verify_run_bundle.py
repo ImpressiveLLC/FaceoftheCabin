@@ -373,3 +373,43 @@ def test_a_symlink_inside_the_run_fails_even_when_resealed(env):
 
 def bundle_text_lines(run_dir):
     return (run_dir / vb.BUNDLE).read_text(encoding="utf-8").split("\n")[:-1]
+
+
+
+# --- CODEX-PROXY P3 on #563 (2): the directory, run-dir and bundle-file symlink cases, not only a file symlink. ---
+
+def _symlink_or_skip(link, target, *, directory=False):
+    try:
+        link.symlink_to(target, target_is_directory=directory)
+    except (OSError, NotImplementedError):
+        pytest.skip("this platform does not allow creating symlinks here")
+
+
+def test_a_directory_symlink_inside_the_run_fails(env):
+    run_dir, _, _ = make(env)
+    writable(run_dir)
+    outside = env["tmp"] / "outside-dir"
+    outside.mkdir()
+    (outside / "weights.bin").write_bytes(b"outside")
+    _symlink_or_skip(run_dir / "adapter" / "extra", outside, directory=True)
+    with pytest.raises(vb.IntegrityError, match="symlink"):
+        vb.verify(run_dir, reseal(run_dir), env["lock"])
+
+
+def test_a_symlinked_run_directory_fails(env):
+    run_dir, bundle, _ = make(env)
+    alias = env["tmp"] / "alias-run"
+    _symlink_or_skip(alias, run_dir, directory=True)
+    with pytest.raises(vb.IntegrityError, match="symlink"):
+        vb.verify(alias, bundle, env["lock"])
+
+
+def test_a_symlinked_bundle_file_fails_even_with_the_right_posted_hash(env):
+    run_dir, bundle, _ = make(env)
+    writable(run_dir)
+    real = env["tmp"] / "bundle-copy.sha256"
+    real.write_bytes((run_dir / vb.BUNDLE).read_bytes())
+    (run_dir / vb.BUNDLE).unlink()
+    _symlink_or_skip(run_dir / vb.BUNDLE, real)
+    with pytest.raises(vb.IntegrityError, match="symlink"):
+        vb.verify(run_dir, bundle, env["lock"])
