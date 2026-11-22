@@ -460,3 +460,27 @@ def test_no_host_paths_in_the_recorded_evidence(env):
     assert not [part for part in start["cmd"] if str(env["tmp"]) in part]
     assert "RUN_DIR" in start["cmd"] and start["cmd"][0] == "python"
     assert not [t for t in strings(manifest_b) if str(env["tmp"]) in t]
+
+
+
+def test_the_training_image_copies_the_capture_scripts_and_their_local_imports():
+    """#543 section 5: run_capture.py and verify_run_bundle.py must be in the image, with every local module they,
+    and the trainer they start, import. A missing COPY would only show up on the host."""
+    import ast
+    import re as _re
+    here = Path(rc.__file__).parent
+    copied = set()
+    for line in (here / "Dockerfile").read_text(encoding="utf-8").split("\n"):
+        if _re.match(r"COPY\s", line):
+            copied.update(part for part in line.split()[1:-1])
+    needed = {"run_capture.py", "verify_run_bundle.py", "train_sft.py", "sft_tokenize.py", "requirements.lock"}
+    assert needed <= copied, needed - copied
+    local = {p.stem for p in here.glob("*.py")}
+    for script in ("run_capture.py", "verify_run_bundle.py", "train_sft.py"):
+        tree = ast.parse((here / script).read_text(encoding="utf-8"))
+        imported = {alias.name.split(".")[0] for node in ast.walk(tree) if isinstance(node, ast.Import)
+                    for alias in node.names}
+        imported |= {node.module.split(".")[0] for node in ast.walk(tree)
+                     if isinstance(node, ast.ImportFrom) and node.module}
+        for module in sorted(imported & local):
+            assert f"{module}.py" in copied, f"{script} imports {module}, which the image does not copy"
