@@ -39,6 +39,11 @@ class CatalogError(Exception):
     """An input is inconsistent; nothing is written."""
 
 
+def lf_bytes(path):
+    """File bytes with CRLF folded to LF, so a Windows and a Linux checkout hash the same."""
+    return Path(path).read_bytes().replace(b"\r\n", b"\n")
+
+
 def sha256_bytes(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -183,7 +188,8 @@ def render(catalog):
 
 def generate(root=ROOT):
     java_text = DEVICE_TYPE_JAVA.read_bytes().decode("utf-8").replace("\r\n", "\n")
-    return build(java_text, ONTOLOGY.read_bytes(), SEED.read_bytes())
+    # Hash LF-normalised bytes so a Windows (CRLF) checkout and a Linux checkout agree.
+    return build(java_text, lf_bytes(ONTOLOGY), lf_bytes(SEED))
 
 
 def safety_violations(old, new):
@@ -238,7 +244,7 @@ def main(argv=None):
                 raise CatalogError("safety guard: " + "; ".join(problems)
                                    + ". List each in allowed_changes in docs/ontology/catalog-seed.yaml with a reason.")
         if args.check:
-            current = CATALOG.read_bytes().decode("utf-8") if CATALOG.exists() else ""
+            current = lf_bytes(CATALOG).decode("utf-8") if CATALOG.exists() else ""
             if current != text:
                 raise CatalogError("docs/ontology/device-catalog.json is not what the generator produces from the current "
                                    f"inputs (a hand edit, or an input changed). Run: {FIX_COMMAND}")

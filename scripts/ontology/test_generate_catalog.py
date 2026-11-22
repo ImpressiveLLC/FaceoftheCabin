@@ -18,8 +18,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import generate_catalog as gc  # noqa: E402
 
 JAVA = gc.DEVICE_TYPE_JAVA.read_bytes().decode("utf-8").replace("\r\n", "\n")
-ONTOLOGY = gc.ONTOLOGY.read_bytes()
-SEED = gc.SEED.read_bytes()
+ONTOLOGY = gc.lf_bytes(gc.ONTOLOGY)
+SEED = gc.lf_bytes(gc.SEED)
 
 
 def build(java=JAVA, ontology=ONTOLOGY, seed=SEED):
@@ -44,7 +44,7 @@ def entry(catalog, type_name):
 
 class CommittedCatalog(unittest.TestCase):
     def test_the_committed_catalog_is_exactly_what_the_generator_produces(self):
-        self.assertEqual(gc.CATALOG.read_bytes().decode("utf-8"), gc.render(build()))
+        self.assertEqual(gc.lf_bytes(gc.CATALOG).decode("utf-8"), gc.render(build()))
 
     def test_check_mode_passes_on_the_committed_file(self):
         out, err = io.StringIO(), io.StringIO()
@@ -96,7 +96,7 @@ class Gate(unittest.TestCase):
     def test_a_changed_input_makes_the_committed_catalog_stale(self):
         changed = build(ontology=ontology_with(lambda d: d["elements"][0].update({"notes": "changed"})))
         self.assertNotEqual(changed["generated_from"]["ontology_sha256"], build()["generated_from"]["ontology_sha256"])
-        self.assertNotEqual(gc.render(changed), gc.CATALOG.read_bytes().decode("utf-8"))
+        self.assertNotEqual(gc.render(changed), gc.lf_bytes(gc.CATALOG).decode("utf-8"))
 
 
 class Stamps(unittest.TestCase):

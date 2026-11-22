@@ -1,6 +1,6 @@
 {
  "allowed_changes": [],
- "catalog_hash": "bdb7453a267b0cab7622b98b213c0528869a594048036e59d8c4a840c38ba52e",
+ "catalog_hash": "c91d13e4dd174731065d3eddf082878308bf9168f837c598ad7a8b39f65e2595",
  "entries": [
   {
    "category": "CLIMATE",
@@ -869,7 +869,7 @@
  "generated_from": {
   "device_type_source_sha256": "32ca157ef6c6af47358215e7f79944938866afb4a3f964d2ee747cf9445f57fe",
   "generator_version": 1,
-  "ontology_sha256": "b8ddb67ca4f2cf1173cb447e8bdcb4f1097e74acc0b7df27a875dc62e0ed225a",
+  "ontology_sha256": "6dffe897c7fed2dec275fe0ae0b4c1c2cfcf4e0edbd8483c2baf14435f32070a",
   "ontology_version_label": "0.6.0",
   "seed_sha256": "9e35eeb01d765ed58bb783d7c7e323ee406c482907245fd121fd4c615046b799"
  },
