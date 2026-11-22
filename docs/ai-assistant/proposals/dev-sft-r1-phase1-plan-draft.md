@@ -70,11 +70,11 @@ Section 2 of the contract was written on 2026-11-14 and part of it is stale. Mai
 
 | Option | What it needs from Nate | Status |
 |---|---|---|
-| Nate's Windows PC (ILikeTheLights), CPU only, no CUDA GPU | measured 22 Nov: 16.2 GB visible to the container (about 15.8 GiB in WSL) and a 14.21 GiB peak on a 2-step run of tiny rows, about 17 s per step. Real rows would run slowly near out-of-memory, so this host is a pipeline dry-run host, not a Phase 1 candidate | MEASURED; not proposed for Phase 1 |
+| Nate's Windows PC (ILikeTheLights), CPU only, no CUDA GPU | measured 22 Nov: 16.2 GB visible to the container (about 15.8 GiB in WSL) and a 14.21 GiB peak on a 2-step run of tiny rows, about 17 s per step. Real rows would run slowly near out-of-memory, so Cowork reads this host as a pipeline dry-run host (Code states only that the run does not qualify a host) | MEASURED; not proposed for Phase 1 |
 | M920q | the adopted contract (R4, and section 4 "Not the M920q") says training is **off** the M920q. The older data-path section 9 alternative ("or inside a measured memory budget that cannot starve Frigate, Home Assistant or the backend") is not an adopted runtime permission and is not attributed to R4. Considering the M920q would need a **scoped Nate amendment to that restriction**, plus the measured budget and a host go. A real POC1 run happened there on 2026-09-14/15 with 5 examples | not proposed; NEEDS-NATE (the amendment first) |
 | A GPU host or cloud | a host decision, a purchase or an account | not proposed; each is a separate NEEDS-NATE and not authorized by anything on file |
 
-Wall time and resource limits: a measured dry run on invented rows exists for ILikeTheLights only (Stage 2, 22 Nov, bundle `85aa4ce7...c9008`: 2 steps in 34.6 s, peak 14.21 GiB). **PENDING-EVIDENCE for the chosen GPU host (Code: the same run there; no Phase 1 estimate is made here).** Phase 1 sets the limits from that host's measurement before launch.
+Wall time and resource limits: a measured dry run on invented rows exists for ILikeTheLights only (Stage 2, 22 Nov, bundle `85aa4ce7...c9008`: 2 steps in 34.6 s, peak 14.21 GiB). **PENDING-EVIDENCE for the chosen Phase 1 host (Code: the same run there; no Phase 1 estimate is made here).** Phase 1 sets the limits from that host's measurement before launch.
 
 ## 7. Outputs and manifest
 
