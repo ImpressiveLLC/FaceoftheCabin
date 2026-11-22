@@ -1,0 +1,91 @@
+# Device catalog seed (S2, design #475; roadmap #449).
+#
+# Hand-edited INPUT to scripts/ontology/generate_catalog.py. It holds only what no machine-readable source holds today:
+#   - the match rules that decide a device's type (transcribed from the three inferType methods), each with a fixture the
+#     Java parity test runs against the real method, so a rule cannot drift from the code;
+#   - the default check-in windows (DeviceHealthMonitor.staleThresholdFor), per type;
+#   - the ontology-only type allowlist and the safety allowlist.
+# Everything else in docs/ontology/device-catalog.json is derived (category and reported fields from DeviceType.java,
+# the triggers that name a type from docs/ontology.yaml). Do not hand-edit the catalog; run the generator.
+# Each field carries `source` so a reader knows where the value came from. A field moves out of this file when the
+# ontology or the code can hold it.
+
+schema_version: 1
+
+# Check-in windows, minutes, from DeviceHealthMonitor.staleThresholdFor and its STALE_* constants.
+# zigbee_mains 10 and zigbee_battery 1560 apply to any z2m- device whatever its type; non_zigbee is by type.
+checkin_defaults:
+  source: "DeviceHealthMonitor.staleThresholdFor"
+  zigbee_mains: 10
+  zigbee_battery: 1560
+  non_zigbee_by_type:
+    CAMERA: 5
+    THERMOSTAT: 15
+    LOCK: 15
+    SMOKE_ALARM: 15
+    CO_ALARM: 15
+    DISHWASHER: 15
+    WASHING_MACHINE: 15
+    DRYER: 15
+    POWER_METER: 15
+  non_zigbee_default: 30
+
+# Types the ontology names that DeviceType does not have yet. Each needs a reason; the parity test fails if the
+# entry stops being true.
+ontology_only:
+  RF_TRIPWIRE:
+    reason: "trigger_rf_tripwire_crossed is a candidate trigger for a device type that is not built yet; the enum gains the constant when that device is enrolled"
+
+# Types whose entry may not be removed, renamed or have its category or check-in window changed by a generated change
+# unless a reviewed entry is added to `allowed_changes` below with a reason (design #475 section 3).
+safety_types: [WATER_LEAK_SENSOR, WATER_VALVE, LOCK, CO_ALARM]
+allowed_changes: []
+
+# Match rules, in the order the code evaluates them. `site` is the method that evaluates them; the parity test
+# runs every fixture through the real method and fails if the result is not `returns`, and fails if a method has more
+# `return DeviceType.X` statements than rules here (a branch with no rule).
+match_rules:
+  # HomeAssistantDiscoveryService.inferType(String domain, Map<String,Object> attrs)
+  - {id: ha-01-lock, site: home_assistant, returns: LOCK, describes: "HA domain is lock", source: inferType, input: {domain: lock, attributes: {}}}
+  - {id: ha-02-climate, site: home_assistant, returns: THERMOSTAT, describes: "HA domain is climate", source: inferType, input: {domain: climate, attributes: {}}}
+  - {id: ha-03-camera, site: home_assistant, returns: CAMERA, describes: "HA domain is camera", source: inferType, input: {domain: camera, attributes: {}}}
+  - {id: ha-04-smoke, site: home_assistant, returns: SMOKE_ALARM, describes: "device_class contains smoke", source: inferType, input: {domain: binary_sensor, attributes: {device_class: smoke}}}
+  - {id: ha-05-carbon-monoxide-alarm, site: home_assistant, returns: CO_ALARM, describes: "device_class contains carbon_monoxide or equals co (the binary alarm class)", source: inferType, input: {domain: binary_sensor, attributes: {device_class: carbon_monoxide}}}
+  - {id: ha-06-moisture, site: home_assistant, returns: WATER_LEAK_SENSOR, describes: "device_class contains moisture", source: inferType, input: {domain: binary_sensor, attributes: {device_class: moisture}}}
+  - {id: ha-07-motion-or-occupancy, site: home_assistant, returns: MOTION_SENSOR, describes: "device_class contains motion or occupancy", source: inferType, input: {domain: binary_sensor, attributes: {device_class: motion}}}
+  - {id: ha-08-door-or-opening, site: home_assistant, returns: CONTACT_SENSOR, describes: "device_class contains door or opening", source: inferType, input: {domain: binary_sensor, attributes: {device_class: door}}}
+  - {id: ha-09-temperature, site: home_assistant, returns: TEMPERATURE_SENSOR, describes: "device_class contains temperature", source: inferType, input: {domain: sensor, attributes: {device_class: temperature}}}
+  - {id: ha-10-humidity, site: home_assistant, returns: HUMIDITY_SENSOR, describes: "device_class contains humidity", source: inferType, input: {domain: sensor, attributes: {device_class: humidity}}}
+  - {id: ha-11-power-class, site: home_assistant, returns: POWER_METER, describes: "sensor domain and device_class is power, energy, voltage or current", source: inferType, input: {domain: sensor, attributes: {device_class: power}}}
+  - {id: ha-12-carbon-dioxide, site: home_assistant, returns: CO2_SENSOR, describes: "device_class contains carbon_dioxide", source: inferType, input: {domain: sensor, attributes: {device_class: carbon_dioxide}}}
+  - {id: ha-13-voc-or-aqi, site: home_assistant, returns: AIR_QUALITY_SENSOR, describes: "device_class contains volatile_organic_compounds or equals aqi", source: inferType, input: {domain: sensor, attributes: {device_class: aqi}}}
+  - {id: ha-14-unit-ppm, site: home_assistant, returns: CO_SENSOR, describes: "sensor domain with no matched class and unit ppm (vendor workaround: Kidde sets no device_class)", source: inferType, input: {domain: sensor, attributes: {unit_of_measurement: ppm}}}
+  - {id: ha-15-name-co-level, site: home_assistant, returns: CO_SENSOR, describes: "sensor domain, no class, no unit, friendly name contains co level or co-level (vendor workaround, Bug #3)", source: inferType, input: {domain: sensor, attributes: {friendly_name: "Kidde CO Level"}}}
+  - {id: ha-16-default, site: home_assistant, returns: HOME_ASSISTANT_ENTITY, describes: "nothing matched: generic entity, no tile and no chart", source: inferType, input: {domain: light, attributes: {}}}
+
+  # Zigbee2MqttAdapter.inferType(JsonNode definition, Set<DeviceCapability> caps, String friendlyName)
+  - {id: zb-01-snzb-05-or-water-leak, site: zigbee2mqtt, returns: WATER_LEAK_SENSOR, describes: "model contains snzb-05 or description contains water leak", source: inferType, input: {definition: {model: "SNZB-05P", description: "Leak sensor"}, caps: [], friendly_name: "leak"}}
+  - {id: zb-02-snzb-03-or-motion, site: zigbee2mqtt, returns: MOTION_SENSOR, describes: "model contains snzb-03 or description contains motion", source: inferType, input: {definition: {model: "SNZB-03P", description: "Presence"}, caps: [], friendly_name: "pir"}}
+  - {id: zb-03-snzb-04-or-contact, site: zigbee2mqtt, returns: CONTACT_SENSOR, describes: "model contains snzb-04 or description contains contact", source: inferType, input: {definition: {model: "SNZB-04P", description: "Door sensor"}, caps: [], friendly_name: "door"}}
+  - {id: zb-04-snzb-02-or-temperature, site: zigbee2mqtt, returns: TEMPERATURE_SENSOR, describes: "model contains snzb-02 or description contains temperature", source: inferType, input: {definition: {model: "SNZB-02P", description: "Sensor"}, caps: [], friendly_name: "temp"}}
+  - {id: zb-05-valve-actuator, site: zigbee2mqtt, returns: WATER_VALVE, describes: "description, model or name says valve and the device exposes a writable relay state", source: inferType, input: {definition: {model: "VALVE1", description: "Water valve", exposes: [{type: binary, name: state, property: state, access: 7}]}, caps: [], friendly_name: "main valve"}}
+  - {id: zb-06-smart-switch, site: zigbee2mqtt, returns: POWER_METER, describes: "a relay that is not a valve, leak or smoke sensor, or a power-monitoring switch, plug, outlet or relay", source: inferType, input: {definition: {model: "R1", description: "Mini relay", exposes: [{type: binary, name: state, property: state, access: 7}]}, caps: [], friendly_name: "relay"}}
+  - {id: zb-07-zbminir-or-switch-description, site: zigbee2mqtt, returns: HOME_ASSISTANT_ENTITY, describes: "model contains zbminir or description contains switch, with no relay exposed", source: inferType, input: {definition: {model: "W1", description: "Wall switch", exposes: []}, caps: [], friendly_name: "wall"}}
+  - {id: zb-08-smoke-or-co-alarm, site: zigbee2mqtt, returns: SMOKE_ALARM, describes: "description contains smoke or co alarm", source: inferType, input: {definition: {model: "S1", description: "Smoke detector"}, caps: [], friendly_name: "smoke"}}
+  - {id: zb-09-smart-plug-or-outlet, site: zigbee2mqtt, returns: POWER_METER, describes: "description contains smart plug or outlet", source: inferType, input: {definition: {model: "P1", description: "Smart outlet"}, caps: [], friendly_name: "plug"}}
+  - {id: zb-10-climate-capability, site: zigbee2mqtt, returns: THERMOSTAT, describes: "capability CLIMATE", source: inferType, input: {definition: {model: "C1", description: "Wall unit"}, caps: [CLIMATE], friendly_name: "climate"}}
+  - {id: zb-11-access-control-capability, site: zigbee2mqtt, returns: LOCK, describes: "capability ACCESS_CONTROL", source: inferType, input: {definition: {model: "L1", description: "Entry device"}, caps: [ACCESS_CONTROL], friendly_name: "entry"}}
+  - {id: zb-12-alarm-capability, site: zigbee2mqtt, returns: WATER_LEAK_SENSOR, describes: "capability ALARM with no description rule matched", source: inferType, input: {definition: {model: "A1", description: "Siren"}, caps: [ALARM], friendly_name: "siren"}}
+  - {id: zb-13-expose-occupancy, site: zigbee2mqtt, returns: MOTION_SENSOR, describes: "no description rule matched and the device exposes occupancy", source: inferType, input: {definition: {model: "X1", description: "Unit", exposes: [{property: occupancy}]}, caps: [], friendly_name: "x"}}
+  - {id: zb-14-expose-contact, site: zigbee2mqtt, returns: CONTACT_SENSOR, describes: "no description rule matched and the device exposes contact", source: inferType, input: {definition: {model: "X2", description: "Unit", exposes: [{property: contact}]}, caps: [], friendly_name: "x"}}
+  - {id: zb-15-expose-temperature, site: zigbee2mqtt, returns: TEMPERATURE_SENSOR, describes: "no description rule matched and the device exposes temperature", source: inferType, input: {definition: {model: "X3", description: "Unit", exposes: [{property: temperature}]}, caps: [], friendly_name: "x"}}
+  - {id: zb-16-expose-humidity, site: zigbee2mqtt, returns: HUMIDITY_SENSOR, describes: "no description rule matched and the device exposes humidity", source: inferType, input: {definition: {model: "X4", description: "Unit", exposes: [{property: humidity}]}, caps: [], friendly_name: "x"}}
+  - {id: zb-17-default, site: zigbee2mqtt, returns: HOME_ASSISTANT_ENTITY, describes: "nothing matched: left generic and a warning is logged", source: inferType, input: {definition: {model: "X5", description: "Unit", exposes: []}, caps: [], friendly_name: "x"}}
+
+  # MqttBridgeService.inferType(Map<String,Object> data), the payload's keys decide
+  - {id: mb-01-psi, site: mqtt_bridge, returns: WATER_PRESSURE_SENSOR, describes: "payload has psi", source: inferType, input: {data: {psi: 55}}}
+  - {id: mb-02-temp-f, site: mqtt_bridge, returns: TEMPERATURE_SENSOR, describes: "payload has temp_f", source: inferType, input: {data: {temp_f: 70}}}
+  - {id: mb-03-alarm, site: mqtt_bridge, returns: SMOKE_ALARM, describes: "payload has alarm", source: inferType, input: {data: {alarm: false}}}
+  - {id: mb-04-locked, site: mqtt_bridge, returns: LOCK, describes: "payload has locked", source: inferType, input: {data: {locked: true}}}
+  - {id: mb-05-motion, site: mqtt_bridge, returns: MOTION_SENSOR, describes: "payload has motion", source: inferType, input: {data: {motion: true}}}
+  - {id: mb-06-default, site: mqtt_bridge, returns: HOME_ASSISTANT_ENTITY, describes: "nothing matched", source: inferType, input: {data: {}}}

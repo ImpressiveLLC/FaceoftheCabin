@@ -1,0 +1,79 @@
+name: Ontology device catalog gate
+# S2 of the ontology-drives-device-adds roadmap (design #475). Test and gate only: no deploy, no runtime behavior.
+on:
+  pull_request:
+    paths:
+      - 'docs/ontology.yaml'
+      - 'docs/ontology/**'
+      - 'scripts/ontology/**'
+      - 'cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/DeviceType.java'
+      - 'cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/DeviceHealthMonitor.java'
+      - 'cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/homeassistant/HomeAssistantDiscoveryService.java'
+      - 'cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/zigbee/Zigbee2MqttAdapter.java'
+      - 'cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/mqtt/MqttBridgeService.java'
+      - 'cabin-orchestration-platform/backend/src/test/java/com/cabin/orchestrator/ontology/**'
+      - '.github/workflows/ontology-catalog-gate.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/ontology.yaml'
+      - 'docs/ontology/**'
+      - 'scripts/ontology/**'
+      - '.github/workflows/ontology-catalog-gate.yml'
+permissions:
+  contents: read
+jobs:
+  catalog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: cabin-orchestration-platform/backend/pom.xml
+      - name: Install generator dependencies
+        run: python -m pip install pyyaml jsonschema
+      - name: Catalog equals a regeneration (schema, hashes, no hand edits)
+        run: |
+          set +e
+          python scripts/ontology/generate_catalog.py --check
+          rc=$?
+          {
+            echo "### Ontology device catalog gate"
+            if [ $rc -eq 0 ]; then echo "- catalog regeneration check: PASS"; else echo "- catalog regeneration check: FAIL (run python scripts/ontology/generate_catalog.py and commit)"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
+      - name: Safety guard against the base branch catalog
+        if: github.event_name == 'pull_request'
+        run: |
+          set +e
+          if git cat-file -e "origin/${{ github.base_ref }}:docs/ontology/device-catalog.json" 2>/dev/null; then
+            git show "origin/${{ github.base_ref }}:docs/ontology/device-catalog.json" > "$RUNNER_TEMP/base-catalog.json"
+            python scripts/ontology/generate_catalog.py --check --baseline "$RUNNER_TEMP/base-catalog.json"
+            rc=$?
+            if [ $rc -eq 0 ]; then echo "- safety guard vs base: PASS" >> "$GITHUB_STEP_SUMMARY"; else echo "- safety guard vs base: FAIL (list each safety change in allowed_changes with a reason)" >> "$GITHUB_STEP_SUMMARY"; fi
+            exit $rc
+          fi
+          echo "- safety guard vs base: SKIPPED (no base catalog yet)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Generator unit tests
+        run: |
+          set +e
+          python -m unittest discover -s scripts/ontology -p 'test_*.py' 2>&1 | tee "$RUNNER_TEMP/py.txt"
+          rc=${PIPESTATUS[0]}
+          { echo "- generator tests: $(tail -n 3 "$RUNNER_TEMP/py.txt" | tr '\n' ' ')"; } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
+      - name: Java parity tests (enum, ontology, catalog, inferType fixtures)
+        working-directory: cabin-orchestration-platform/backend
+        run: |
+          set +e
+          mvn -B -ntp -Dtest='DeviceCatalogParityTest,DeviceTypeOntologyParityTest' test 2>&1 | tee "$RUNNER_TEMP/mvn.txt"
+          rc=${PIPESTATUS[0]}
+          { echo "- java parity tests: $(grep -E 'Tests run:.*Fail' "$RUNNER_TEMP/mvn.txt" | tail -n 1)"; } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
