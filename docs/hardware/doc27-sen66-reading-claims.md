@@ -2,13 +2,13 @@
 
 Status: proposed, docs only. Written by Cowork on 21 Nov 2026 while Codex was out; Codex confirms or overrules on return. It authorizes no code, schema change, device assignment, host read or deploy. It sits beside the [Doc 27 build plan](doc27-environmental-nodes.md) and the [environmental nodes guide](../ai-assistant/user-guide/environmental-nodes.md), and feeds the standards and derived-concept work in W-168 and the catalog work in W-160.
 
-Source: the Sensirion SEN66 datasheet, version 0.92 (preliminary, December 2025), read by Cowork on 21 Nov 2026. The datasheet is preliminary, so every figure below should be rechecked against the released version before it is pinned in the ontology. Anything not stated by that datasheet is marked as such.
+Source: the Sensirion SEN6x datasheet, version 1.0 (released October 2026, 61 pages), checked on 21 Nov 2026 by an independent reviewer. Cowork's first draft used version 0.92 (preliminary, December 2025); the V1.0 revision history says it changed only supply-current figures and the SDA sink current, and every figure below was confirmed against V1.0. Pin the datasheet version and date with each figure when it goes into the ontology. Anything not stated by that datasheet is marked as such.
 
 ## What each reading is
 
 | Reading | What it is | What it is not |
 |---|---|---|
-| PM1, PM2.5, PM4, PM10 | Mass concentrations in micrograms per cubic metre; datasheet range 0 to 1000 | An air quality index. An index is a separate derived concept that needs a named pollutant, window and breakpoint revision |
+| PM1, PM2.5, PM4, PM10 | Mass concentrations in micrograms per cubic metre; datasheet specified range 0 to 1000 (the output range is wider, 0 to 6000) | An air quality index. An index is a separate derived concept that needs a named pollutant, window and breakpoint revision |
 | CO2 | A concentration in ppm. Accuracy depends on automatic self-calibration (ASC), which the datasheet ties to regular exposure to fresh air (weekly) | A fresh-air-free reading that stays calibrated indefinitely |
 | VOC index | A dimensionless index from 1 to 500, relative to the sensor's own recent history; the default offset is 100, described as typical average conditions | A concentration, ppm, ppb or an AQI |
 | NOx index | A dimensionless index from 1 to 500; default offset 1 | A concentration, ppm, ppb or an AQI |
@@ -16,7 +16,7 @@ Source: the Sensirion SEN66 datasheet, version 0.92 (preliminary, December 2025)
 
 ## What the SEN66 does not measure
 
-It has no carbon monoxide, formaldehyde or isocyanate channel. The datasheet names formaldehyde as a feature of other models in the family, not this one. So a SEN66 on its own cannot say anything about CO, formaldehyde or isocyanates, and the platform must not display or imply a reading for them. A CO question needs a CO sensor, and CO alarms stay in the existing safety path (alarm state, not a concentration chart, until the ontology decides otherwise).
+It has no carbon monoxide, formaldehyde or isocyanate channel. The datasheet lists formaldehyde only for the SEN68 and SEN69C models, not this one. The datasheet does not mention isocyanates; their absence here is an inference from the channel list, not a vendor statement. So a SEN66 on its own cannot say anything about CO, formaldehyde or isocyanates, and the platform must not display or imply a reading for them. A CO question needs a CO sensor, and CO alarms stay in the existing safety path (alarm state, not a concentration chart, until the ontology decides otherwise).
 
 ## Baselines: two different things
 
@@ -27,7 +27,7 @@ The question "what is normal" has two answers, and they come from different plac
 
 ## Why a VOC or NOx spike needs care
 
-The datasheet describes the VOC and NOx indexes as self-normalizing. The estimator learns over a window of about 12 hours for VOC, forgets events after roughly twice that, and may freeze its learning for up to 180 minutes (VOC) or 720 minutes (NOx) during gating. The index specification is met only after about one hour (VOC) or six hours (NOx) of running. The gas specification is stated for zero air with an ethanol test gas.
+The datasheet describes the VOC and NOx indexes as self-normalizing. The estimator learns over a window of about 12 hours by default (for both VOC and NOx), forgets events after roughly twice that, and may freeze its learning during gating for 180 minutes (VOC) or 720 minutes (NOx) by default; both gating durations are configurable from 0 to 3000 minutes. The index specification is met only after about one hour (VOC) or six hours (NOx) of running. The gas specification uses ethanol in clean air as the proxy for VOC and NO2 in clean air as the proxy for NOx (datasheet section 1.4).
 
 Practical consequences, stated as inferences from those figures and not as vendor claims:
 
