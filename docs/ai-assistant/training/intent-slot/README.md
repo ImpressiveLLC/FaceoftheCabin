@@ -117,9 +117,12 @@ python prepare_sft.py /path/to/reviewed.jsonl /tmp/intent-r1/splits \
   --freeze-record freeze.json --family-export family-export.json --screen-result screen.json
 # Without S6 evidence: gates only, writes report.json alone and reports s6 NOT_RUN.
 python prepare_sft.py /path/to/reviewed.jsonl /tmp/intent-r1/splits --dry-run-no-s6
+# S7 G8: bind minimal-pair families into `group` before the split. Repeat --family-map to stack overlays;
+# they apply in order and replace by canonical key (an overlay must keep every earlier member).
+python prepare_sft.py /path/to/reviewed.jsonl /tmp/intent-r1/splits --dry-run-no-s6 \n  --family-map sft/s2-batch4-families.json --family-map sft/s2-batch6-families.json --family-map sft/s2-batch7-families.json
 ```
 
-S7 G1 is a library with synthetic tests only, not complete or validated until S6 and screen-train exist. Frozen-aware CLI execution remains disabled. The library and existing dry-run path accept caller-selected input; checking frozen hashes after reading does not satisfy the approved-input boundary in #536 section 3.7. G8 and an approved-input mechanism are both required before enabling frozen-aware execution. Changing `G8_BOUND_FAMILIES` requires a separate PR, fresh Cowork ruling and Codex review. This merge grants no real-data, sealed-file or training authority.
+S7 G8 adds the binding (`bind_families`, `compose_family_maps`, `--family-map`) with synthetic tests: every row must be in the map, the two halves of a minimal pair must share one family, and a pair can then never be split by the hash bucket. `G8_BOUND_FAMILIES` stays False in this change; flipping it needs its own PR and a Cowork ruling, and the approved-input mechanism is not part of G8. S7 G1 is a library with synthetic tests only, not complete or validated until S6 and screen-train exist. Frozen-aware CLI execution remains disabled. The library and existing dry-run path accept caller-selected input; checking frozen hashes after reading does not satisfy the approved-input boundary in #536 section 3.7. G8 and an approved-input mechanism are both required before enabling frozen-aware execution. Changing `G8_BOUND_FAMILIES` requires a separate PR, fresh Cowork ruling and Codex review. This merge grants no real-data, sealed-file or training authority.
 
 The small seeds are not a production dataset. Expand reviewed normal, ambiguous,
 negated, multi-turn, unavailable, wrong-site, security and adversarial examples.

@@ -211,13 +211,100 @@ def load_frozen(freeze_record, family_export, screen_result, input_sha256, recom
                   screen["quarantine_ids_sha256"])
 
 
-def split_rows(rows, gold, *, frozen=None):
-    """The train/validation/holdout splits. With frozen=None this is the gate as before (plus the G2 rename)."""
-    return split_rows_with_report(rows, gold, frozen=frozen)[0]
+class FamilyBindingError(ValueError):
+    """The family map does not bind every row, or would spread a minimal pair over families; nothing is split."""
 
 
-def split_rows_with_report(rows, gold, *, frozen=None):
+_PAIR_TOKEN = re.compile(r"-pair(?=-|$)")
+
+
+def pair_base(group):
+    """The raw group a minimal-pair counterpart belongs with: 'x-pair' -> 'x', 'x-pair-3' -> 'x-3'."""
+    return _PAIR_TOKEN.sub("", group)
+
+
+def pair_relations(rows):
+    """(base, pair) raw-group pairs that are both present: the halves of a minimal pair (S7 G8, #529).
+
+    The generator gives every template its own raw `group`, and an opposite-label minimal pair is two templates, so
+    splitting on the raw group can put the two halves in different splits. These are the halves that must stay together.
+    """
+    groups = {row["group"] for row in rows}
+    return [(pair_base(g), g) for g in sorted(groups) if _PAIR_TOKEN.search(g) and pair_base(g) in groups]
+
+
+def compose_family_maps(*maps):
+    """Apply family maps in order, replacing an entry that repeats a canonical key with the newer, complete list.
+
+    An overlay that replaces a family must retain every earlier member, and no id may end up in two families
+    (concatenating the lists of two maps would duplicate ownership). Raises FamilyBindingError otherwise.
+    """
+    composed = {}
+    for index, family_map in enumerate(maps):
+        for family, ids in family_map.items():
+            ids = list(ids)
+            if len(set(ids)) != len(ids):
+                raise FamilyBindingError(f"map {index}: family {family} lists an id twice")
+            if family in composed:
+                dropped = set(composed[family]) - set(ids)
+                if dropped:
+                    raise FamilyBindingError(
+                        f"map {index} replaces family {family} but drops {len(dropped)} earlier member(s); "
+                        "an overlay must retain every prior member")
+            composed[family] = ids
+    owner = {}
+    for family, ids in composed.items():
+        for rid in ids:
+            if rid in owner and owner[rid] != family:
+                raise FamilyBindingError(f"id {rid} is in two families: {owner[rid]} and {family}")
+            owner[rid] = family
+    return composed
+
+
+def bind_families(rows, family_map):
+    """Rows with `group` replaced by their canonical family id (the raw value is kept as `source_group`).
+
+    Every row must be in the map, ids must be unique, and the two halves of a minimal pair must share one family, so a
+    pair can never be split by the hash-bucket rule. The input rows are not modified.
+    """
+    owner = {}
+    for family, ids in sorted(family_map.items()):
+        for rid in ids:
+            if rid in owner and owner[rid] != family:
+                raise FamilyBindingError(f"id {rid} is in two families: {owner[rid]} and {family}")
+            owner[rid] = family
+    ids = [row["id"] for row in rows]
+    duplicated = sorted({i for i in ids if ids.count(i) > 1})
+    if duplicated:
+        raise FamilyBindingError(f"duplicate row ids: {', '.join(duplicated[:5])}")
+    unbound = sorted(i for i in ids if i not in owner)
+    if unbound:
+        raise FamilyBindingError(f"{len(unbound)} row(s) are not in the family map, e.g. {', '.join(unbound[:5])}; "
+                                 "an unbound row, and so an unbound pair half, is refused")
+    bound = [dict(row, source_group=row.get("group"), group=owner[row["id"]]) for row in rows]
+    families_of = {}
+    for row in bound:
+        families_of.setdefault(row["source_group"], set()).add(row["group"])
+    for base, pair in pair_relations(rows):
+        spread = families_of[base] | families_of[pair]
+        if len(spread) != 1:
+            raise FamilyBindingError(f"minimal pair {base} / {pair} is spread over {len(spread)} families; "
+                                     "its halves could land in different splits")
+    return bound
+
+
+def split_rows(rows, gold, *, frozen=None, families=None):
+    """The train/validation/holdout splits. With frozen=None and families=None this is the gate as before (plus the G2
+    rename). `families` is a composed family map (S7 G8): rows are bound to their canonical family before anything else."""
+    return split_rows_with_report(rows, gold, frozen=frozen, families=families)[0]
+
+
+def split_rows_with_report(rows, gold, *, frozen=None, families=None):
     rows_in = len(rows)
+    pairs_bound = 0
+    if families is not None:
+        pairs_bound = len(pair_relations(rows))  # counted on the raw groups, before binding replaces them
+        rows = bind_families(rows, families)
     quarantined_ids = []
     if frozen is not None:
         quarantined_ids = sorted(r["id"] for r in rows if r["id"] in frozen.quarantine_ids)
@@ -243,6 +330,9 @@ def split_rows_with_report(rows, gold, *, frozen=None):
         "families": {k: len({r["group"] for r in v}) for k, v in sorted(result.items())},
         "frozen_family_check": "pass" if frozen is not None else "NOT_RUN",
     }
+    if families is not None:
+        report["families_bound"] = True
+        report["pair_relations_bound"] = pairs_bound
     return result, report, quarantined_ids
 
 
@@ -292,6 +382,8 @@ def main(argv=None, *, _synthetic_test_only=False):
     p.add_argument("--freeze-record", type=Path)
     p.add_argument("--family-export", type=Path)
     p.add_argument("--screen-result", type=Path)
+    p.add_argument("--family-map", type=Path, action="append", default=[],
+                   help="a family map; repeat to stack overlays, applied in order and replacing by canonical key")
     p.add_argument("--dry-run-no-s6", action="store_true",
                    help="run the gates without S6 evidence; writes only report.json, never training files")
     args = p.parse_args(argv)
@@ -304,7 +396,8 @@ def main(argv=None, *, _synthetic_test_only=False):
         missing = [flag for flag, value in s6_paths.items() if value is None]
         p.error("S6 evidence is required: give --freeze-record, --family-export and --screen-result together, or "
                 f"--dry-run-no-s6 (missing: {', '.join(missing)})")
-    paths = [args.input.resolve()] + [Path(v).resolve() for v in s6_paths.values() if v is not None]
+    paths = ([args.input.resolve()] + [Path(v).resolve() for v in s6_paths.values() if v is not None]
+             + [Path(v).resolve() for v in args.family_map])
     if len(set(paths)) != len(paths):
         p.error("INPUT and the S6 evidence files must be different files")
 
@@ -322,8 +415,18 @@ def main(argv=None, *, _synthetic_test_only=False):
         except S6Error as exc:
             raise SystemExit(f"S6 check failed: {exc}; nothing was split or written")
     rows = [json.loads(line) for line in raw.decode("utf-8").split("\n") if line.strip()]
+    families = None
     try:
-        splits, report, quarantined_ids = split_rows_with_report(rows, read_jsonl(args.gold), frozen=frozen)
+        if args.family_map:
+            try:
+                loaded = [_load_json(path, "family map") for path in args.family_map]
+            except S6Error as exc:
+                raise FamilyBindingError(str(exc))
+            families = compose_family_maps(*loaded)
+        splits, report, quarantined_ids = split_rows_with_report(rows, read_jsonl(args.gold), frozen=frozen,
+                                                                 families=families)
+    except FamilyBindingError as exc:
+        raise SystemExit(f"family binding failed: {exc}; nothing was split or written")
     except S6Error as exc:
         raise SystemExit(f"S6 check failed: {exc}; nothing was split or written")
     if args.dry_run_no_s6:
