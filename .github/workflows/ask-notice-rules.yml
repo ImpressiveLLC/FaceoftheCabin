@@ -1,0 +1,30 @@
+name: Ask notice rules offline tests
+on:
+  pull_request:
+    paths:
+      - 'scripts/ask_notice_rules.py'
+      - 'scripts/test_ask_notice_rules.py'
+      - 'docs/ai-assistant/notice-vectors/**'
+      - 'docs/ai-assistant/proposals/ask-notice-criterion.md'
+      - 'cabin-orchestration-platform/backend/src/main/resources/rag/context-fixtures-r*.json'
+      - '.github/workflows/ask-notice-rules.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/ask_notice_rules.py'
+      - 'scripts/test_ask_notice_rules.py'
+      - 'docs/ai-assistant/notice-vectors/**'
+      - 'docs/ai-assistant/proposals/ask-notice-criterion.md'
+      - 'cabin-orchestration-platform/backend/src/main/resources/rag/context-fixtures-r*.json'
+      - '.github/workflows/ask-notice-rules.yml'
+permissions:
+  contents: read
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the shared vectors and the rule tests (offline, standard library only)
+        run: |
+          python3 scripts/ask_notice_rules.py vectors docs/ai-assistant/notice-vectors/vectors.json
+          python3 -m unittest scripts/test_ask_notice_rules.py -v

@@ -23,3 +23,10 @@ docs/ai-assistant/training/intent-slot/*.jsonl text eol=lf
 docs/ai-assistant/training/intent-slot/*.json text eol=lf
 docs/ai-assistant/training/intent-slot/system.txt text eol=lf
 docs/ai-assistant/training/intent-slot/Modelfile.* text eol=lf
+
+# Ask source notice rules: the vector file and the reference script are cited by sha256 of their raw
+# bytes (docs/ai-assistant/proposals/ask-no-source-guard.md), so a Windows autocrlf checkout must not change them.
+docs/ai-assistant/notice-vectors/*.json text eol=lf
+scripts/ask_notice_rules.py text eol=lf
+scripts/test_ask_notice_rules.py text eol=lf
+docs/ai-assistant/proposals/ask-notice-criterion.md text eol=lf
