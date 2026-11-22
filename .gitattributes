@@ -23,3 +23,8 @@ docs/ai-assistant/training/intent-slot/*.jsonl text eol=lf
 docs/ai-assistant/training/intent-slot/*.json text eol=lf
 docs/ai-assistant/training/intent-slot/system.txt text eol=lf
 docs/ai-assistant/training/intent-slot/Modelfile.* text eol=lf
+# S2 catalog inputs/outputs are hashed byte-for-byte; keep LF on every platform
+docs/ontology/device-catalog.json text eol=lf
+docs/ontology/catalog-seed.yaml text eol=lf
+docs/ontology.yaml text eol=lf
+cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/devices/model/DeviceType.java text eol=lf
