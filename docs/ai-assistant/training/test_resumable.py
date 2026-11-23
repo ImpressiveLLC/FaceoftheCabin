@@ -239,29 +239,128 @@ def test_takeover_needs_the_exact_stale_token(tmp_path):
     assert json.loads((store / f"{RUN}.{rs.LEASE}").read_text())["token"] == new
 
 
-def test_only_one_of_two_simultaneous_takeovers_wins(tmp_path):
+def lease_token(store):
+    return json.loads((store / f"{RUN}.{rs.LEASE}").read_text())["token"]
+
+
+def stray_files(store):
+    return sorted(p.name for p in store.iterdir() if p.name.startswith(RUN) and p.name != f"{RUN}.{rs.LEASE}")
+
+
+@pytest.fixture
+def hook(monkeypatch):
+    def install(fn):
+        monkeypatch.setattr(rs, "_in_guard_hook", fn)
+    yield install
+    monkeypatch.setattr(rs, "_in_guard_hook", None)
+
+
+def test_two_takers_paused_after_the_stale_read_cannot_both_win(tmp_path, hook):
+    """Codex 7102640266: A and B both read stale token S; B tries its takeover while A sits between read and write."""
     store = tmp_path / "store"
     stale = rs.acquire_lease(store, RUN, "killed")
-    winner = rs.acquire_lease(store, RUN, "a", take_over_from=stale)
-    with pytest.raises(rs.CommitError):
-        rs.acquire_lease(store, RUN, "b", take_over_from=stale)  # the same stale token, second in line
-    assert json.loads((store / f"{RUN}.{rs.LEASE}").read_text())["token"] == winner
+    competing = []
+
+    def b_tries(kind):
+        if not competing:
+            competing.append("B")
+            with pytest.raises(rs.CommitError, match="guard"):
+                rs.acquire_lease(store, RUN, "B", take_over_from=stale)
+    hook(b_tries)
+    winner = rs.acquire_lease(store, RUN, "A", take_over_from=stale)
+    hook(None)
+    assert competing == ["B"]
+    with pytest.raises(rs.CommitError, match="not token"):
+        rs.acquire_lease(store, RUN, "B", take_over_from=stale)  # B retries after A: S is gone
+    assert lease_token(store) == winner
+    assert stray_files(store) == []
 
 
-def test_release_puts_back_a_lease_that_changed_underneath(tmp_path, monkeypatch):
+def test_a_release_overlapping_a_takeover_cannot_remove_the_new_owner(tmp_path, hook):
+    store = tmp_path / "store"
+    old = rs.acquire_lease(store, RUN, "old")
+    attempts = []
+
+    def old_releases(kind):
+        if kind == "takeover" and not attempts:
+            attempts.append(1)
+            with pytest.raises(rs.CommitError, match="guard"):
+                rs.release_lease(store, RUN, old)
+    hook(old_releases)
+    new = rs.acquire_lease(store, RUN, "new", take_over_from=old)
+    hook(None)
+    assert attempts == [1]
+    assert rs.release_lease(store, RUN, old) is False
+    assert lease_token(store) == new
+    assert stray_files(store) == []
+
+
+def test_a_third_acquisition_during_release_is_refused_and_the_lease_is_untouched(tmp_path, hook):
     store = tmp_path / "store"
     mine = rs.acquire_lease(store, RUN, "mine")
-    path = store / f"{RUN}.{rs.LEASE}"
-    real_rename = rs.os.rename
+    seen = []
 
-    def swap_then_rename(src, dst):
-        if str(dst).endswith(f"release-{mine}"):
-            path.write_text(json.dumps({"run_id": RUN, "token": "other", "label": "x"}))  # taken over in between
-        return real_rename(src, dst)
+    def third(kind):
+        if kind == "release" and not seen:
+            seen.append(1)
+            with pytest.raises(rs.CommitError, match="guard"):
+                rs.acquire_lease(store, RUN, "third")
+            with pytest.raises(rs.CommitError, match="guard"):
+                rs.acquire_lease(store, RUN, "fourth", take_over_from=mine)
+            assert lease_token(store) == mine
+    hook(third)
+    assert rs.release_lease(store, RUN, mine) is True
+    hook(None)
+    assert seen == [1]
+    assert not (store / f"{RUN}.{rs.LEASE}").exists()
+    after = rs.acquire_lease(store, RUN, "third")
+    assert lease_token(store) == after
+    assert stray_files(store) == []
 
-    monkeypatch.setattr(rs.os, "rename", swap_then_rename)
-    assert rs.release_lease(store, RUN, mine) is False
-    assert json.loads(path.read_text())["token"] == "other"
+
+def test_a_stranded_guard_fails_closed_until_cleared_by_nonce(tmp_path):
+    store = tmp_path / "store"
+    token = rs.acquire_lease(store, RUN, "a")
+    guard = store / f"{RUN}.{rs.LEASE}.guard"
+    guard.write_text("deadbeef")  # a process killed inside a transition
+    for attempt in (lambda: rs.acquire_lease(store, RUN, "b"),
+                    lambda: rs.acquire_lease(store, RUN, "b", take_over_from=token),
+                    lambda: rs.release_lease(store, RUN, token)):
+        with pytest.raises(rs.CommitError, match="deadbeef"):
+            attempt()
+    assert lease_token(store) == token
+    with pytest.raises(rs.CommitError):
+        rs.clear_stranded_guard(store, RUN, "wrong")
+    rs.clear_stranded_guard(store, RUN, "deadbeef")
+    assert rs.release_lease(store, RUN, token) is True
+
+
+def _race_takeover(store, stale, label, start, results):
+    import resumable as r
+    start.wait()
+    try:
+        results.put((label, r.acquire_lease(Path(store), RUN, label, take_over_from=stale)))
+    except r.CommitError:
+        results.put((label, None))
+
+
+def test_many_processes_taking_over_at_once_yield_exactly_one_owner(tmp_path):
+    import multiprocessing as mp
+    store = tmp_path / "store"
+    stale = rs.acquire_lease(store, RUN, "killed")
+    ctx = mp.get_context("spawn")
+    start, results = ctx.Event(), ctx.Queue()
+    procs = [ctx.Process(target=_race_takeover, args=(str(store), stale, f"p{i}", start, results)) for i in range(8)]
+    for proc in procs:
+        proc.start()
+    start.set()
+    outcomes = [results.get(timeout=60) for _ in procs]
+    for proc in procs:
+        proc.join(60)
+    winners = [token for _, token in outcomes if token]
+    assert len(winners) == 1, outcomes
+    assert lease_token(store) == winners[0]
+    assert stray_files(store) == []
 
 
 def test_other_runs_are_not_part_of_this_lineage(tmp_path):

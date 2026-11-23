@@ -285,7 +285,11 @@ def run_resumable_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id
         return _run_chunk(build_trainer=build_trainer, trainer_dir=trainer_dir, store=store, run_id=run_id,
                           total_steps=total_steps, chunk_steps=chunk_steps, bindings=bindings, fault=fault)
     finally:
-        rs.release_lease(store, run_id, token)
+        try:
+            if not rs.release_lease(store, run_id, token):
+                print(f"lease {token} was no longer this session's; nothing released")
+        except rs.CommitError as exc:  # guard busy or stranded: fail closed, keep the lease, never mask the outcome
+            print(f"lease {token} not released ({exc}); the next session must take it over by token")
 
 
 def _run_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id: str, total_steps: int, chunk_steps: int,

@@ -260,6 +260,10 @@ def _lease_path(durable_root: Path, run_id: str) -> Path:
     return durable_root / f"{run_id}.{LEASE}"
 
 
+def _guard_path(durable_root: Path, run_id: str) -> Path:
+    return durable_root / f"{run_id}.{LEASE}.guard"
+
+
 def _read_lease(path: Path):
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -267,54 +271,86 @@ def _read_lease(path: Path):
         return None
 
 
-def acquire_lease(durable_root: Path, run_id: str, label: str, take_over_from: str | None = None) -> str:
-    """One active invocation per run. Returns a fresh, invocation-unique token; any existing lease is refused, even one
-    with the same label, because two runtimes can share a directory name.
+# Test hook: called inside the guard after the lease is read, so a test can attempt a competing transition at the
+# exact point a check-then-act race would open. Never set outside tests.
+_in_guard_hook = None
 
-    A lease left by a killed session is taken over only when the caller names that lease's exact TOKEN
-    (TAKE_OVER_FROM), a deliberate act after checking the session is gone; never automatic. The takeover renames the
-    stale lease aside first, which only one caller can do, and then creates the new lease exclusively, so two
-    simultaneous takeovers cannot both win."""
+
+class _TransitionGuard:
+    """One exclusive guard shared by acquire, takeover and release (Codex 7102640266). Every ownership read and
+    mutation happens while holding it, so there is no check-then-act window. It is created exclusively; if it already
+    exists, another transition is in progress or a killed process stranded it, and the caller fails closed. A stranded
+    guard is cleared only by clear_stranded_guard(), naming its nonce, after the person confirms no session is running.
+    This is a local-filesystem guarantee; whether a Drive mount honours exclusive create across runtimes is a slice B
+    qualification question, not claimed here."""
+
+    def __init__(self, durable_root: Path, run_id: str):
+        self.path = _guard_path(durable_root, run_id)
+        self.nonce = uuid.uuid4().hex
+
+    def __enter__(self):
+        try:
+            with open(self.path, "x", encoding="utf-8") as handle:
+                handle.write(self.nonce)
+        except FileExistsError:
+            try:
+                held = self.path.read_text(encoding="utf-8")
+            except OSError:
+                held = "?"
+            raise CommitError(f"lease transition guard {self.path.name} is held (nonce {held}): another acquire, "
+                              "takeover or release is in progress, or a killed process left it. Nothing was changed. "
+                              "If no session is running, clear it with clear_stranded_guard naming that nonce.")
+        return self
+
+    def __exit__(self, *exc):
+        if self.path.read_text(encoding="utf-8") == self.nonce:
+            self.path.unlink()
+        return False
+
+
+def clear_stranded_guard(durable_root: Path, run_id: str, nonce: str) -> None:
+    """Explicit, quiescent recovery of a guard left by a killed process. Refuses unless NONCE is the guard's."""
+    path = _guard_path(durable_root, run_id)
+    if not path.exists() or path.read_text(encoding="utf-8") != nonce:
+        raise CommitError(f"no stranded guard with nonce {nonce!r} for run {run_id}")
+    path.unlink()
+
+
+def acquire_lease(durable_root: Path, run_id: str, label: str, take_over_from: str | None = None) -> str:
+    """One active invocation per run. Returns a fresh, invocation-unique token. Any existing lease is refused, even one
+    with the same label, because two runtimes can share a directory name. A lease left by a killed session is taken
+    over only when the caller names its exact token (TAKE_OVER_FROM), a deliberate act after checking the session is
+    gone; never automatic. Both paths run entirely inside the transition guard."""
     durable_root.mkdir(parents=True, exist_ok=True)
     path = _lease_path(durable_root, run_id)
     token = uuid.uuid4().hex
     record = json.dumps({"run_id": run_id, "token": token, "label": label})
-    if take_over_from is not None:
+    with _TransitionGuard(durable_root, run_id):
         held = _read_lease(path)
-        if held is None or held.get("token") != take_over_from:
-            raise CommitError(f"run {run_id}: no lease with token {take_over_from!r} to take over "
-                              f"(current: {held and held.get('token')!r})")
-        try:
-            os.rename(path, path.with_name(f"{path.name}.stale-{take_over_from}"))
-        except OSError as exc:
-            raise CommitError(f"run {run_id}: another session took over lease {take_over_from} first") from exc
-    try:
-        with open(path, "x", encoding="utf-8") as handle:
-            handle.write(record)
-    except FileExistsError:
-        held = _read_lease(path) or {}
-        raise CommitError(f"run {run_id} is leased by token {held.get('token')!r} (label {held.get('label')!r}); "
-                          "refusing a second writer. If that session is gone, take over by naming that token.")
+        if _in_guard_hook:
+            _in_guard_hook("acquire" if take_over_from is None else "takeover")
+        if take_over_from is None:
+            if held is not None:
+                raise CommitError(f"run {run_id} is leased by token {held.get('token')!r} (label "
+                                  f"{held.get('label')!r}); refusing a second writer. If that session is gone, take "
+                                  "over by naming that token.")
+        elif held is None or held.get("token") != take_over_from:
+            raise CommitError(f"run {run_id}: the current lease is not token {take_over_from!r} "
+                              f"(current: {held and held.get('token')!r}); nothing taken over")
+        tmp = path.with_name(f"{path.name}.{token}.tmp")
+        tmp.write_text(record, encoding="utf-8")
+        os.replace(tmp, path)
     return token
 
 
 def release_lease(durable_root: Path, run_id: str, token: str) -> bool:
-    """Removes the lease only if it is still this invocation's. It is moved aside first and checked, so a lease that
-    another session took over in the meantime is put back, never deleted."""
+    """Removes the lease only if it is still this invocation's, checked and removed inside the transition guard."""
     path = _lease_path(durable_root, run_id)
-    held = _read_lease(path)
-    if held is None or held.get("token") != token:
-        return False
-    aside = path.with_name(f"{path.name}.release-{token}")
-    try:
-        os.rename(path, aside)
-    except OSError:
-        return False
-    if (_read_lease(aside) or {}).get("token") == token:
-        aside.unlink()
+    with _TransitionGuard(durable_root, run_id):
+        held = _read_lease(path)
+        if _in_guard_hook:
+            _in_guard_hook("release")
+        if held is None or held.get("token") != token:
+            return False
+        path.unlink()
         return True
-    try:
-        os.rename(aside, path)  # not ours after all: restore it
-    except OSError:
-        pass
-    return False
