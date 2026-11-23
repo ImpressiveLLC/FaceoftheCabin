@@ -38,11 +38,23 @@ TrainingArguments plus the pins and counts it checked); after training RUN_DIR/l
 history, also written if training fails). Every file is created exclusively and never replaced; paths inside RUN_DIR
 are recorded as RUN_DIR/..., and the model load dtype is recorded. `--max-steps N` caps the run (default: unset, so
 num_train_epochs applies). Hyperparameters, mask, template, seed and dtype are unchanged.
+
+CHANGED 2026-11-23 (Colab slice A; Codex design r1 7097565930, Cowork 7098353203): an opt-in resumable mode. With
+`--resume-store DIR --run-id ID --total-steps T --chunk-steps N --environment-id E`, one invocation trains one chunk:
+it resumes from the newest verified chunk in DIR (resumable.py), keeps ONE fixed optimizer-step budget and LR schedule
+across chunks (max_steps=T every time, never N), stops at the planned global-step boundary after the Trainer has saved
+a full checkpoint (adapter, optimizer, scheduler, RNG, trainer state, scaler), and commits that checkpoint to DIR with
+a verified manifest and a completion marker written last. Without those flags nothing changes. The model path stays
+NOT_RUN on a real base model; slice A proves the mechanics on a tiny random model only (resume_harness.py).
 """
 import argparse
 import hashlib
 import json
 from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+LOCK_PATH = HERE / "requirements.lock"
+CODE_FILES = ("train_sft.py", "resumable.py", "sft_tokenize.py")
 
 DATA_PATH = Path(__file__).parent / "data" / "sft_dataset.jsonl"
 BASE_MODEL = "unsloth/Llama-3.2-3B-Instruct"  # NOT proven equal to the llama3.2:3b Ollama weights; see pins below
@@ -156,9 +168,26 @@ def parse_args(argv=None):
     parser.add_argument("--run-dir", type=Path, default=None,
                         help="existing run directory with no earlier trainer output (made by run_capture.py); required unless --check-only")
     parser.add_argument("--max-steps", type=int, default=None, help="cap the number of optimizer steps (default: unset)")
+    resume = parser.add_argument_group("resumable chunks (opt-in; all five together)")
+    resume.add_argument("--resume-store", type=Path, default=None, help="durable chunk store (resumable.py)")
+    resume.add_argument("--run-id", default=None, help="lineage id; every chunk of one training run shares it")
+    resume.add_argument("--total-steps", type=int, default=None, help="the fixed optimizer-step budget of the whole run")
+    resume.add_argument("--chunk-steps", type=int, default=None, help="optimizer updates in this invocation")
+    resume.add_argument("--environment-id", default=None,
+                        help="the recorded environment (slice B's recorder); a different one is a different lineage")
+    resume.add_argument("--take-over-lease", default=None, metavar="TOKEN",
+                        help="take over a lease left by a killed session, naming its token exactly (check it is gone first)")
     args = parser.parse_args(argv)
     if args.max_steps is not None and args.max_steps < 1:
         parser.error("--max-steps must be at least 1")
+    resume_flags = [args.resume_store, args.run_id, args.total_steps, args.chunk_steps, args.environment_id]
+    if any(flag is not None for flag in resume_flags):
+        if any(flag is None for flag in resume_flags):
+            parser.error("resumable mode needs --resume-store, --run-id, --total-steps, --chunk-steps and --environment-id together")
+        if args.max_steps is not None:
+            parser.error("--max-steps does not apply in resumable mode; --total-steps is the whole run's budget")
+        if args.total_steps < 1 or args.chunk_steps < 1:
+            parser.error("--total-steps and --chunk-steps must be at least 1")
     if not args.check_only and args.run_dir is None:
         parser.error("a real run needs --run-dir (an existing run directory); use --check-only for a dry check")
     return args
@@ -204,6 +233,92 @@ def training_args_kwargs(trainer_dir: Path, seed: int, use_gpu: bool, max_steps=
     if max_steps is not None:
         kwargs["max_steps"] = max_steps
     return kwargs
+
+
+def code_sha256(files=CODE_FILES) -> str:
+    """One hash over the training code a chunk ran, so a chunk can only resume under the same code."""
+    digest = hashlib.sha256()
+    for name in files:
+        digest.update(name.encode() + b"\0" + hashlib.sha256((HERE / name).read_bytes()).digest())
+    return digest.hexdigest()
+
+
+def invariant_args_sha256(seed: int, use_gpu: bool, total_steps: int) -> str:
+    """A hash of the TrainingArguments every chunk of a run must share (everything but the output directory)."""
+    kwargs = training_args_kwargs(Path("RUN_DIR/trainer"), seed, use_gpu, total_steps)
+    kwargs.pop("output_dir")
+    return hashlib.sha256(json.dumps(kwargs, sort_keys=True).encode()).hexdigest()
+
+
+def run_bindings(*, base_revision, data_sha256, environment_id, total_steps, seed, use_gpu, lock_sha256=None) -> dict:
+    return {"base_revision": base_revision, "code_sha256": code_sha256(),
+            "lock_sha256": lock_sha256 or hashlib.sha256(LOCK_PATH.read_bytes()).hexdigest(),
+            "data_sha256": data_sha256, "environment_id": environment_id, "total_steps": total_steps, "seed": seed,
+            "training_args_sha256": invariant_args_sha256(seed, use_gpu, total_steps), "fp16": bool(use_gpu)}
+
+
+def chunk_stopper(TrainerCallback, stop_at: int):
+    """A callback that saves a full checkpoint and stops at global step STOP_AT. Steps are optimizer updates, so a
+    chunk never ends partway through gradient accumulation."""
+
+    class ChunkStop(TrainerCallback):
+        def on_step_end(self, args, state, control, **kwargs):
+            if state.global_step >= stop_at:
+                control.should_save = True
+                control.should_training_stop = True
+            return control
+
+    return ChunkStop()
+
+
+def run_resumable_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id: str, owner: str, total_steps: int,
+                        chunk_steps: int, bindings: dict, fault=None, take_over_from=None) -> dict:
+    """See _run_chunk. Holds the run's lease only while this chunk runs; it is released when the chunk ends, whether it
+    committed or failed, so the next session's chunk can start. A process killed outright leaves the lease, and the
+    next session must name it (--take-over-lease) to proceed."""
+    import resumable as rs
+    if bindings.get("total_steps") != total_steps:
+        raise SystemExit(f"--total-steps {total_steps} differs from the bound budget {bindings.get('total_steps')}")
+    token = rs.acquire_lease(store, run_id, owner, take_over_from=take_over_from)
+    print(f"lease token {token} (name it with --take-over-lease only if this session is killed and gone)")
+    try:
+        return _run_chunk(build_trainer=build_trainer, trainer_dir=trainer_dir, store=store, run_id=run_id,
+                          total_steps=total_steps, chunk_steps=chunk_steps, bindings=bindings, fault=fault)
+    finally:
+        try:
+            if not rs.release_lease(store, run_id, token):
+                print(f"lease {token} was no longer this session's; nothing released")
+        except rs.CommitError as exc:  # guard busy or stranded: fail closed, keep the lease, never mask the outcome
+            print(f"lease {token} not released ({exc}); the next session must take it over by token")
+
+
+def _run_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id: str, total_steps: int, chunk_steps: int,
+               bindings: dict, fault=None) -> dict:
+    """Trains one chunk and commits it. BUILD_TRAINER(max_steps, callbacks) returns a Trainer; it is called with the
+    fixed whole-run budget, so the LR schedule is the same in every chunk. Returns the committed manifest, or the
+    newest verified one when the run was already complete."""
+    import resumable as rs
+    from transformers import TrainerCallback
+
+    latest = rs.latest_verified(store, run_id, bindings)
+    if latest and latest["manifest"]["run_complete"]:
+        print(f"run {run_id} is already complete at step {latest['manifest']['global_step']}; nothing to train")
+        return latest["manifest"]
+    start = latest["manifest"]["global_step"] if latest else 0
+    stop_at = min(start + chunk_steps, total_steps)
+    resume_from = None
+    if latest:
+        resume_from = rs.restore(latest, trainer_dir / f"checkpoint-{start}")
+    trainer = build_trainer(total_steps, [chunk_stopper(TrainerCallback, stop_at)])
+    trainer.train(resume_from_checkpoint=str(resume_from) if resume_from else None)
+    if trainer.state.global_step != stop_at:
+        raise SystemExit(f"chunk stopped at step {trainer.state.global_step}, planned {stop_at}; nothing committed")
+    checkpoint = trainer_dir / f"checkpoint-{stop_at}"
+    manifest = rs.commit(checkpoint, store, run_id=run_id, global_step=stop_at, total_steps=total_steps,
+                         optimizer_updates=trainer.state.global_step, skipped_updates=None, bindings=bindings,
+                         cursor={"epoch": trainer.state.epoch, "resumed_from_step": start}, fault=fault)
+    print(f"committed {manifest['chunk_id']} ({'run complete' if manifest['run_complete'] else 'partial'})")
+    return manifest
 
 
 def write_new(path: Path, text: str) -> None:
@@ -276,6 +391,40 @@ def main(argv=None):
     def collate(batch):
         padded = st.collate(batch, pad_id)
         return {key: torch.tensor(value) for key, value in padded.items()}
+
+    if args.resume_store is not None:
+        bindings = run_bindings(base_revision=BASE_REVISION, data_sha256=dataset_sha256,
+                                environment_id=args.environment_id, total_steps=args.total_steps, seed=args.seed,
+                                use_gpu=use_gpu)
+        built = {}
+
+        def build_trainer(max_steps, callbacks):
+            built["trainer"] = Trainer(model=model, train_dataset=tokenized, data_collator=collate, callbacks=callbacks,
+                                       args=TrainingArguments(**training_args_kwargs(trainer_dir, args.seed, use_gpu,
+                                                                                     max_steps)))
+            resolved = {key: run_relative(value, args.run_dir) for key, value in built["trainer"].args.to_dict().items()}
+            write_resolved_args(args.run_dir, resolved, {
+                "seed": args.seed, "mode": "resumable_chunk", "run_id": args.run_id, "total_steps": args.total_steps,
+                "chunk_steps": args.chunk_steps, "bindings": bindings, "base_model": BASE_MODEL,
+                "base_revision": BASE_REVISION, "tokenizer_sha256": TOKENIZER_SHA256, "model_load_dtype": str(dtype),
+                "dataset_name": args.data.name, "dataset_sha256": dataset_sha256, "examples": len(tokenized),
+                "tokens": total, "trainable_tokens": trained, "use_gpu": use_gpu})
+            check_dataset_unchanged(args.data, dataset_sha256)
+            return built["trainer"]
+
+        try:
+            manifest = run_resumable_chunk(build_trainer=build_trainer, trainer_dir=trainer_dir, store=args.resume_store,
+                                           run_id=args.run_id, owner=args.run_dir.name, total_steps=args.total_steps,
+                                           chunk_steps=args.chunk_steps, bindings=bindings,
+                                           take_over_from=args.take_over_lease)
+        finally:
+            if "trainer" in built:
+                write_loss(args.run_dir, built["trainer"].state.log_history)
+        if manifest.get("run_complete") and "trainer" in built:
+            model.save_pretrained(str(adapter_dir))
+            tokenizer.save(str(adapter_dir / "tokenizer.json"))
+            print(f"Run complete; final adapter saved to {adapter_dir}")
+        return
 
     trainer = Trainer(
         model=model,
