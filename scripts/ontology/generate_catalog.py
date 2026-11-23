@@ -187,9 +187,12 @@ def render(catalog):
 
 
 def generate(root=ROOT):
-    java_text = DEVICE_TYPE_JAVA.read_bytes().decode("utf-8").replace("\r\n", "\n")
+    """Builds the catalog from the inputs under ROOT (the repository by default; tests pass a copy)."""
+    root = Path(root)
+    java = root / DEVICE_TYPE_JAVA.relative_to(ROOT)
+    java_text = java.read_bytes().decode("utf-8").replace("\r\n", "\n")
     # Hash LF-normalised bytes so a Windows (CRLF) checkout and a Linux checkout agree.
-    return build(java_text, lf_bytes(ONTOLOGY), lf_bytes(SEED))
+    return build(java_text, lf_bytes(root / ONTOLOGY.relative_to(ROOT)), lf_bytes(root / SEED.relative_to(ROOT)))
 
 
 def safety_violations(old, new):

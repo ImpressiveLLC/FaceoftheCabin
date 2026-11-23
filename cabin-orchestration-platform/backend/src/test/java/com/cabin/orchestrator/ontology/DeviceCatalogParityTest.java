@@ -48,6 +48,29 @@ class DeviceCatalogParityTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
+    /**
+     * Set to "true" by the ontology-catalog-gate workflow, where the docs and sources are always checked out: a missing
+     * input there is a broken gate and must FAIL, not skip (Cowork 7075465576 item c). Elsewhere (for example a backend
+     * image build whose context holds only the backend) a missing input still skips, as before.
+     */
+    static final String REQUIRE_INPUTS_ENV = "REQUIRE_ONTOLOGY_DOCS";
+
+    /** Reads the environment; replaceable in tests so both branches can be proven. */
+    static java.util.function.Supplier<String> envReader = () -> System.getenv(REQUIRE_INPUTS_ENV);
+
+    static boolean inputsRequired() {
+        return "true".equalsIgnoreCase(envReader.get());
+    }
+
+    /** Fails when {@link #inputsRequired()}, otherwise skips, when {@code present} is false. */
+    static void requirePresent(boolean present, String message) {
+        if (inputsRequired()) {
+            assertTrue(present, message + " (" + REQUIRE_INPUTS_ENV + "=true: the gate must not skip)");
+        } else {
+            assumeTrue(present, message);
+        }
+    }
+
     private static Path findUp(String... parts) {
         Path cursor = Path.of("").toAbsolutePath();
         while (cursor != null) {
@@ -61,7 +84,7 @@ class DeviceCatalogParityTest {
 
     private static JsonNode catalog() throws Exception {
         Path path = findUp("docs", "ontology", "device-catalog.json");
-        assumeTrue(path != null, "docs/ontology/device-catalog.json not present next to the backend");
+        requirePresent(path != null, "docs/ontology/device-catalog.json not present next to the backend");
         return JSON.readTree(Files.readAllBytes(path));
     }
 
@@ -165,7 +188,7 @@ class DeviceCatalogParityTest {
     void checkinWindowsEqualDeviceHealthMonitor() throws Exception {
         Path source = findUp("cabin-orchestration-platform", "backend", "src", "main", "java", "com", "cabin", "orchestrator", "devices", "DeviceHealthMonitor.java");
         if (source == null) source = Path.of("src/main/java/com/cabin/orchestrator/devices/DeviceHealthMonitor.java");
-        assumeTrue(Files.isRegularFile(source), "DeviceHealthMonitor.java not found");
+        requirePresent(Files.isRegularFile(source), "DeviceHealthMonitor.java not found");
         String text = Files.readString(source);
         int zigbee = durationMinutes(text, "STALE_ZIGBEE");
         int battery = durationMinutes(text, "STALE_ZIGBEE_BATTERY");
@@ -199,7 +222,7 @@ class DeviceCatalogParityTest {
     @SuppressWarnings("unchecked")
     private static Map<String, Set<String>> ontologyReferences() throws Exception {
         Path ontology = findUp("docs", "ontology.yaml");
-        assumeTrue(ontology != null, "docs/ontology.yaml not present next to the backend");
+        requirePresent(ontology != null, "docs/ontology.yaml not present next to the backend");
         Map<String, Set<String>> refs = new TreeMap<>();
         try (InputStream input = Files.newInputStream(ontology)) {
             Map<String, Object> root = new Yaml().load(input);
@@ -238,7 +261,7 @@ class DeviceCatalogParityTest {
         Path module = Path.of("src/main/java/com/cabin/orchestrator");
         if (Files.isDirectory(module)) return module;
         Path found = findUp("cabin-orchestration-platform", "backend", "src", "main", "java", "com", "cabin", "orchestrator", "devices", "model", "DeviceType.java");
-        assumeTrue(found != null, "backend source root not found");
+        requirePresent(found != null, "backend source root not found");
         return found.getParent().getParent().getParent();
     }
 

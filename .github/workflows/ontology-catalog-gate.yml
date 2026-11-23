@@ -71,6 +71,8 @@ jobs:
           exit $rc
       - name: Java parity tests (enum, ontology, catalog, inferType fixtures)
         working-directory: cabin-orchestration-platform/backend
+        env:
+          REQUIRE_ONTOLOGY_DOCS: "true"  # a missing docs or source input fails here instead of skipping
         run: |
           set +e
           mvn -B -ntp -Dtest='DeviceCatalogParityTest,DeviceTypeOntologyParityTest' test 2>&1 | tee "$RUNNER_TEMP/mvn.txt"
