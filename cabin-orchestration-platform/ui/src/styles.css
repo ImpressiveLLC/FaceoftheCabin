@@ -215,6 +215,7 @@ body {
   margin-bottom: 20px;
 }
 .kpi-tile {
+  min-height: 132px; /* a value flipping between a number and a wording line must not change the row height */
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius);

@@ -8387,6 +8387,27 @@ export function keepIfSame(prev, next) {
   try { return JSON.stringify(prev) === JSON.stringify(next) ? prev : next; } catch { return next; }
 }
 
+// Device polls change only `lastSeen` on most polls (a Home Assistant row's lastSeen is the poll time), and a new
+// array re-renders and re-lays-out every tile on the page. Treat two lists as the same when nothing but `lastSeen`
+// moved by less than `slackMs`; a real reading or state change, or a lastSeen gap of 5 minutes or more, still replaces it.
+export function keepIfSameDevices(prev, next, slackMs = 5 * 60 * 1000) {
+  try {
+    if (!Array.isArray(prev) || !Array.isArray(next) || prev.length !== next.length) return next;
+    for (let i = 0; i < next.length; i++) {
+      const a = prev[i], b = next[i];
+      if (a === b) continue;
+      const { lastSeen: la, ...ra } = a || {};
+      const { lastSeen: lb, ...rb } = b || {};
+      if (JSON.stringify(ra) !== JSON.stringify(rb)) return next;
+      if (la !== lb) {
+        const ta = Date.parse(la), tb = Date.parse(lb);
+        if (!Number.isFinite(ta) || !Number.isFinite(tb) || Math.abs(tb - ta) >= slackMs) return next;
+      }
+    }
+    return prev;
+  } catch { return next; }
+}
+
 export function keepForFreeing(targets, wantGb) {
   const max = Math.max(1, ...(targets || []).map(t => (t.snapshots || []).length));
   const freedGbAt = (n) => {
@@ -10520,7 +10541,7 @@ export function App({ demoToken = null } = {}) { // exported for src/DemoAccess.
       const succeeded = results.filter(r => r.status === "fulfilled");
       // Every fetch failing (a blip during a toggle, a restart) must not wipe the list: that unmounted every
       // row and sent the person back to the top. Keep the last good data; apiError below says it is stale.
-      if (succeeded.length > 0) { const next = succeeded.map(r => r.value).flat(); setDevices(prev => keepIfSame(prev, next)); }
+      if (succeeded.length > 0) { const next = succeeded.map(r => r.value).flat(); setDevices(prev => keepIfSameDevices(prev, next)); }
 
       const relevant = attempts
         .map((a, i) => ({ loc: a.loc, result: results[i] }))
