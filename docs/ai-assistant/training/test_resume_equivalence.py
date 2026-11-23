@@ -185,3 +185,24 @@ def test_a_run_without_a_measured_size_is_refused_before_training(tmp_path):
     done = chunk(tmp_path / "s", "unsized", tmp_path / "u1", TOTAL, FIRST, check=False, sized=False)
     assert done.returncode != 0 and "NOT_MEASURED" in done.stderr
     assert not list((tmp_path / "u1" / "trainer").glob("checkpoint-*")), "it trained before refusing"
+
+
+def test_the_qualification_gate_passes_the_real_runs_from_the_stores_alone(runs):
+    """The notebook's compare step on real harness stores: no run directory is read, only the durable stores."""
+    import qualification as q
+    tmp = runs[0]
+    verdict = q.compare(tmp / "store-whole", "whole", tmp / "store-chunked", "chunked")
+    assert verdict["result"] == "PASS", verdict["problems"]
+    _, whole, _, second = runs
+    trace_w = whole["manifest"]["evidence"]["input_trace"]
+    trace_c = second["manifest"]["evidence"]["input_trace"]
+    assert trace_w["sha256_chain"] == trace_c["sha256_chain"] and trace_w["micro_batches_total"] == 4 * TOTAL
+
+
+def test_the_qualification_gate_fails_a_run_that_lost_its_rng_state(tmp_path):
+    import qualification as q
+    chunk(tmp_path / "sw", "w", tmp_path / "w1", TOTAL, TOTAL, "--dropout", "0.3")
+    chunk(tmp_path / "sm", "m", tmp_path / "m1", TOTAL, FIRST, "--dropout", "0.3")
+    chunk(tmp_path / "sm", "m", tmp_path / "m2", TOTAL, TOTAL - FIRST, "--dropout", "0.3", "--drop-rng-on-restore")
+    verdict = q.compare(tmp_path / "sw", "w", tmp_path / "sm", "m")
+    assert verdict["result"] == "FAIL", verdict

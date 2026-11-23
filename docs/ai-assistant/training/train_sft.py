@@ -175,6 +175,8 @@ def parse_args(argv=None):
     resume.add_argument("--chunk-steps", type=int, default=None, help="optimizer updates in this invocation")
     resume.add_argument("--environment-id", default=None,
                         help="the recorded environment (slice B's recorder); a different one is a different lineage")
+    resume.add_argument("--lock", type=Path, default=LOCK_PATH,
+                        help="the lock this runtime was installed from (the Colab GPU path: requirements-colab-cuda.lock)")
     resume.add_argument("--checkpoint-size-record", type=Path, default=None,
                         help="qualification.py sizing-record output: a MEASURED checkpoint size from the sizing run")
     resume.add_argument("--sizing-run", action="store_true",
@@ -262,9 +264,12 @@ def invariant_args_sha256(seed: int, use_gpu: bool, total_steps: int) -> str:
     return hashlib.sha256(json.dumps(kwargs, sort_keys=True).encode()).hexdigest()
 
 
-def run_bindings(*, base_revision, data_sha256, environment_id, total_steps, seed, use_gpu, lock_sha256=None) -> dict:
+def run_bindings(*, base_revision, data_sha256, environment_id, total_steps, seed, use_gpu, lock_sha256=None,
+                 lock_path: Path = LOCK_PATH) -> dict:
+    """LOCK_PATH is the lock this run was installed from: requirements.lock by default, requirements-colab-cuda.lock
+    on the Colab GPU path (--lock). The same file is hashed here and checked by colab_env."""
     return {"base_revision": base_revision, "code_sha256": code_sha256(),
-            "lock_sha256": lock_sha256 or hashlib.sha256(LOCK_PATH.read_bytes()).hexdigest(),
+            "lock_sha256": lock_sha256 or hashlib.sha256(Path(lock_path).read_bytes()).hexdigest(),
             "data_sha256": data_sha256, "environment_id": environment_id, "total_steps": total_steps, "seed": seed,
             "training_args_sha256": invariant_args_sha256(seed, use_gpu, total_steps), "fp16": bool(use_gpu)}
 
@@ -273,8 +278,10 @@ def _load_json(path):
     return None if path is None else json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def load_environment_record(path, environment_id):
-    """The recorder's JSON, refused unless its own id matches --environment-id. None when no record is given."""
+def load_environment_record(path, environment_id, fresh=None):
+    """The recorder's JSON, refused unless its own id matches --environment-id and, when FRESH (a record taken in this
+    training process) is given, unless this process is that same environment: an old record from another runtime is
+    refused. None when no record is given."""
     if path is None:
         return None
     import colab_env
@@ -282,6 +289,9 @@ def load_environment_record(path, environment_id):
     computed = colab_env.environment_id(record)
     if computed != environment_id:
         raise SystemExit(f"--environment-record hashes to {computed}, not --environment-id {environment_id}")
+    if fresh is not None and fresh["environment_id"] != computed:
+        raise SystemExit(f"this training process is environment {fresh['environment_id']}, the record is {computed}: "
+                         "a stale or foreign record; record this runtime again")
     return record
 
 
@@ -305,6 +315,25 @@ def amp_skip_counter(TrainerCallback):
     return AmpSkipCounter()
 
 
+def input_tracer(start_chain: str = "", start_count: int = 0):
+    """Records every micro-batch the model actually trains on, as a hash chain over input ids, labels and attention
+    mask in order (a forward pre-hook sees only trained batches; a DataLoader prefetch never reaches it). The chain
+    continues across chunks from the previous chunk's value, so an uninterrupted run and a chunked one end with the
+    same chain exactly when they trained the same batches in the same order."""
+    state = {"chain": start_chain, "count": start_count, "this_chunk": 0}
+
+    def hook(module, args, kwargs):
+        if not module.training or "input_ids" not in kwargs:
+            return
+        item = json.dumps([kwargs[k].tolist() if k in kwargs and kwargs[k] is not None else None
+                           for k in ("input_ids", "labels", "attention_mask")])
+        state["chain"] = hashlib.sha256((state["chain"] + hashlib.sha256(item.encode()).hexdigest()).encode()).hexdigest()
+        state["count"] += 1
+        state["this_chunk"] += 1
+
+    return state, hook
+
+
 def chunk_stopper(TrainerCallback, stop_at: int):
     """A callback that saves a full checkpoint and stops at global step STOP_AT. Steps are optimizer updates, so a
     chunk never ends partway through gradient accumulation."""
@@ -322,7 +351,7 @@ def chunk_stopper(TrainerCallback, stop_at: int):
 def run_resumable_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id: str, owner: str, total_steps: int,
                         chunk_steps: int, bindings: dict, fault=None, take_over_from=None, sizing=None,
                         sizing_run: bool = False, free_bytes=None, remote_quota=None,
-                        environment: dict | None = None) -> dict:
+                        environment: dict | None = None, runtime_check=None) -> dict:
     """See _run_chunk. Holds the run's lease only while this chunk runs; it is released when the chunk ends, whether it
     committed or failed, so the next session's chunk can start. A process killed outright leaves the lease, and the
     next session must name it (--take-over-lease) to proceed."""
@@ -335,7 +364,7 @@ def run_resumable_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id
         return _run_chunk(build_trainer=build_trainer, trainer_dir=trainer_dir, store=store, run_id=run_id,
                           total_steps=total_steps, chunk_steps=chunk_steps, bindings=bindings, fault=fault,
                           sizing=sizing, sizing_run=sizing_run, free_bytes=free_bytes, remote_quota=remote_quota,
-                          environment=environment)
+                          environment=environment, runtime_check=runtime_check)
     finally:
         try:
             if not rs.release_lease(store, run_id, token):
@@ -346,7 +375,7 @@ def run_resumable_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id
 
 def _run_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id: str, total_steps: int, chunk_steps: int,
                bindings: dict, fault=None, sizing=None, sizing_run=False, free_bytes=None, remote_quota=None,
-               environment=None) -> dict:
+               environment=None, runtime_check=None) -> dict:
     """Trains one chunk and commits it. BUILD_TRAINER(max_steps, callbacks) returns a Trainer; it is called with the
     fixed whole-run budget, so the LR schedule is the same in every chunk. Returns the committed manifest, or the
     newest verified one when the run was already complete."""
@@ -369,7 +398,14 @@ def _run_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id: str, to
         resume_from = rs.restore(latest, trainer_dir / f"checkpoint-{start}")
     counter = amp_skip_counter(TrainerCallback)
     trainer = build_trainer(total_steps, [chunk_stopper(TrainerCallback, stop_at), counter])
-    trainer.train(resume_from_checkpoint=str(resume_from) if resume_from else None)
+    runtime = runtime_check(trainer) if runtime_check else None
+    previous_trace = (latest["manifest"].get("evidence", {}).get("input_trace") or {}) if latest else {}
+    trace, hook = input_tracer(previous_trace.get("sha256_chain", ""), previous_trace.get("micro_batches_total", 0))
+    handle = trainer.model.register_forward_pre_hook(hook, with_kwargs=True)
+    try:
+        trainer.train(resume_from_checkpoint=str(resume_from) if resume_from else None)
+    finally:
+        handle.remove()
     if trainer.state.global_step != stop_at:
         raise SystemExit(f"chunk stopped at step {trainer.state.global_step}, planned {stop_at}; nothing committed")
     checkpoint = trainer_dir / f"checkpoint-{stop_at}"
@@ -380,6 +416,10 @@ def _run_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id: str, to
     evidence = {"storage_preflight": storage, "amp": {"fp16": bool(bindings.get("fp16")), "bf16": False,
                                                       "skipped_this_chunk": counter.skipped,
                                                       "optimizer_steps_this_chunk": counter.observed}}
+    evidence["input_trace"] = {"sha256_chain": trace["chain"], "micro_batches_total": trace["count"],
+                               "micro_batches_this_chunk": trace["this_chunk"]}
+    if runtime is not None:
+        evidence["runtime_observed"] = runtime
     if environment is not None:
         evidence["environment"] = environment
     manifest = rs.commit(checkpoint, store, run_id=run_id, global_step=stop_at, total_steps=total_steps,
@@ -421,6 +461,10 @@ def main(argv=None):
         return
     adapter_dir, trainer_dir = prepare_run_dir(args.run_dir)
 
+    if args.resume_store is not None:
+        import os
+        # Must be set before the first CUDA call (colab_env.apply_policy repeats it after import).
+        os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     modules = load_training_modules()
     torch = modules["torch"]
     LoraConfig, get_peft_model = modules["LoraConfig"], modules["get_peft_model"]
@@ -442,7 +486,12 @@ def main(argv=None):
     # earlier this session), so fp32 is the safer first-run choice.
     dtype = torch.float32 if not use_gpu else torch.float16
 
-    model = AutoModelForCausalLM.from_pretrained(BASE_MODEL, revision=BASE_REVISION, torch_dtype=dtype)
+    load_kwargs = {}
+    if args.resume_store is not None:
+        import colab_env
+        colab_env.apply_policy(torch)
+        load_kwargs["attn_implementation"] = colab_env.REQUESTED_POLICY["attn_implementation"]
+    model = AutoModelForCausalLM.from_pretrained(BASE_MODEL, revision=BASE_REVISION, torch_dtype=dtype, **load_kwargs)
     model = get_peft_model(
         model,
         LoraConfig(
@@ -464,7 +513,18 @@ def main(argv=None):
     if args.resume_store is not None:
         bindings = run_bindings(base_revision=BASE_REVISION, data_sha256=dataset_sha256,
                                 environment_id=args.environment_id, total_steps=args.total_steps, seed=args.seed,
-                                use_gpu=use_gpu)
+                                use_gpu=use_gpu, lock_path=args.lock)
+        import colab_env
+        fresh = colab_env.record(torch=torch, lock_path=args.lock) if args.environment_record else None
+        environment = load_environment_record(args.environment_record, args.environment_id, fresh=fresh)
+
+        def runtime_check(trainer):
+            observed = colab_env.observed_runtime(torch, trainer.model, trainer.args)
+            problems = colab_env.policy_problems(observed) if use_gpu else []
+            if problems:
+                raise SystemExit("runtime settings differ from the requested policy: " + "; ".join(problems))
+            return {"requested": colab_env.REQUESTED_POLICY, "observed": observed,
+                    "enforced": use_gpu, "note": None if use_gpu else "CPU run: recorded, not enforced"}
         built = {}
 
         def build_trainer(max_steps, callbacks):
@@ -489,8 +549,7 @@ def main(argv=None):
                                            sizing=_load_json(args.checkpoint_size_record),
                                            sizing_run=args.sizing_run,
                                            remote_quota=_load_json(args.remote_quota_record),
-                                           environment=load_environment_record(args.environment_record,
-                                                                               args.environment_id))
+                                           environment=environment, runtime_check=runtime_check)
         finally:
             if "trainer" in built:
                 write_loss(args.run_dir, built["trainer"].state.log_history)
