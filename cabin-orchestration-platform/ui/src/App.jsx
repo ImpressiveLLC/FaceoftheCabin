@@ -5087,7 +5087,7 @@ export const DmDeviceRow = forwardRef(function DmDeviceRow(
       <Icon size={16} className="dm-row-icon"/>
       <div className="dm-row-info">
         <span className="dm-row-name">{device.name}</span>
-        <span className="dm-row-meta">
+        <span className="dm-row-meta" title={`${device.attributes?.area ? device.attributes.area + " · " : ""}${device.type} · ${device.location}`}>
           {device.attributes?.area && <span className="dm-row-area">{device.attributes.area}</span>}
           {device.type} · {device.location}{isZ2m ? " · zigbee" : ""}
         </span>
