@@ -27,10 +27,12 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["type", "change", "reason"],
+        "required": ["type", "change", "from", "to", "reason"],
         "properties": {
           "type": {"$ref": "#/$defs/typeName"},
-          "change": {"enum": ["removed", "category", "checkin"]},
+          "change": {"enum": ["removed", "category", "checkin", "unprotected"]},
+          "from": {"description": "The exact value before the change: the old category or check-in object, the removed entry's canonical hash, or true for unprotected."},
+          "to": {"description": "The exact value after the change: the new category or check-in object, null for removed, false for unprotected."},
           "reason": {"type": "string", "minLength": 1}
         }
       }

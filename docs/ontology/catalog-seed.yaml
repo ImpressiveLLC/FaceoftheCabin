@@ -38,6 +38,10 @@ ontology_only:
 
 # Types whose entry may not be removed, renamed or have its category or check-in window changed by a generated change
 # unless a reviewed entry is added to `allowed_changes` below with a reason (design #475 section 3).
+# The guard always protects WATER_LEAK_SENSOR, WATER_VALVE, LOCK and CO_ALARM (MANDATORY_SAFETY_TYPES in the generator):
+# they cannot be dropped from this list, and their entries cannot be removed, whatever allowed_changes says.
+# An allowed_changes entry covers one exact delta: {type, change: category|checkin|removed|unprotected, from, to, reason}.
+# A different later change needs a new reviewed entry; an entry that matches no change in a transition fails as stale.
 safety_types: [WATER_LEAK_SENSOR, WATER_VALVE, LOCK, CO_ALARM]
 allowed_changes: []
 

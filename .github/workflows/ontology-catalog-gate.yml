@@ -75,7 +75,7 @@ jobs:
           REQUIRE_ONTOLOGY_DOCS: "true"  # a missing docs or source input fails here instead of skipping
         run: |
           set +e
-          mvn -B -ntp -Dtest='DeviceCatalogParityTest,DeviceTypeOntologyParityTest' test 2>&1 | tee "$RUNNER_TEMP/mvn.txt"
+          mvn -B -ntp -Dtest='DeviceCatalogParityTest,DeviceCatalogRequireInputsTest,DeviceTypeOntologyParityTest' test 2>&1 | tee "$RUNNER_TEMP/mvn.txt"
           rc=${PIPESTATUS[0]}
           { echo "- java parity tests: $(grep -E 'Tests run:.*Fail' "$RUNNER_TEMP/mvn.txt" | tail -n 1)"; } >> "$GITHUB_STEP_SUMMARY"
           exit $rc
