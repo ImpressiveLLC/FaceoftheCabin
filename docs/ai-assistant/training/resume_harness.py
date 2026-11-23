@@ -40,7 +40,7 @@ def rows_sha256(rows):
     return hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest()
 
 
-def tiny_model(seed=SEED):
+def tiny_model(seed=SEED, dropout=0.0):
     import torch
     from peft import LoraConfig, get_peft_model
     from transformers import LlamaConfig, LlamaForCausalLM
@@ -48,23 +48,26 @@ def tiny_model(seed=SEED):
     config = LlamaConfig(vocab_size=64, hidden_size=16, intermediate_size=32, num_hidden_layers=2,
                          num_attention_heads=2, num_key_value_heads=2, max_position_embeddings=64)
     model = LlamaForCausalLM(config)
-    return get_peft_model(model, LoraConfig(r=4, lora_alpha=4, lora_dropout=0.0, task_type="CAUSAL_LM",
+    return get_peft_model(model, LoraConfig(r=4, lora_alpha=4, lora_dropout=dropout, task_type="CAUSAL_LM",
                                             target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj",
                                                             "up_proj", "down_proj"]))
 
 
-def run(store: Path, run_id: str, run_dir: Path, total_steps: int, chunk_steps: int, fault=None) -> dict:
+def run(store: Path, run_id: str, run_dir: Path, total_steps: int, chunk_steps: int, fault=None, seed=SEED,
+        dropout=0.0, drop_rng_on_restore=False) -> dict:
     import torch
     import sft_tokenize as st
     from transformers import Trainer, TrainingArguments, set_seed
 
     rows = synthetic_rows()
-    bindings = dict(BINDINGS, code_sha256=train_sft.code_sha256(), data_sha256=rows_sha256(rows))
+    bindings = train_sft.run_bindings(base_revision=BINDINGS["base_revision"], data_sha256=rows_sha256(rows),
+                                      environment_id=BINDINGS["environment_id"], total_steps=total_steps,
+                                      seed=seed, use_gpu=False, lock_sha256=BINDINGS["lock_sha256"])
     run_dir.mkdir(parents=True)
     trainer_dir = run_dir / "trainer"
     trainer_dir.mkdir()
-    set_seed(SEED)
-    model = tiny_model()
+    set_seed(seed)
+    model = tiny_model(dropout=dropout)
     trace = []
     holder = {}
 
@@ -86,9 +89,19 @@ def run(store: Path, run_id: str, run_dir: Path, total_steps: int, chunk_steps: 
     def build_trainer(max_steps, callbacks):
         holder["trainer"] = Trainer(model=model, train_dataset=rows, data_collator=collate, callbacks=callbacks,
                                     args=TrainingArguments(**train_sft.training_args_kwargs(
-                                        trainer_dir, SEED, use_gpu=False, max_steps=max_steps)))
+                                        trainer_dir, seed, use_gpu=False, max_steps=max_steps)))
         return holder["trainer"]
 
+    if drop_rng_on_restore:  # test-only mutant: a resume that loses the RNG state
+        import resumable as rs
+        real_restore = rs.restore
+
+        def restore_without_rng(record, checkpoint_dir):
+            out = real_restore(record, checkpoint_dir)
+            (out / "rng_state.pth").unlink()
+            return out
+
+        rs.restore = restore_without_rng
     manifest = train_sft.run_resumable_chunk(build_trainer=build_trainer, trainer_dir=trainer_dir, store=store,
                                              run_id=run_id, owner=run_dir.name, total_steps=total_steps,
                                              chunk_steps=chunk_steps, bindings=bindings, fault=fault)
@@ -105,8 +118,12 @@ def main(argv=None):
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--total-steps", type=int, required=True)
     parser.add_argument("--chunk-steps", type=int, required=True)
+    parser.add_argument("--seed", type=int, default=SEED)
+    parser.add_argument("--dropout", type=float, default=0.0, help="LoRA dropout; >0 makes the run depend on RNG state")
+    parser.add_argument("--drop-rng-on-restore", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
-    run(args.store, args.run_id, args.run_dir, args.total_steps, args.chunk_steps)
+    run(args.store, args.run_id, args.run_dir, args.total_steps, args.chunk_steps, seed=args.seed,
+        dropout=args.dropout, drop_rng_on_restore=args.drop_rng_on_restore)
 
 
 if __name__ == "__main__":

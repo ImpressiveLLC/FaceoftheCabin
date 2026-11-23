@@ -175,8 +175,8 @@ def parse_args(argv=None):
     resume.add_argument("--chunk-steps", type=int, default=None, help="optimizer updates in this invocation")
     resume.add_argument("--environment-id", default=None,
                         help="the recorded environment (slice B's recorder); a different one is a different lineage")
-    resume.add_argument("--take-over-lease", default=None, metavar="OWNER",
-                        help="take over a lease left by a killed session, naming its owner exactly (check it is gone first)")
+    resume.add_argument("--take-over-lease", default=None, metavar="TOKEN",
+                        help="take over a lease left by a killed session, naming its token exactly (check it is gone first)")
     args = parser.parse_args(argv)
     if args.max_steps is not None and args.max_steps < 1:
         parser.error("--max-steps must be at least 1")
@@ -243,6 +243,20 @@ def code_sha256(files=CODE_FILES) -> str:
     return digest.hexdigest()
 
 
+def invariant_args_sha256(seed: int, use_gpu: bool, total_steps: int) -> str:
+    """A hash of the TrainingArguments every chunk of a run must share (everything but the output directory)."""
+    kwargs = training_args_kwargs(Path("RUN_DIR/trainer"), seed, use_gpu, total_steps)
+    kwargs.pop("output_dir")
+    return hashlib.sha256(json.dumps(kwargs, sort_keys=True).encode()).hexdigest()
+
+
+def run_bindings(*, base_revision, data_sha256, environment_id, total_steps, seed, use_gpu, lock_sha256=None) -> dict:
+    return {"base_revision": base_revision, "code_sha256": code_sha256(),
+            "lock_sha256": lock_sha256 or hashlib.sha256(LOCK_PATH.read_bytes()).hexdigest(),
+            "data_sha256": data_sha256, "environment_id": environment_id, "total_steps": total_steps, "seed": seed,
+            "training_args_sha256": invariant_args_sha256(seed, use_gpu, total_steps), "fp16": bool(use_gpu)}
+
+
 def chunk_stopper(TrainerCallback, stop_at: int):
     """A callback that saves a full checkpoint and stops at global step STOP_AT. Steps are optimizer updates, so a
     chunk never ends partway through gradient accumulation."""
@@ -263,12 +277,15 @@ def run_resumable_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id
     committed or failed, so the next session's chunk can start. A process killed outright leaves the lease, and the
     next session must name it (--take-over-lease) to proceed."""
     import resumable as rs
-    rs.acquire_lease(store, run_id, owner, take_over_from=take_over_from)
+    if bindings.get("total_steps") != total_steps:
+        raise SystemExit(f"--total-steps {total_steps} differs from the bound budget {bindings.get('total_steps')}")
+    token = rs.acquire_lease(store, run_id, owner, take_over_from=take_over_from)
+    print(f"lease token {token} (name it with --take-over-lease only if this session is killed and gone)")
     try:
         return _run_chunk(build_trainer=build_trainer, trainer_dir=trainer_dir, store=store, run_id=run_id,
                           total_steps=total_steps, chunk_steps=chunk_steps, bindings=bindings, fault=fault)
     finally:
-        rs.release_lease(store, run_id, owner)
+        rs.release_lease(store, run_id, token)
 
 
 def _run_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id: str, total_steps: int, chunk_steps: int,
@@ -372,9 +389,9 @@ def main(argv=None):
         return {key: torch.tensor(value) for key, value in padded.items()}
 
     if args.resume_store is not None:
-        bindings = {"base_revision": BASE_REVISION, "code_sha256": code_sha256(),
-                    "lock_sha256": hashlib.sha256(LOCK_PATH.read_bytes()).hexdigest(),
-                    "data_sha256": dataset_sha256, "environment_id": args.environment_id}
+        bindings = run_bindings(base_revision=BASE_REVISION, data_sha256=dataset_sha256,
+                                environment_id=args.environment_id, total_steps=args.total_steps, seed=args.seed,
+                                use_gpu=use_gpu)
         built = {}
 
         def build_trainer(max_steps, callbacks):

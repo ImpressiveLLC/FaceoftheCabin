@@ -10,7 +10,8 @@ import pytest
 import resumable as rs
 
 BINDINGS = {"base_revision": "rev", "code_sha256": "c" * 64, "lock_sha256": "l" * 64, "data_sha256": "d" * 64,
-            "environment_id": "env-synthetic"}
+            "environment_id": "env-synthetic", "total_steps": 10, "seed": 0, "training_args_sha256": "a" * 64,
+            "fp16": False}
 RUN = "synthrun"
 
 
@@ -19,8 +20,10 @@ _STAGES = iter(range(1_000_000))
 
 def stage(tmp: Path, step: int, extra: bytes = b"") -> Path:
     d = tmp / f"stage-{step}-{next(_STAGES)}"
-    (d / "adapter").mkdir(parents=True)
-    (d / "adapter" / "adapter_model.safetensors").write_bytes(b"adapter" + bytes([step % 256]) + extra)
+    d.mkdir(parents=True)
+    (d / "adapter_model.safetensors").write_bytes(b"adapter" + bytes([step % 256]) + extra)
+    (d / "adapter_config.json").write_text("{}")
+    (d / "scaler.pt").write_bytes(b"scaler")
     (d / "trainer_state.json").write_text(json.dumps({"global_step": step}))
     for name in ("optimizer.pt", "scheduler.pt", "rng_state.pth"):
         (d / name).write_bytes(f"{name}-{step}".encode())
@@ -28,6 +31,7 @@ def stage(tmp: Path, step: int, extra: bytes = b"") -> Path:
 
 
 def do_commit(tmp, store, step, total=10, fault=None, bindings=BINDINGS, run=RUN):
+    bindings = dict(bindings, total_steps=total)
     return rs.commit(stage(tmp, step), store, run_id=run, global_step=step, total_steps=total,
                      optimizer_updates=step, bindings=bindings, cursor={"epoch": 0, "next_row": step}, fault=fault)
 
@@ -56,6 +60,21 @@ def test_final_chunk_is_marked_complete_and_partial_ones_are_not(tmp_path):
     store = tmp_path / "store"
     assert do_commit(tmp_path, store, 5, total=10)["run_complete"] is False
     assert do_commit(tmp_path, store, 10, total=10)["run_complete"] is True
+
+
+@pytest.mark.parametrize("change", [{"total_steps": 12}, {"seed": 1}, {"training_args_sha256": "b" * 64},
+                                    {"fp16": True}])
+def test_a_changed_budget_seed_or_training_arguments_refuses_to_resume(tmp_path, change):
+    store = tmp_path / "store"
+    do_commit(tmp_path, store, 2)
+    with pytest.raises(rs.LineageError, match="bindings differ"):
+        rs.latest_verified(store, RUN, dict(BINDINGS, **change))
+
+
+def test_commit_refuses_a_total_that_differs_from_the_bound_budget(tmp_path):
+    with pytest.raises(rs.CommitError, match="bound budget"):
+        rs.commit(stage(tmp_path, 2), tmp_path / "store", run_id=RUN, global_step=2, total_steps=12,
+                  optimizer_updates=2, bindings=BINDINGS, cursor={})
 
 
 @pytest.mark.parametrize("point", ["before_copy", "mid_copy", "after_verify"])
@@ -134,10 +153,30 @@ def test_a_wrong_binding_refuses_to_resume(tmp_path, key):
 
 
 @pytest.mark.parametrize("name", rs.REQUIRED_FILES)
-def test_missing_optimizer_scheduler_rng_or_state_refuses_the_commit(tmp_path, name):
+def test_a_missing_required_file_refuses_the_commit(tmp_path, name):
     d = stage(tmp_path, 2)
     (d / name).unlink()
-    with pytest.raises(rs.CommitError, match="not resumable state"):
+    with pytest.raises(rs.CommitError, match="not a complete resumable checkpoint"):
+        rs.commit(d, tmp_path / "store", run_id=RUN, global_step=2, total_steps=10, optimizer_updates=2,
+                  bindings=BINDINGS, cursor={})
+    assert rs.latest_verified(tmp_path / "store", RUN, BINDINGS) is None
+
+
+def test_the_fp16_scaler_is_required_only_in_fp16_mode(tmp_path):
+    d = stage(tmp_path, 2)
+    (d / "scaler.pt").unlink()
+    fp16 = dict(BINDINGS, fp16=True)
+    with pytest.raises(rs.CommitError, match="scaler.pt"):
+        rs.commit(d, tmp_path / "s1", run_id=RUN, global_step=2, total_steps=10, optimizer_updates=2,
+                  bindings=fp16, cursor={})
+    rs.commit(d, tmp_path / "s2", run_id=RUN, global_step=2, total_steps=10, optimizer_updates=2,
+              bindings=BINDINGS, cursor={})
+
+
+def test_trainer_state_must_be_at_the_chunk_step(tmp_path):
+    d = stage(tmp_path, 2)
+    (d / "trainer_state.json").write_text(json.dumps({"global_step": 1}))
+    with pytest.raises(rs.CommitError, match="says step 1"):
         rs.commit(d, tmp_path / "store", run_id=RUN, global_step=2, total_steps=10, optimizer_updates=2,
                   bindings=BINDINGS, cursor={})
 
@@ -179,24 +218,50 @@ def test_restore_copies_and_reverifies(tmp_path):
         rs.restore(record, out)
 
 
-def test_lease_allows_one_owner(tmp_path):
+def test_a_lease_admits_one_invocation_even_with_the_same_label(tmp_path):
     store = tmp_path / "store"
-    rs.acquire_lease(store, RUN, "session-a")
-    rs.acquire_lease(store, RUN, "session-a")  # the same owner after an interruption
+    token = rs.acquire_lease(store, RUN, "/content/run")
     with pytest.raises(rs.CommitError, match="leased"):
-        rs.acquire_lease(store, RUN, "session-b")
-    rs.release_lease(store, RUN, "session-a")
-    rs.acquire_lease(store, RUN, "session-b")
+        rs.acquire_lease(store, RUN, "/content/run")  # a second runtime with the same directory name
+    assert rs.release_lease(store, RUN, token) is True
+    rs.acquire_lease(store, RUN, "/content/run")
 
 
-def test_a_stale_lease_is_taken_over_only_by_naming_its_owner(tmp_path):
+def test_takeover_needs_the_exact_stale_token(tmp_path):
     store = tmp_path / "store"
-    rs.acquire_lease(store, RUN, "killed-session")
-    with pytest.raises(rs.CommitError, match="leased"):
-        rs.acquire_lease(store, RUN, "new-session", take_over_from="some-other-session")
-    rs.acquire_lease(store, RUN, "new-session", take_over_from="killed-session")
-    with pytest.raises(rs.CommitError, match="leased"):
-        rs.acquire_lease(store, RUN, "third-session")
+    stale = rs.acquire_lease(store, RUN, "killed")
+    with pytest.raises(rs.CommitError):
+        rs.acquire_lease(store, RUN, "new", take_over_from="0" * 32)
+    new = rs.acquire_lease(store, RUN, "new", take_over_from=stale)
+    with pytest.raises(rs.CommitError):
+        rs.acquire_lease(store, RUN, "third")
+    assert rs.release_lease(store, RUN, stale) is False, "the killed session must not release the new owner's lease"
+    assert json.loads((store / f"{RUN}.{rs.LEASE}").read_text())["token"] == new
+
+
+def test_only_one_of_two_simultaneous_takeovers_wins(tmp_path):
+    store = tmp_path / "store"
+    stale = rs.acquire_lease(store, RUN, "killed")
+    winner = rs.acquire_lease(store, RUN, "a", take_over_from=stale)
+    with pytest.raises(rs.CommitError):
+        rs.acquire_lease(store, RUN, "b", take_over_from=stale)  # the same stale token, second in line
+    assert json.loads((store / f"{RUN}.{rs.LEASE}").read_text())["token"] == winner
+
+
+def test_release_puts_back_a_lease_that_changed_underneath(tmp_path, monkeypatch):
+    store = tmp_path / "store"
+    mine = rs.acquire_lease(store, RUN, "mine")
+    path = store / f"{RUN}.{rs.LEASE}"
+    real_rename = rs.os.rename
+
+    def swap_then_rename(src, dst):
+        if str(dst).endswith(f"release-{mine}"):
+            path.write_text(json.dumps({"run_id": RUN, "token": "other", "label": "x"}))  # taken over in between
+        return real_rename(src, dst)
+
+    monkeypatch.setattr(rs.os, "rename", swap_then_rename)
+    assert rs.release_lease(store, RUN, mine) is False
+    assert json.loads(path.read_text())["token"] == "other"
 
 
 def test_other_runs_are_not_part_of_this_lineage(tmp_path):

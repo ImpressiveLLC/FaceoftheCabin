@@ -21,6 +21,7 @@ import hashlib
 import json
 import os
 import shutil
+import uuid
 from pathlib import Path
 
 MANIFEST = "manifest.json"
@@ -29,9 +30,16 @@ PAYLOAD = "payload"
 LEASE = "LEASE"
 KEEP = 2
 MANIFEST_VERSION = 1
-# A model.save_pretrained adapter alone is not resumable state (design section 2). These must be in every chunk.
-REQUIRED_FILES = ("trainer_state.json", "optimizer.pt", "scheduler.pt", "rng_state.pth")
-BINDING_KEYS = ("base_revision", "code_sha256", "lock_sha256", "data_sha256", "environment_id")
+# A full Trainer checkpoint of a PEFT model (design section 2). An adapter alone is not resumable, and neither is
+# optimizer state without the adapter weights. scaler.pt is required too when the run uses fp16 (bindings["fp16"]).
+REQUIRED_FILES = ("adapter_model.safetensors", "adapter_config.json", "trainer_state.json", "optimizer.pt",
+                  "scheduler.pt", "rng_state.pth")
+FP16_REQUIRED_FILES = ("scaler.pt",)
+# Everything a chunk must share with the run it resumes. total_steps fixes the LR schedule horizon; seed fixes the
+# sampler order; training_args_sha256 covers the other invariant TrainingArguments; fp16 decides the scaler. Chunk
+# size is deliberately NOT bound: it may change between sessions.
+BINDING_KEYS = ("base_revision", "code_sha256", "lock_sha256", "data_sha256", "environment_id", "total_steps", "seed",
+                "training_args_sha256", "fp16")
 FAULT_POINTS = ("before_copy", "mid_copy", "after_verify", "after_marker")
 
 
@@ -71,12 +79,21 @@ def _files(root: Path) -> list[Path]:
 
 def build_manifest(stage_dir: Path, *, run_id: str, global_step: int, total_steps: int, optimizer_updates: int,
                    skipped_updates: int, parent: str | None, bindings: dict, cursor: dict) -> dict:
-    missing = [name for name in REQUIRED_FILES if not (stage_dir / name).is_file()]
-    if missing:
-        raise CommitError(f"checkpoint at step {global_step} lacks {missing}; an adapter alone is not resumable state")
-    absent = [key for key in BINDING_KEYS if not bindings.get(key)]
+    absent = [key for key in BINDING_KEYS if bindings.get(key) is None or bindings.get(key) == ""]
     if absent:
         raise CommitError(f"bindings missing {absent}")
+    if total_steps != bindings["total_steps"]:
+        raise CommitError(f"total_steps {total_steps} differs from the run's bound budget {bindings['total_steps']}")
+    required = REQUIRED_FILES + (FP16_REQUIRED_FILES if bindings["fp16"] else ())
+    missing = [name for name in required if not (stage_dir / name).is_file()]
+    if missing:
+        raise CommitError(f"checkpoint at step {global_step} lacks {missing}; it is not a complete resumable checkpoint")
+    try:
+        saved_step = json.loads((stage_dir / "trainer_state.json").read_text(encoding="utf-8"))["global_step"]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise CommitError(f"trainer_state.json at step {global_step} is unreadable ({exc})") from exc
+    if saved_step != global_step:
+        raise CommitError(f"trainer_state.json says step {saved_step}, the chunk is step {global_step}")
     return {
         "manifest_version": MANIFEST_VERSION,
         "run_id": run_id,
@@ -239,27 +256,65 @@ def restore(record: dict, checkpoint_dir: Path) -> Path:
     return checkpoint_dir
 
 
-def acquire_lease(durable_root: Path, run_id: str, owner: str, take_over_from: str | None = None) -> Path:
-    """One writer per run while a chunk is active. Creates LEASE exclusively and is released when the chunk's process
-    ends. A lease left behind by a killed session is taken over only when the caller names that exact owner
-    (TAKE_OVER_FROM), a deliberate act by the person running it after checking that session is gone, never automatic."""
+def _lease_path(durable_root: Path, run_id: str) -> Path:
+    return durable_root / f"{run_id}.{LEASE}"
+
+
+def _read_lease(path: Path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+
+
+def acquire_lease(durable_root: Path, run_id: str, label: str, take_over_from: str | None = None) -> str:
+    """One active invocation per run. Returns a fresh, invocation-unique token; any existing lease is refused, even one
+    with the same label, because two runtimes can share a directory name.
+
+    A lease left by a killed session is taken over only when the caller names that lease's exact TOKEN
+    (TAKE_OVER_FROM), a deliberate act after checking the session is gone; never automatic. The takeover renames the
+    stale lease aside first, which only one caller can do, and then creates the new lease exclusively, so two
+    simultaneous takeovers cannot both win."""
     durable_root.mkdir(parents=True, exist_ok=True)
-    path = durable_root / f"{run_id}.{LEASE}"
+    path = _lease_path(durable_root, run_id)
+    token = uuid.uuid4().hex
+    record = json.dumps({"run_id": run_id, "token": token, "label": label})
+    if take_over_from is not None:
+        held = _read_lease(path)
+        if held is None or held.get("token") != take_over_from:
+            raise CommitError(f"run {run_id}: no lease with token {take_over_from!r} to take over "
+                              f"(current: {held and held.get('token')!r})")
+        try:
+            os.rename(path, path.with_name(f"{path.name}.stale-{take_over_from}"))
+        except OSError as exc:
+            raise CommitError(f"run {run_id}: another session took over lease {take_over_from} first") from exc
     try:
         with open(path, "x", encoding="utf-8") as handle:
-            handle.write(json.dumps({"run_id": run_id, "owner": owner}))
+            handle.write(record)
     except FileExistsError:
-        held = json.loads(path.read_text(encoding="utf-8")).get("owner")
-        if held == owner:
-            return path
-        if take_over_from is None or take_over_from != held:
-            raise CommitError(f"run {run_id} is leased by {held!r}; refusing a second writer (if that session is "
-                              f"gone, take over by naming it)")
-        path.write_text(json.dumps({"run_id": run_id, "owner": owner, "took_over_from": held}), encoding="utf-8")
-    return path
+        held = _read_lease(path) or {}
+        raise CommitError(f"run {run_id} is leased by token {held.get('token')!r} (label {held.get('label')!r}); "
+                          "refusing a second writer. If that session is gone, take over by naming that token.")
+    return token
 
 
-def release_lease(durable_root: Path, run_id: str, owner: str) -> None:
-    path = durable_root / f"{run_id}.{LEASE}"
-    if path.exists() and json.loads(path.read_text(encoding="utf-8")).get("owner") == owner:
-        path.unlink()
+def release_lease(durable_root: Path, run_id: str, token: str) -> bool:
+    """Removes the lease only if it is still this invocation's. It is moved aside first and checked, so a lease that
+    another session took over in the meantime is put back, never deleted."""
+    path = _lease_path(durable_root, run_id)
+    held = _read_lease(path)
+    if held is None or held.get("token") != token:
+        return False
+    aside = path.with_name(f"{path.name}.release-{token}")
+    try:
+        os.rename(path, aside)
+    except OSError:
+        return False
+    if (_read_lease(aside) or {}).get("token") == token:
+        aside.unlink()
+        return True
+    try:
+        os.rename(aside, path)  # not ours after all: restore it
+    except OSError:
+        pass
+    return False

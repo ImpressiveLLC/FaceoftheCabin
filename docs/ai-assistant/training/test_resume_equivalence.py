@@ -25,11 +25,13 @@ HERE = Path(__file__).resolve().parent
 TOTAL, FIRST = 6, 2  # 12 rows, batch 1, accumulation 4: 3 updates per epoch, so the cut is mid-epoch
 
 
-def chunk(store, run_id, run_dir, total, steps):
+def chunk(store, run_id, run_dir, total, steps, *extra, check=True):
     env = dict(os.environ, HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", PYTHONHASHSEED="0")
-    subprocess.run([sys.executable, str(HERE / "resume_harness.py"), "--store", str(store), "--run-id", run_id,
-                    "--run-dir", str(run_dir), "--total-steps", str(total), "--chunk-steps", str(steps)],
-                   check=True, cwd=HERE, env=env)
+    done = subprocess.run([sys.executable, str(HERE / "resume_harness.py"), "--store", str(store), "--run-id", run_id,
+                           "--run-dir", str(run_dir), "--total-steps", str(total), "--chunk-steps", str(steps),
+                           *extra], check=check, cwd=HERE, env=env, capture_output=not check, text=True)
+    if not check:
+        return done
     return json.loads((run_dir / "trace.json").read_text(encoding="utf-8"))
 
 
@@ -40,7 +42,6 @@ def losses(log_history):
 def final_adapter(store, run_id):
     from safetensors.torch import load_file
     import resumable as rs
-    from resume_harness import BINDINGS  # noqa: F401  (same bindings shape; the chain is read without them below)
     finals = sorted(p for p in Path(store).glob(f"{run_id}-step*") if (p / rs.MARKER).exists())
     files = list((finals[-1] / rs.PAYLOAD).rglob("adapter_model.safetensors"))
     assert len(files) == 1, files
@@ -105,3 +106,38 @@ def test_checkpoint_sizes_are_measured_not_assumed(runs):
         sizes[chunk_dir.name] = sum(f["bytes"] for f in manifest["files"])
     assert sizes and all(size > 0 for size in sizes.values())
     print("measured synthetic checkpoint bytes:", sizes)
+
+
+def relative_l2(a, b):
+    import torch
+    diff = math.sqrt(sum(float(torch.sum((a[k].float() - b[k].float()) ** 2)) for k in a))
+    norm = math.sqrt(sum(float(torch.sum(a[k].float() ** 2)) for k in a))
+    return diff / norm
+
+
+def test_rng_state_is_restored_when_the_run_depends_on_it(tmp_path):
+    """With LoRA dropout the losses depend on the RNG stream, so equality after a resume shows the RNG was restored;
+    the same resume with rng_state.pth removed must diverge (Codex 7101764001 note)."""
+    whole = chunk(tmp_path / "sw", "w", tmp_path / "w1", TOTAL, TOTAL, "--dropout", "0.3")
+    chunk(tmp_path / "sc", "c", tmp_path / "c1", TOTAL, FIRST, "--dropout", "0.3")
+    resumed = chunk(tmp_path / "sc", "c", tmp_path / "c2", TOTAL, TOTAL - FIRST, "--dropout", "0.3")
+    chunk(tmp_path / "sm", "m", tmp_path / "m1", TOTAL, FIRST, "--dropout", "0.3")
+    lost = chunk(tmp_path / "sm", "m", tmp_path / "m2", TOTAL, TOTAL - FIRST, "--dropout", "0.3",
+                 "--drop-rng-on-restore")
+    after = lambda history: {k: v for k, v in losses(history).items() if k > FIRST}  # noqa: E731
+    assert after(resumed["log_history"]) == after(whole["log_history"])
+    assert sorted(after(whole["log_history"])) == list(range(FIRST + 1, TOTAL + 1))
+    assert relative_l2(final_adapter(tmp_path / "sw", "w"), final_adapter(tmp_path / "sc", "c")) <= 1e-4
+    assert relative_l2(final_adapter(tmp_path / "sw", "w"), final_adapter(tmp_path / "sm", "m")) > 1e-4,         "losing the RNG state did not change the result, so this test could not detect it"
+
+
+@pytest.mark.parametrize("extra", [("--total-steps-override",), ("--seed", "7")])
+def test_a_changed_budget_or_seed_is_refused_before_training(tmp_path, extra):
+    chunk(tmp_path / "s", "r", tmp_path / "r1", TOTAL, FIRST)
+    if extra == ("--total-steps-override",):
+        done = chunk(tmp_path / "s", "r", tmp_path / "r2", TOTAL * 2, FIRST, check=False)
+    else:
+        done = chunk(tmp_path / "s", "r", tmp_path / "r2", TOTAL, FIRST, *extra, check=False)
+    assert done.returncode != 0
+    assert "bindings differ" in done.stderr
+    assert not (tmp_path / "r2" / "trainer" / f"checkpoint-{FIRST * 2}").exists(), "it trained before refusing"
