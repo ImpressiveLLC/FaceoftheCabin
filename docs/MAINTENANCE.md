@@ -2289,7 +2289,7 @@ for t in home/kidde_iaq_01/state \
 done
 ```
 
-An empty retained payload on a discovery topic makes HA remove that entity. Check `mosquitto_sub -t 'home/kidde_iaq_01/#' -C 1 -W 3` times out afterwards and the three `kidde_air_quality_alarm_*` entities are gone from HA. Then archive or remove the platform rows (their ids start `ha-cabin-sensor-kidde-air-quality-alarm-` and `ha-cabin-binary-sensor-kidde-air-quality-alarm-`); do not rename any `deviceId`.
+An empty retained payload on a discovery topic makes HA remove that entity. Check `mosquitto_sub -t 'home/kidde_iaq_01/#' -C 1 -W 3` times out afterwards and the three `kidde_air_quality_alarm_*` entities are gone from HA. Then use Remove on those platform rows in Device Manager (their ids start `ha-cabin-sensor-kidde-air-quality-alarm-` and `ha-cabin-binary-sensor-kidde-air-quality-alarm-`). Remove is `DELETE /api/devices/{id}`, which sets the row's lifecycle to Ignored; it does not hard-delete the row, and it is not the Enabled toggle. A `deviceId` cannot be renamed.
 
 **Recurring check (monthly, with the device-list review).** List retained MQTT topics that no live publisher owns, and compare against the Devices list: `docker exec mosquitto mosquitto_sub -t '#' -v --retained-only -W 4`. Anything outside `zigbee2mqtt/`, `home_z2m/`, the Zigbee2MQTT `homeassistant/` discovery topics and `cabin/` or `home/` topics with a known publisher is a candidate orphan. Same class of bug as the retained `zigbee2mqtt/bridge/state` entry below: a retained value trusted as if it were live.
 
