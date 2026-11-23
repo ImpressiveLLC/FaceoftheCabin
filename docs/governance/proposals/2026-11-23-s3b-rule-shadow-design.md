@@ -28,10 +28,16 @@ Each seed rule gains `when`. Rules are evaluated in seed order, and the first ma
 - **Z2M:** `definition.model`, `definition.description`, `definition.vendor`, `definition.exposes`, `capabilities`, `friendly_name`.
 - **MQTT:** payload keys only.
 
-**Missing and wrong types.**
-- A missing or null field reads as the empty string. That is `inferType`'s own `getOrDefault("")` and `asText("")` behavior, so `equals` and `contains` never throw.
-- A non-string value uses its `String.valueOf` form, as `inferType` does.
-- `present` is true only for an existing key.
+**Extraction is per site, then normalized.** A field's string is extracted exactly the way that site's `inferType` extracts it, and only then lower-cased. A common rule would be wrong: the three sites treat null, missing and container values differently (Codex 7101765580 item 2). Each extractor is an independent reimplementation of the contract below, and tests check every row against the real classifier.
+
+| Site | How `inferType` reads a field | Missing key | Present JSON null | Number or boolean | Object or array |
+|---|---|---|---|---|---|
+| HA | `String.valueOf(attrs.getOrDefault(key, ""))`, then `toLowerCase(Locale.ROOT)`; `domain` is the entity-id prefix | `""` | `"null"` (the four letters) | its `String.valueOf` text | Java `Map` or `List` `toString()`, for example `{a=b}` |
+| Z2M | `definition.path(key).asText("")`, then `toLowerCase()` (**default locale**); `friendly_name` is the raw string (null names are skipped before `inferType`) | `""` | `""` | its text, for example `"1"` or `"true"` | `""`: a description object that contains "switch" is **not** a match |
+| Z2M `exposes` | recursive walk of `features`; the property is `path("property").asText(path("name").asText(""))`; the category is `path("category").asText("")`; access is `path("access").asInt(1)` | not an array, so no match | not an array, so no match | n/a | as written |
+| MQTT | `data.containsKey(key)` only | absent | **present** (a null-valued key still counts) | present | present |
+
+After extraction, the grammar lower-cases with `Locale.ROOT`. Zigbee2MQTT's own default-locale lower-casing is the documented discrepancy (below). It stays visible as a code finding and is not changed in production by this design.
 
 **Validation at load.** The following make the rule set **unavailable**:
 - an unknown operator or field;
@@ -79,9 +85,17 @@ A device with no captured input is `NOT_EVALUATED`, never "matched".
 
 ## 5. Coverage of the current inventory
 
-Evaluation happens where `inferType` runs: HA discovery polls, Z2M `bridge/devices`, and MQTT bridge messages.
-- Existing devices are covered on their next discovery pass, because every site re-runs `inferType` on each poll or retained message without reassigning a configured device. The comparison is observational.
-- A device whose source never re-announces stays `NOT_EVALUATED`. That covers a manually configured device, or an MQTT device that has gone quiet.
+The call sites do **not** all re-run inference for existing devices (Codex 7101765580 item 1). Per site:
+
+| Site | When `inferType` runs today | Shadow coverage |
+|---|---|---|
+| HA | every eligible entity on every discovery poll, existing or new (`HomeAssistantDiscoveryService`) | evaluated on each poll, beside the existing call |
+| Z2M | every device in each `bridge/devices` message: retained, so delivered on subscribe and again when the list changes (`handleBridgeDeviceList`) | evaluated whenever the list arrives |
+| MQTT bridge | **only for an unknown device** (`handleDeviceMessage`, inside `existing == null`); an existing device's messages never reach it | **added:** an observational evaluation on each existing-device message. It runs the pure key-presence `inferType(data)` and the grammar on that message's keys and records both. The result never reaches the registry: the persisted type, `registerCandidate` and the state update are untouched |
+
+For MQTT, a later message may carry a different key set than the one the device was registered from (a state message versus a telemetry message). Inference parity is unaffected, because both sides see the same message. The assignment-drift observation is recorded **per message**, with that message's input hash, so a key-set change shows up as an observation, not a defect.
+
+A device that has not sent an eligible message since startup stays `NOT_EVALUATED`. That covers a manually configured device, a quiet MQTT device, or a Zigbee device before the list arrives.
 
 The S3 report gains explicit counts:
 - `evaluated` and `notEvaluated`;
@@ -101,7 +115,13 @@ The expected type in every case comes from invoking the real `inferType` by refl
   - a valve with a relay versus a smart switch;
   - a description containing "switch" plus power monitoring.
 - **Combined Z2M cases:** capability plus exposes, such as ALARM with no description match, or occupancy only.
-- **Missing and odd inputs:** missing, null and wrong-type fields; upper- and mixed-case values; MQTT payloads with several keys, to prove key order.
+- **Missing and odd inputs, per site, against the real classifier:**
+  - HA: a missing key, a present null (`"null"`), a number and a map value;
+  - Z2M: a missing field, a JSON null, a number, and a description **object** containing "switch", which must not match;
+  - Z2M `exposes`: not an array, a missing `property` falling back to `name`, a `config` category, and a missing or non-numeric `access`;
+  - MQTT: a null-valued key (still present), and payloads with several keys to prove key order;
+  - upper- and mixed-case values.
+- **Existing MQTT device:** a message for an already registered device records an evaluation, leaves the persisted type unchanged, and never calls `registerCandidate`.
 - **Safety boundaries:** the leak, valve, lock and CO rules, each with an input on either side of its predicate.
 - **Mutation:** each safety predicate, and each precedence swap, mutated in the seed. The independent comparison against `inferType` must fail for every mutant. The run reports how many were killed.
 - **Validation:** an unknown operator, unknown field, missing `when`, duplicate id, misplaced catch-all and upper-case value each make the rule set unavailable, and registration still succeeds.
