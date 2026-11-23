@@ -49,7 +49,11 @@ CO2 reuses `co2` (ppm). Temperature and humidity reuse their existing fields. `a
 - The four PM fields and the two index fields go on `AIR_QUALITY_SENSOR`. Its `telemetryFields()` widens from `{airQualityIndex}` to `{airQualityIndex, pm1, pm25, pm4, pm10, vocIndex, noxIndex}`.
 - `CO2_SENSOR` is unchanged.
 
-Widening is safe for existing devices: `reportsFields` only lists what a device may report, and the UI's field chips come from `reportsFields` (S1). A Kidde AQI entity would show the new chips as options with no data. That is acceptable, but the S1 Vitest case and the workflow picker must be checked for it in C3.
+**The type vocabulary and a device's own fields are kept separate, and existing devices' chips do not change.** `telemetryFields()` says what an `AIR_QUALITY_SENSOR` may report. A device's `reportsFields`, which drives its UI chips (S1) and the workflow picker, lists only the fields its own channel evidence supports.
+- `DeviceRegistry` already prefers a per-device `sourceReportedFields` over the type list.
+- C1 therefore sets `sourceReportedFields` for every HA `sensor` entity that discovery stores a semantic field for, to exactly that one field.
+- A Kidde AQI entity keeps showing only `airQualityIndex`, not six new empty chips.
+- No contract adds empty options. C1's acceptance tests this exact behavior: for each current device, `reportsFields` before and after C1 is identical.
 
 ## 3. Mapping keyed on what the entity is, not on the type
 
@@ -59,7 +63,19 @@ Widening is safe for existing devices: `reportsFields` only lists what a device 
 
 - The PM classes map to `pm1`, `pm25`, `pm4` and `pm10` only when the unit is `µg/m³`. A PM-class entity in another unit is not stored and is counted.
 - `carbon_dioxide` maps to `co2` only with `ppm`. It never maps to `co`, which the ontology row already forbids.
-- **The index fields are never inferred from `device_class`.** `aqi` cannot tell a vendor AQI from a SEN66 VOC or NOx index, and HA has no index class. `vocIndex` and `noxIndex` are written only through an explicit channel map. That map is the catalog-native enrollment in S7, matching the "explicit source and channel mapping in discovery" gate the ontology already sets for W-84. Until then, an `aqi` entity whose source is an ESPHome `sen6x` node keeps today's behavior. Better, it should not be stored at all: C2 decides which, with Codex.
+- **The index fields are never inferred from `device_class`.** `aqi` cannot tell a vendor AQI from a SEN66 VOC or NOx index, and HA has no index class. `vocIndex` and `noxIndex` are written only through an explicit channel map. That map is the catalog-native enrollment in S7, matching the "explicit source and channel mapping in discovery" gate the ontology already sets for W-84. **Known index channels stay unmapped until then. No fallback stores them under any field.**
+- **Channel and source evidence.** A device_class and unit mapper alone cannot tell two dimensionless `aqi` entities apart, so C2 needs source evidence for every `aqi` entity before storing it:
+  - the HA integration (config-entry domain) that owns the entity;
+  - the device-registry manufacturer and model of its parent device;
+  - the entity's `unique_id`.
+
+  That evidence is checked against an explicit allowlist of established vendor AQI channels in the catalog seed. Today that is Kidde's AQI channel, recorded with its integration and model as observed. Friendly names are never used.
+- **When the evidence is missing or does not match,** the entity is not stored as `airQualityIndex` or any other field. It is counted as `unmapped_index_or_aqi` in the S3 shadow report.
+- **C2 is gated on obtaining that evidence.** Discovery's `/api/states` read carries none of the three items.
+  - `HomeAssistantAdapter` already uses `/api/template` for `device_id()`, and the same path can return the device's manufacturer and model through `device_attr()`.
+  - The integration and `unique_id` may need the entity registry: a read-only read, under Nate's go, the same kind as the export W-169 C1 needs.
+  - C2 must record Kidde's observed values from a live read before its allowlist entry exists.
+- If the evidence cannot be obtained, C2 does not ship. The fallback is not "keep today's `aqi` behavior". The one existing exception is Kidde's established AQI path, which C2 must preserve through that evidence and verify with a regression before release.
 - Matching by entity name or friendly name is not used. That would repeat the vendor workaround pattern (`ha-15-name-co-level`) that the catalog is meant to retire.
 
 The `inferType` rules gain a PM rule, `ha-NN-pm-mass` (`device_class` in the PM set, so `AIR_QUALITY_SENSOR`). It becomes a new catalog match rule with a seed entry, so the S2 check "every `inferType` branch maps to a match rule" stays true.
@@ -88,9 +104,9 @@ A PR that changes any one of these without the others fails CI. That is the poin
 
 | Slice | What | Acceptance | Waits for |
 |---|---|---|---|
-| C1 vocabulary | Section 4 items 1 to 4; no discovery or UI change | D7, ontology and catalog parity tests pass; catalog regenerated; no assigned type changes for any device | this note reviewed (Cowork proxy, then Nate for the fields-not-type call) |
-| C2 discovery mapping | Section 3: `semanticFieldFor(type, deviceClass, unit)`, the PM match rule, index channels left unmapped | regressions: Kidde AQI still stored as `airQualityIndex`; a `sen6x` VOC or NOx index is never stored as `airQualityIndex`; CO2 never becomes `co`; a PM entity in a non-µg/m³ unit is not stored; existing golden types unchanged | C1; the device-class check in section 1; backend deploy needs Nate's go |
-| C3 UI | Units map (`App.jsx` line 6085) gains µg/m³ for PM and no unit for indexes; labels from section 2; the air-quality tile (line 5927) never labels an index as AQI | Vitest: index labels contain "index", no "AQI"; existing chips unchanged for current devices | C1 |
+| C1 vocabulary | Section 4 items 1 to 4, plus per-entity `sourceReportedFields` for HA sensor entities (section 2); no UI change | D7, ontology and catalog parity tests pass; catalog regenerated; no assigned type changes for any device; `reportsFields` identical before and after for every current device (test) | this note reviewed (Cowork proxy, then Nate for the fields-not-type call) |
+| C2 discovery mapping | Section 3: `semanticFieldFor(type, deviceClass, unit)`, the PM match rule, the source-evidence allowlist for `aqi`, index channels left unmapped | regressions: an `aqi` entity matching the recorded Kidde evidence is still stored as `airQualityIndex`; an `aqi` entity with missing or non-matching evidence (including any `sen6x` VOC or NOx index) is stored under no field and counted as `unmapped_index_or_aqi`; CO2 never becomes `co`; a PM entity in a non-µg/m³ unit is not stored; existing golden types unchanged | C1; the device-class check in section 1; the read-only registry evidence read (Nate's go); backend deploy needs Nate's go |
+| C3 UI | Units map (`App.jsx` line 6085) gains µg/m³ for PM and no unit for indexes; labels from section 2; the air-quality tile (line 5927) never labels an index as AQI | Vitest: index labels contain "index", no "AQI"; chips for current devices identical to before (they come from per-device `reportsFields`, held unchanged by C1) | C1 |
 | Box 3 enrollment | the explicit channel map writing `vocIndex` and `noxIndex` | catalog S7 and W-84 acceptance | S3, N3, W-84 gate |
 
 ## 7. Decisions for Nate
