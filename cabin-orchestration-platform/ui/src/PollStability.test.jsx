@@ -37,8 +37,8 @@ describe("keepIfSame keeps the previous reference when a poll brings nothing new
 });
 
 describe("the polled lists use it", () => {
-  it("refreshDevices replaces devices through keepIfSame", () => {
-    expect(app).toMatch(/setDevices\(prev => keepIfSame\(prev, next\)\)/);
+  it("refreshDevices replaces devices through keepIfSameDevices", () => {
+    expect(app).toMatch(/setDevices\(prev => keepIfSameDevices\(prev, next\)\)/);
     expect(app).not.toMatch(/setDevices\(succeeded/);
   });
   it("refreshWorkflows replaces workflows through keepIfSame", () => {

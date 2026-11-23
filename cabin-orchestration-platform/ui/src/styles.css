@@ -215,6 +215,7 @@ body {
   margin-bottom: 20px;
 }
 .kpi-tile {
+  min-height: 132px; /* a value flipping between a number and a wording line must not change the row height */
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -489,7 +490,11 @@ body {
   font-size: 13px;
 }
 .camera-health-name { color: var(--text); font-weight: 600; text-transform: capitalize; }
-.camera-health-value { margin-left: auto; padding-left: 12px; }
+/* Live numbers ('5.1 fps' -> '5.0 fps') change width in a proportional font; in a content-sized flex row that resized the tile,
+   re-wrapped its neighbours and then snapped back on the next update. Equal-width digits plus a floor on the value keep the tile still. */
+.camera-health-tile { min-width: 190px; }
+.camera-health-value { margin-left: auto; padding-left: 12px; font-variant-numeric: tabular-nums; min-width: 6ch; text-align: right; }
+.kpi-value, .state-badge { font-variant-numeric: tabular-nums; }
 .camera-health-ok .camera-health-value { color: var(--success); }
 .camera-health-down .camera-health-value { color: var(--danger); }
 .camera-health-idle .camera-health-value { color: var(--text-dim); }
