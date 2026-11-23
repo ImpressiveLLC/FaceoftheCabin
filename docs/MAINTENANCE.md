@@ -2260,6 +2260,39 @@ SONOFF SNZB-02P sensor. Four symptoms, three causes.
 *A working incident log — real problems found and fixed, kept here so
 the next person (or session) doesn't have to rediscover them.*
 
+### Two Kidde temperatures (72.5 °F and 48.9 °F): the 72.5 is a frozen retained MQTT test message, not a second reporter (found 2026-11-22, cleanup pending)
+
+**Symptom.** The cabin shows two Kidde temperature tiles at once, 72.5 °F and 48.9 °F, with humidity 45.2 % and 46.7 %. They look like one device reporting twice.
+
+**Root cause (verified on the M920q broker 2026-11-22).** They are two HA devices:
+
+| | Real | Dead |
+|---|---|---|
+| HA device | "Living room Kidde CO Temp and Humidity Cabin Upstairs" (`haDeviceId` `e4ea…`, platform `kidde_homesafe`) | "Kidde Air Quality Alarm" (`haDeviceId` `0f97…`, platform `mqtt`) |
+| Entities | `sensor.living_room_kidde_co_temp_and_humidity_cabin_upstairs_*` (20) | `sensor.kidde_air_quality_alarm_temperature`, `…_humidity`, `binary_sensor.kidde_air_quality_alarm_carbon_monoxide_alarm` |
+| Source | Kidde cloud, polled | One retained message on `home/kidde_iaq_01/state`: `{"temperature": 72.5, "humidity": 45.2, "co_alarm": "Off"}` |
+
+`mosquitto_sub -t 'home/kidde_iaq_01/#' -v -C 1` returns that message instantly, because it is retained. Nothing publishes to the topic. The same three values (72.5 °F, 45.2 %, CO Off) are already recorded as frozen since at least 2026-07-03 in `docs/ontology.yaml` (`smart_appliance_co_air_quality_kidde`, 2026-08-21 trace). The three MQTT-discovery configs (`homeassistant/sensor/kidde_iaq_01_temp/config`, `…/kidde_iaq_01_hum/config`, `homeassistant/binary_sensor/kidde_iaq_01_co/config`) are retained too, so HA recreates the entities on every restart.
+
+**Why it looked new.** It is not a new reporter and the recent ontology work did not create one. The platform's own lifecycle rows for the dead entities were set to `ASSIGNED` on 2026-11-22 (06:25 and 06:34 UTC), which put them on the Devices list. And `lastSeen` on a platform row is the last HA poll, not the source's own timestamp, so a value that has not moved since July still reads `ONLINE` and current. **Rule: a reading that has not changed for days while its siblings move is stuck; check `lastSeen` against the source before trusting it.**
+
+**Which reading is real.** 48.9 °F (the `kidde_homesafe` entity). Its own `Status` attribute reads `Bad`, which is Kidde's label, not a platform fault; it was not investigated further.
+
+**Cleanup (a person runs it; agents may not write to the M920q broker).** Delete the four retained messages, then remove the leftover HA entities:
+
+```bash
+for t in home/kidde_iaq_01/state \
+         homeassistant/sensor/kidde_iaq_01_temp/config \
+         homeassistant/sensor/kidde_iaq_01_hum/config \
+         homeassistant/binary_sensor/kidde_iaq_01_co/config; do
+  docker exec mosquitto mosquitto_pub -t "$t" -r -n
+done
+```
+
+An empty retained payload on a discovery topic makes HA remove that entity. Check `mosquitto_sub -t 'home/kidde_iaq_01/#' -C 1 -W 3` times out afterwards and the three `kidde_air_quality_alarm_*` entities are gone from HA. Then use Remove on those platform rows in Device Manager (their ids start `ha-cabin-sensor-kidde-air-quality-alarm-` and `ha-cabin-binary-sensor-kidde-air-quality-alarm-`). Remove is `DELETE /api/devices/{id}`, which sets the row's lifecycle to Ignored; it does not hard-delete the row, and it is not the Enabled toggle. A `deviceId` cannot be renamed.
+
+**Recurring check (monthly, with the device-list review).** List retained MQTT topics that no live publisher owns, and compare against the Devices list: `docker exec mosquitto mosquitto_sub -t '#' -v --retained-only -W 4`. Anything outside `zigbee2mqtt/`, `home_z2m/`, the Zigbee2MQTT `homeassistant/` discovery topics and `cabin/` or `home/` topics with a known publisher is a candidate orphan. Same class of bug as the retained `zigbee2mqtt/bridge/state` entry below: a retained value trusted as if it were live.
+
 ### `zigbee2mqtt/bridge/state` stuck retained "offline" for 4+ days on a genuinely healthy bridge (found and fixed 2026-09-11)
 
 `/api/system/health`'s `zigbeeBridge` field and the Monitoring panel's
