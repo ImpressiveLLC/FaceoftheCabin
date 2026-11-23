@@ -278,22 +278,50 @@ def test_probe_report_flags_overlap_and_needs_two_runtimes(tmp_path):
     assert probe.report(tmp_path / "c")["verdict"].startswith(probe.STATUS_UNQUALIFIED)
 
 
-def _probe_worker(store, label, seconds):
+def _probe_worker(store, label, ready, go, results, bypass):
+    import uuid as _uuid
     import drive_lock_probe as p
-    p.run(Path(store), label, seconds, hold=0.05)
+    import resumable as r
+    if bypass:  # test-only mutant: no ownership guard at all, so two holders can coexist
+        r.acquire_lease = lambda *a, **k: _uuid.uuid4().hex
+        r.release_lease = lambda *a, **k: True
+    ready.put(label)
+    go.wait(60)
+    hold, gap = (0.2, 0.01) if bypass else (0.05, 0.05)
+    results.put(p.run(Path(store), label, 1.0, hold=hold, gap=gap, min_holds=3, max_seconds=60))
+
+
+def run_two_workers(store, bypass=False):
+    """Both workers are started, report ready, and are released together; each runs until it has held the lease at
+    least three times (bounded), so the outcome does not depend on the scheduler favouring one of them."""
+    ctx = mp.get_context("spawn")
+    ready, go, results = ctx.Queue(), ctx.Event(), ctx.Queue()
+    procs = [ctx.Process(target=_probe_worker, args=(str(store), label, ready, go, results, bypass))
+             for label in ("a", "b")]
+    for proc in procs:
+        proc.start()
+    assert sorted(ready.get(timeout=60) for _ in procs) == ["a", "b"]
+    go.set()
+    outcomes = {o["label"]: o for o in (results.get(timeout=120) for _ in procs)}
+    for proc in procs:
+        proc.join(60)
+        assert proc.exitcode == 0, f"worker exited {proc.exitcode}"
+    return outcomes, probe.report(store)
 
 
 def test_two_local_processes_never_overlap(tmp_path):
     """The local filesystem baseline. It says nothing about Drive, which stays UNQUALIFIED until measured there."""
-    ctx = mp.get_context("spawn")
-    procs = [ctx.Process(target=_probe_worker, args=(str(tmp_path), label, 2.0)) for label in ("a", "b")]
-    for proc in procs:
-        proc.start()
-    for proc in procs:
-        proc.join(60)
-    rep = probe.report(tmp_path)
-    assert rep["labels"] == ["a", "b"] and rep["intervals"] > 4
+    outcomes, rep = run_two_workers(tmp_path)
+    assert all(o["met_min_holds"] and o["held"] >= 3 for o in outcomes.values()), outcomes
+    assert rep["labels"] == ["a", "b"] and rep["intervals"] >= 6
     assert rep["overlaps"] == [] and rep["unreleased"] == 0
+
+
+def test_the_probe_detects_two_owners_when_the_guard_is_bypassed(tmp_path):
+    """Guard-bypass mutant: the same two-worker run with no ownership check must report overlapping holders."""
+    outcomes, rep = run_two_workers(tmp_path, bypass=True)
+    assert rep["labels"] == ["a", "b"]
+    assert rep["overlaps"] and rep["verdict"].startswith("NOT QUALIFIED"), rep
 
 
 def test_the_committed_cuda_lock_pins_every_recorded_package():

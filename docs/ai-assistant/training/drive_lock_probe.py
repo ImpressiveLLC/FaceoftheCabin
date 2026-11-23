@@ -27,20 +27,28 @@ PROBE_RUN = "lockprobe"
 STATUS_UNQUALIFIED = "UNQUALIFIED"
 
 
-def run(store: Path, label: str, seconds: float, hold: float = 0.5, clock=time.time, sleep=time.sleep) -> dict:
+def run(store: Path, label: str, seconds: float, hold: float = 0.5, clock=time.time, sleep=time.sleep,
+        min_holds: int = 0, max_seconds: float | None = None, gap: float | None = None) -> dict:
+    """Acquire, hold, release, repeatedly, for SECONDS, and until this runtime has held the lease at least MIN_HOLDS
+    times (bounded by MAX_SECONDS). After each release it waits GAP (default: HOLD) before trying again, a handoff
+    that lets the other runtime in: mutual exclusion does not promise fairness, so without it one runtime can keep
+    reacquiring while the other is only refused, and the run would show one label and prove nothing."""
     log = store / "probe" / f"{label}.jsonl"
     log.parent.mkdir(parents=True, exist_ok=True)
     held = refused = 0
-    deadline = clock() + seconds
+    gap = hold if gap is None else gap
+    start = clock()
+    deadline = start + seconds
+    hard = start + (max_seconds if max_seconds is not None else max(seconds, 1.0) * 30)
     with open(log, "a", encoding="utf-8") as out:
-        while clock() < deadline:
+        while (clock() < deadline or held < min_holds) and clock() < hard:
             try:
                 token = rs.acquire_lease(store, PROBE_RUN, label)
             except rs.CommitError:
                 refused += 1
                 sleep(hold / 5)
                 continue
-            start = clock()
+            begin = clock()
             sleep(hold)
             end = clock()
             released = None
@@ -49,11 +57,12 @@ def run(store: Path, label: str, seconds: float, hold: float = 0.5, clock=time.t
                     released = rs.release_lease(store, PROBE_RUN, token)
                 except rs.CommitError:
                     sleep(hold / 5)
-            out.write(json.dumps({"label": label, "token": token, "start": start, "end": end,
+            out.write(json.dumps({"label": label, "token": token, "start": begin, "end": end,
                                   "released": released}) + "\n")
             out.flush()
             held += 1
-    return {"label": label, "held": held, "refused": refused}
+            sleep(gap)
+    return {"label": label, "held": held, "refused": refused, "met_min_holds": held >= min_holds}
 
 
 def report(store: Path) -> dict:
