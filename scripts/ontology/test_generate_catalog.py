@@ -314,6 +314,23 @@ class SeedRules(unittest.TestCase):
 
 
 
+class ImageCopyTests(unittest.TestCase):
+    """Catalog S3: the backend classpath copy must equal the generated catalog, and --check says so."""
+
+    def test_committed_image_copy_equals_the_catalog(self):
+        self.assertEqual(gc.lf_bytes(gc.IMAGE_COPY), gc.lf_bytes(gc.CATALOG))
+
+    def test_check_fails_when_the_image_copy_drifts(self):
+        original = gc.IMAGE_COPY.read_bytes()
+        try:
+            gc.IMAGE_COPY.write_bytes(original.replace(b'"schema_version"', b'"schema_versiom"', 1))
+            with redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(gc.main(["--check"]), 1)
+            self.assertIn("backend image copy", err.getvalue())
+        finally:
+            gc.IMAGE_COPY.write_bytes(original)
+
+
 class CrlfCheckoutTests(unittest.TestCase):
     """Cowork 7075465576 item (b): a Windows (CRLF) checkout of the inputs must regenerate the identical catalog."""
 

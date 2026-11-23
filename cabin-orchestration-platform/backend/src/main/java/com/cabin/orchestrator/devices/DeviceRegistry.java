@@ -2,6 +2,7 @@ package com.cabin.orchestrator.devices;
 
 import com.cabin.orchestrator.devices.adapter.ProtocolAdapter;
 import com.cabin.orchestrator.devices.model.*;
+import com.cabin.orchestrator.ontology.DeviceCatalogService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -30,6 +31,14 @@ public class DeviceRegistry {
     // decided and written under the same per-device lock; two independent
     // ConcurrentHashMaps do not make a cross-map transaction atomic.
     private final Map<String, Object> deviceLocks = new ConcurrentHashMap<>();
+    // Catalog S3 shadow read (W-161). Optional so the plain unit-test constructors need no catalog; a null
+    // service means device reads carry no catalog fields, exactly as before S3.
+    private DeviceCatalogService catalogService;
+
+    @Autowired(required = false)
+    public void setCatalogService(DeviceCatalogService catalogService) {
+        this.catalogService = catalogService;
+    }
 
     @Autowired
     public DeviceRegistry(List<ProtocolAdapter> adapterList, DeviceLifecycleStore lifecycleStore,
@@ -749,6 +758,7 @@ public class DeviceRegistry {
         if (sourceFields == null && status.deviceId().startsWith("z2m-")) sourceFields = attrs.get("vendorReportedFields");
         attrs.put("reportsFields", sourceFields instanceof List<?> fields
             ? fields : status.type().telemetryFields().stream().sorted().toList());
+        if (catalogService != null) addCatalogShadow(status, attrs);
         DeviceDescriptor descriptor = descriptors.get(status.deviceId());
         if (descriptor != null) {
             attrs.put("capabilities", descriptor.capabilities().stream().map(Enum::name).sorted().toList());
@@ -769,6 +779,23 @@ public class DeviceRegistry {
             .ifPresent(area -> attrs.put("area", area));
         return new DeviceStatus(status.deviceId(), status.type(), status.name(), status.state(),
             status.lastSeen(), attrs, status.location());
+    }
+
+    /**
+     * Catalog S3 (W-161): stamps the catalog the read was checked against and the entry the assigned type maps to.
+     * Observation only: the assigned type, capabilities, telemetry and every other field are untouched.
+     */
+    private void addCatalogShadow(DeviceStatus status, Map<String, Object> attrs) {
+        DeviceCatalogService.ShadowMatch match = catalogService.shadow(status.type());
+        attrs.put("catalogSource", catalogService.source());
+        catalogService.catalogHash().ifPresent(hash -> attrs.put("catalogHash", hash));
+        if (match.matchedBy() != null) attrs.put("matchedBy", match.matchedBy());
+        if (match.ontologyTypeId() != null) attrs.put("ontologyTypeId", match.ontologyTypeId());
+        if (match.ontologyContentHash() != null) attrs.put("ontologyContentHash", match.ontologyContentHash());
+        if (match.disagreement() != null) {
+            attrs.put("catalogDisagreement", match.disagreement().name());
+            catalogService.logDisagreement(status.deviceId(), status.type(), match.disagreement());
+        }
     }
 
     public Optional<DeviceDescriptor> descriptor(String deviceId) {

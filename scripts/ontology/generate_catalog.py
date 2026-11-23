@@ -29,6 +29,9 @@ ONTOLOGY = ROOT / "docs" / "ontology.yaml"
 SEED = ROOT / "docs" / "ontology" / "catalog-seed.yaml"
 SCHEMA = ROOT / "docs" / "ontology" / "schema" / "device-catalog.schema.json"
 CATALOG = ROOT / "docs" / "ontology" / "device-catalog.json"
+# Catalog S3 (W-161): the backend image cannot see docs/ (its build context is the backend directory), so the generator
+# writes a byte-identical copy onto the backend classpath. The runtime reads the docs mount first and this copy second.
+IMAGE_COPY = ROOT / "cabin-orchestration-platform" / "backend" / "src" / "main" / "resources" / "ontology" / "device-catalog.json"
 DEVICE_TYPE_JAVA = (ROOT / "cabin-orchestration-platform" / "backend" / "src" / "main" / "java" / "com" / "cabin"
                     / "orchestrator" / "devices" / "model" / "DeviceType.java")
 GENERATOR_VERSION = 1
@@ -291,9 +294,15 @@ def main(argv=None):
             if current != text:
                 raise CatalogError("docs/ontology/device-catalog.json is not what the generator produces from the current "
                                    f"inputs (a hand edit, or an input changed). Run: {FIX_COMMAND}")
+            image = lf_bytes(IMAGE_COPY).decode("utf-8") if IMAGE_COPY.exists() else ""
+            if image != text:
+                raise CatalogError(f"{IMAGE_COPY.relative_to(ROOT).as_posix()} (the backend image copy) differs from the "
+                                   f"generated catalog. Run: {FIX_COMMAND}")
             print(f"catalog OK: {len(catalog['entries'])} entries, hash {catalog['catalog_hash'][:12]}")
             return 0
         CATALOG.write_bytes(text.encode("utf-8"))
+        IMAGE_COPY.parent.mkdir(parents=True, exist_ok=True)
+        IMAGE_COPY.write_bytes(text.encode("utf-8"))
         print(f"wrote {CATALOG.relative_to(ROOT)}: {len(catalog['entries'])} entries, hash {catalog['catalog_hash'][:12]}")
         return 0
     except CatalogError as exc:
