@@ -9,7 +9,7 @@ A device is reachable in Home Assistant for only part of what it can do, and the
 ## What the repository shows today (read from main at 0fd8dd63, not from a live host)
 
 - Zigbee devices: `Zigbee2MqttAdapter` reads the device's declared `exposes` list, infers capabilities and a type from it, and builds the reported-field list from what the device exposes.
-- Home Assistant devices: `HomeAssistantAdapter` reads one entity's state and its attributes (it also has `discover()` and a `deviceIdsByEntity` map, which find and index entities but do not group them by physical device). A physical device with several Home Assistant entities (a sensor, a switch, a configuration entity) is only as visible as the entities that were registered as descriptors.
+- Home Assistant devices: `HomeAssistantAdapter` discovers entity states and attributes and resolves entity-to-HA-device registry IDs through `deviceIdsByEntity()`. `HomeAssistantDiscoveryService` supplies that shared identity for Device Manager grouping. This does not prove complete coverage of every entity, including disabled or hidden entities, belonging to a physical device.
 - Catalog S2 records which types exist and which readings each type reports, from `DeviceType.java` and the seed. The planned S6 (W-164) measures the opposite direction: readings a device sends that its type does not declare.
 
 Nobody measures the forward direction: **what a device offers that the hub does not surface.** That is the gap. This note names it and proposes how to measure it before anything changes.
