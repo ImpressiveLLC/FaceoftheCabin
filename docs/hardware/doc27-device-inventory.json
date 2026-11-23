@@ -573,7 +573,7 @@
       "service_type_refs": [
         "air_circulation_service"
       ],
-      "note": "Air pump is this device. Included speed controller is manual; no smart UIS controller ordered.",
+      "note": "Air pump is this device. Included speed controller is manual; no smart UIS controller ordered. Load current per dial level measured 2026-11-23 at Home through a SONOFF S61SZBTPB (L1 0.03 A, L2 0.04, L3 0.09, L4 0.13, L5 0.18, L6 0.25, L7 0.34, L8 0.50, L9 0.66, L10 0.86 A, about 120.5-121 V; bench values, not installed; levels 1 and 2 not distinguishable at 0.01 A resolution). See docs/hardware/variable-speed-appliance-control.md.",
       "control_allocation_key": "relay-3"
     },
     {

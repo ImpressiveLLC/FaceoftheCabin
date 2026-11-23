@@ -11116,6 +11116,34 @@ elements:
     - target: hub_location
       type: located_in
       cardinality: N:1
+  - id: speed_ladder_characterization
+    entity_type: owl:Class
+    layer: hardware
+    primitive: false
+    schema_version: 0.3.0
+    migration_status: complete
+    lifecycle_status: candidate
+    data_class: conceptual
+    data_type: owl:Class
+    ui_display_name: Speed Ladder Characterization
+    source: Nate, 2026-11-23 (S6 bench ladder at Home through a SONOFF S61SZBTPB); docs/hardware/variable-speed-appliance-control.md; D28 Amendment A1
+    rendering:
+      semantic: Speed Ladder Characterization
+      systems: Speed Ladder Characterization record; candidate
+      technical: speed_ladder_characterization
+      compliance: First measured 2026-11-23 at Home (bench); not installed; no airflow measured
+    definition: A recorded table of the load current an appliance draws at each of its setting positions (for example the ten CLOUDLINE S6
+      dial levels), measured through a metered Zigbee plug at a stated supply voltage, with the date, mounting state and the settings that
+      cannot be told apart at the plug's resolution. It lets the platform report an appliance's setting (reported level) and calibrate an
+      automated control path, and it never stands for airflow, heating or humidity effect.
+    notes: Procedure, table and maintenance triggers are in docs/hardware/variable-speed-appliance-control.md. Commanded setting, reported
+      setting and actual effect stay distinct. Bench values (Home, about 121 V, unducted state not recorded) are not installed values; repeat
+      when the plug or fan moves. Levels 1 and 2 of the S6 differ by 0.01 A and are not distinguishable. Design entry only, not an executable
+      DeviceType or runtime capability declaration. No first_verified_live claim.
+    relationships:
+    - target: hub_location
+      type: located_in
+      cardinality: N:1
   - id: sen66_environmental_sensor
     entity_type: owl:Class
     layer: hardware
