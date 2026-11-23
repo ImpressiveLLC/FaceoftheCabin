@@ -173,24 +173,63 @@ def checkpoint_bytes(record: dict) -> int:
     return sum(entry["bytes"] for entry in record["manifest"]["files"])
 
 
-def storage_preflight(durable_root: Path, *, measured_bytes: int | None, estimate_bytes: int,
-                      free_bytes: int | None = None) -> dict:
-    """Refuses to start a chunk unless the store has room for KEEP verified chunks plus the in-flight one plus a margin.
-    Uses the newest committed chunk's MEASURED size when there is one; before the first chunk only a lower-bound
-    estimate exists, and the record says so (basis "lower_bound_estimate"), so no size claim stands unmeasured.
-    FREE_BYTES is what the filesystem reports; on a Drive mount that is not proven to be the account's real quota,
-    which the record also says."""
-    basis = "measured" if measured_bytes else "lower_bound_estimate"
-    size = measured_bytes or estimate_bytes
-    free = shutil.disk_usage(durable_root).free if free_bytes is None else free_bytes
+NOT_MEASURED = "NOT_MEASURED"
+
+
+def storage_preflight(durable_root: Path, *, measured_bytes: int | None, sizing: dict | None = None,
+                      sizing_run: bool = False, free_bytes: int | None = None,
+                      remote_quota: dict | None = None) -> dict:
+    """Refuses to start a chunk unless the store has room for KEEP verified chunks plus the in-flight one plus a margin,
+    sized from a MEASURED checkpoint (Codex 7105613707): the newest committed chunk of this run, or else a sizing record
+    from the separately approved sizing run on the same environment and model. With neither, the size is NOT_MEASURED
+    and the run is refused; no estimate, and no tiny CPU checkpoint, is ever substituted. The sizing run itself
+    (SIZING_RUN) is the one run allowed without a size, because it produces the measurement; it still needs the margin.
+
+    Free space is recorded twice and separately: what the local mount reports, and the account's remote quota as
+    entered from the provider (REMOTE_QUOTA), or NOT_MEASURED. The smaller known figure is used."""
+    local_free = shutil.disk_usage(durable_root).free if free_bytes is None else free_bytes
+    remote_free = remote_quota.get("free_bytes") if remote_quota else None
+    free = min(local_free, remote_free) if remote_free is not None else local_free
+    if measured_bytes:
+        basis, size = "measured_this_run", measured_bytes
+    elif sizing:
+        basis, size = "sizing_run_measurement", int(sizing["checkpoint_bytes"])
+    elif sizing_run:
+        basis, size = NOT_MEASURED + " (this is the sizing run)", 0
+    else:
+        raise CommitError("checkpoint size is NOT_MEASURED: run the separately approved sizing run first and pass its "
+                          "record; no estimate is substituted. Nothing was trained.")
     needed = STORAGE_CHECKPOINTS * size + STORAGE_MARGIN_BYTES
-    record = {"basis": basis, "checkpoint_bytes": size, "checkpoints_reserved": STORAGE_CHECKPOINTS,
-              "margin_bytes": STORAGE_MARGIN_BYTES, "needed_bytes": needed, "free_bytes_reported": free,
-              "free_bytes_source": "shutil.disk_usage; on a Drive mount this is not verified to be the real quota"}
+    record = {"basis": basis, "checkpoint_bytes": size or None, "checkpoints_reserved": STORAGE_CHECKPOINTS,
+              "margin_bytes": STORAGE_MARGIN_BYTES, "needed_bytes": needed,
+              "local_free_bytes": local_free,
+              "local_free_source": "shutil.disk_usage of the store's mount; not the account quota on a Drive mount",
+              "remote_quota": remote_quota or NOT_MEASURED, "free_bytes_used": free,
+              "sizing_source": sizing.get("chunk_id") if sizing else None}
     if free < needed:
         raise CommitError(f"store has {free} bytes free, needs {needed} ({STORAGE_CHECKPOINTS} x {size} {basis} + "
                           f"{STORAGE_MARGIN_BYTES} margin); nothing was trained")
     return record
+
+
+def sizing_record(durable_root: Path, run_id: str, bindings: dict) -> dict:
+    """The measured size of the newest committed chunk of a sizing run, bound to its environment and model, for use by
+    other runs' preflights."""
+    latest = latest_verified(durable_root, run_id, bindings)
+    if latest is None:
+        raise CommitError(f"no committed sizing chunk for {run_id}")
+    return {"checkpoint_bytes": checkpoint_bytes(latest), "chunk_id": latest["manifest"]["chunk_id"],
+            "manifest_sha256": latest["manifest_sha256"],
+            "binds": {k: bindings[k] for k in ("base_revision", "code_sha256", "lock_sha256", "environment_id")}}
+
+
+def check_sizing(sizing: dict, bindings: dict) -> None:
+    """A size measured on a different model, code, lock or environment is not this run's size."""
+    for key, value in sizing.get("binds", {}).items():
+        if bindings.get(key) != value:
+            raise CommitError(f"sizing record was measured with {key}={value!r}, this run has {bindings.get(key)!r}")
+    if set(sizing.get("binds", {})) != {"base_revision", "code_sha256", "lock_sha256", "environment_id"}:
+        raise CommitError("sizing record does not say what it was measured with")
 
 
 def _verify_payload(dest: Path, manifest: dict) -> list[str]:

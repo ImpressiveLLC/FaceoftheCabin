@@ -86,21 +86,66 @@ def test_train_sft_refuses_a_record_whose_id_is_not_the_bound_one(tmp_path):
     assert train_sft.load_environment_record(None, "anything") is None
 
 
-def test_storage_preflight_uses_the_measured_size_when_there_is_one(tmp_path):
-    rec = rs.storage_preflight(tmp_path, measured_bytes=1000, estimate_bytes=10, free_bytes=10 ** 12)
-    assert rec["basis"] == "measured" and rec["checkpoint_bytes"] == 1000
+SIZING = {"checkpoint_bytes": 2000, "chunk_id": "sizing-x-step00000001", "manifest_sha256": "m",
+          "binds": {"base_revision": "rev", "code_sha256": "c", "lock_sha256": "l", "environment_id": "env-1"}}
+
+
+def test_storage_preflight_uses_this_runs_measured_size_then_the_sizing_record(tmp_path):
+    rec = rs.storage_preflight(tmp_path, measured_bytes=1000, sizing=SIZING, free_bytes=10 ** 12)
+    assert rec["basis"] == "measured_this_run" and rec["checkpoint_bytes"] == 1000
     assert rec["needed_bytes"] == 3 * 1000 + rs.STORAGE_MARGIN_BYTES
-    first = rs.storage_preflight(tmp_path, measured_bytes=None, estimate_bytes=10, free_bytes=10 ** 12)
-    assert first["basis"] == "lower_bound_estimate"
-    assert "not verified to be the real quota" in first["free_bytes_source"]
+    first = rs.storage_preflight(tmp_path, measured_bytes=None, sizing=SIZING, free_bytes=10 ** 12)
+    assert first["basis"] == "sizing_run_measurement" and first["sizing_source"] == SIZING["chunk_id"]
+
+
+def test_an_unmeasured_size_refuses_the_run_and_nothing_is_estimated(tmp_path):
+    with pytest.raises(rs.CommitError, match="NOT_MEASURED"):
+        rs.storage_preflight(tmp_path, measured_bytes=None, free_bytes=10 ** 12)
+    sizing = rs.storage_preflight(tmp_path, measured_bytes=None, sizing_run=True, free_bytes=10 ** 12)
+    assert sizing["basis"].startswith("NOT_MEASURED") and sizing["checkpoint_bytes"] is None
+    with pytest.raises(rs.CommitError, match="nothing was trained"):
+        rs.storage_preflight(tmp_path, measured_bytes=None, sizing_run=True, free_bytes=rs.STORAGE_MARGIN_BYTES - 1)
+
+
+def test_local_free_space_and_remote_quota_are_recorded_separately(tmp_path):
+    rec = rs.storage_preflight(tmp_path, measured_bytes=10, free_bytes=10 ** 12)
+    assert rec["remote_quota"] == "NOT_MEASURED" and rec["free_bytes_used"] == 10 ** 12
+    assert "not the account quota" in rec["local_free_source"]
+    quota = {"free_bytes": rs.STORAGE_MARGIN_BYTES + 30, "source": "provider storage page, entered by Nate"}
+    rec = rs.storage_preflight(tmp_path, measured_bytes=10, free_bytes=10 ** 12, remote_quota=quota)
+    assert rec["remote_quota"] == quota and rec["free_bytes_used"] == quota["free_bytes"]
+    with pytest.raises(rs.CommitError):
+        rs.storage_preflight(tmp_path, measured_bytes=11, free_bytes=10 ** 12, remote_quota=quota)
 
 
 def test_storage_preflight_refuses_without_room_for_three_checkpoints(tmp_path):
     size = 500 * 1024 * 1024
     needed = 3 * size + rs.STORAGE_MARGIN_BYTES
-    rs.storage_preflight(tmp_path, measured_bytes=size, estimate_bytes=0, free_bytes=needed)
+    rs.storage_preflight(tmp_path, measured_bytes=size, free_bytes=needed)
     with pytest.raises(rs.CommitError, match="nothing was trained"):
-        rs.storage_preflight(tmp_path, measured_bytes=size, estimate_bytes=0, free_bytes=needed - 1)
+        rs.storage_preflight(tmp_path, measured_bytes=size, free_bytes=needed - 1)
+
+
+@pytest.mark.parametrize("key", ["base_revision", "code_sha256", "lock_sha256", "environment_id"])
+def test_a_sizing_record_from_another_model_code_lock_or_environment_is_refused(key):
+    bindings = dict(SIZING["binds"])
+    rs.check_sizing(SIZING, bindings)
+    with pytest.raises(rs.CommitError, match=key):
+        rs.check_sizing(SIZING, dict(bindings, **{key: "other"}))
+    with pytest.raises(rs.CommitError):
+        rs.check_sizing({"checkpoint_bytes": 1}, bindings)
+
+
+def test_sizing_run_flags_are_constrained():
+    base = ["--run-dir", "r", "--resume-store", "s", "--total-steps", "1", "--chunk-steps", "1",
+            "--environment-id", "e", "--sizing-run"]
+    assert train_sft.parse_args(base + ["--run-id", "sizing-a"]).sizing_run is True
+    for bad in (["--run-id", "main"], ["--run-id", "sizing-a", "--checkpoint-size-record", "x"]):
+        with pytest.raises(SystemExit):
+            train_sft.parse_args(base + bad)
+    with pytest.raises(SystemExit):
+        train_sft.parse_args(["--run-dir", "r", "--resume-store", "s", "--total-steps", "2", "--chunk-steps", "1",
+                              "--environment-id", "e", "--sizing-run", "--run-id", "sizing-a"])
 
 
 def test_checkpoint_bytes_is_the_manifest_total(tmp_path):
@@ -115,11 +160,6 @@ def test_amp_counter_counts_skipped_updates():
         counter.on_optimizer_step(None, None, control, optimizer=SimpleNamespace(step_was_skipped=skipped))
     counter.on_optimizer_step(None, None, control, optimizer=None)
     assert (counter.observed, counter.skipped) == (6, 3)
-
-
-def test_lower_bound_checkpoint_bytes_counts_only_trainable_parameters():
-    params = [SimpleNamespace(requires_grad=True, numel=lambda: 10), SimpleNamespace(requires_grad=False, numel=lambda: 99)]
-    assert train_sft.lower_bound_checkpoint_bytes(SimpleNamespace(parameters=lambda: params)) == 120
 
 
 def write_intervals(store, rows):
@@ -227,4 +267,22 @@ def test_the_notebook_is_a_thin_person_run_driver():
         assert forbidden not in code, f"notebook code must not contain {forbidden!r}"
     assert "UNQUALIFIED" in text and "bf16=False" in text and "invented" in text
     assert "--require-hashes" in code and "requirements-colab-cuda.lock" in code
-    assert code.count("train_sft.py --data /content/invented.jsonl") == 3
+    assert code.count("train_sft.py --data /content/invented.jsonl") == 4  # sizing, whole, chunk 1, chunk 2
+    assert code.count("--sizing-run") == 1
+    assert code.count("--checkpoint-size-record /content/sizing.json") == 3
+    assert code.count("--remote-quota-record /content/quota.json") == 3
+
+
+def test_sizing_record_cli_reads_a_committed_sizing_chunk(tmp_path):
+    import qualification as q
+    from test_resumable import BINDINGS, stage
+    bindings = dict(BINDINGS, total_steps=1)
+    rs.commit(stage(tmp_path, 1), tmp_path / "store", run_id="sizing-x", global_step=1, total_steps=1,
+              optimizer_updates=1, bindings=bindings, cursor={})
+    out = tmp_path / "sizing.json"
+    assert q.main(["sizing-record", "--store", str(tmp_path / "store"), "--run-id", "sizing-x", "--out", str(out)]) == 0
+    record = json.loads(out.read_text(encoding="utf-8"))
+    assert record["checkpoint_bytes"] > 0 and record["chunk_id"] == "sizing-x-step00000001"
+    assert record["binds"]["environment_id"] == BINDINGS["environment_id"]
+    with pytest.raises(SystemExit):
+        q.main(["sizing-record", "--store", str(tmp_path / "store"), "--run-id", "main", "--out", str(tmp_path / "o")])

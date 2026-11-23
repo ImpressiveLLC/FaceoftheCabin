@@ -175,6 +175,12 @@ def parse_args(argv=None):
     resume.add_argument("--chunk-steps", type=int, default=None, help="optimizer updates in this invocation")
     resume.add_argument("--environment-id", default=None,
                         help="the recorded environment (slice B's recorder); a different one is a different lineage")
+    resume.add_argument("--checkpoint-size-record", type=Path, default=None,
+                        help="qualification.py sizing-record output: a MEASURED checkpoint size from the sizing run")
+    resume.add_argument("--sizing-run", action="store_true",
+                        help="this run only measures the checkpoint size (one step); separately approved")
+    resume.add_argument("--remote-quota-record", type=Path, default=None,
+                        help='JSON {"free_bytes": N, "source": "..."} entered from the provider\'s storage page')
     resume.add_argument("--environment-record", type=Path, default=None,
                         help="colab_env.py's record; its environment_id must equal --environment-id")
     resume.add_argument("--take-over-lease", default=None, metavar="TOKEN",
@@ -190,6 +196,10 @@ def parse_args(argv=None):
             parser.error("--max-steps does not apply in resumable mode; --total-steps is the whole run's budget")
         if args.total_steps < 1 or args.chunk_steps < 1:
             parser.error("--total-steps and --chunk-steps must be at least 1")
+        if args.sizing_run and (args.total_steps != 1 or args.chunk_steps != 1 or not args.run_id.startswith("sizing-")):
+            parser.error("--sizing-run is one step (--total-steps 1 --chunk-steps 1) under a run id starting sizing-")
+        if args.sizing_run and args.checkpoint_size_record:
+            parser.error("--sizing-run measures the size; it takes no --checkpoint-size-record")
     if not args.check_only and args.run_dir is None:
         parser.error("a real run needs --run-dir (an existing run directory); use --check-only for a dry check")
     return args
@@ -259,6 +269,10 @@ def run_bindings(*, base_revision, data_sha256, environment_id, total_steps, see
             "training_args_sha256": invariant_args_sha256(seed, use_gpu, total_steps), "fp16": bool(use_gpu)}
 
 
+def _load_json(path):
+    return None if path is None else json.loads(Path(path).read_text(encoding="utf-8"))
+
+
 def load_environment_record(path, environment_id):
     """The recorder's JSON, refused unless its own id matches --environment-id. None when no record is given."""
     if path is None:
@@ -291,12 +305,6 @@ def amp_skip_counter(TrainerCallback):
     return AmpSkipCounter()
 
 
-def lower_bound_checkpoint_bytes(model) -> int:
-    """Before the first chunk: trainable parameters x 12 bytes (fp32 weights plus two Adam moments). A floor only;
-    the first commit replaces it with the measured size."""
-    return 12 * sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-
 def chunk_stopper(TrainerCallback, stop_at: int):
     """A callback that saves a full checkpoint and stops at global step STOP_AT. Steps are optimizer updates, so a
     chunk never ends partway through gradient accumulation."""
@@ -312,8 +320,9 @@ def chunk_stopper(TrainerCallback, stop_at: int):
 
 
 def run_resumable_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id: str, owner: str, total_steps: int,
-                        chunk_steps: int, bindings: dict, fault=None, take_over_from=None, estimate_bytes: int = 0,
-                        free_bytes=None, environment: dict | None = None) -> dict:
+                        chunk_steps: int, bindings: dict, fault=None, take_over_from=None, sizing=None,
+                        sizing_run: bool = False, free_bytes=None, remote_quota=None,
+                        environment: dict | None = None) -> dict:
     """See _run_chunk. Holds the run's lease only while this chunk runs; it is released when the chunk ends, whether it
     committed or failed, so the next session's chunk can start. A process killed outright leaves the lease, and the
     next session must name it (--take-over-lease) to proceed."""
@@ -325,7 +334,8 @@ def run_resumable_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id
     try:
         return _run_chunk(build_trainer=build_trainer, trainer_dir=trainer_dir, store=store, run_id=run_id,
                           total_steps=total_steps, chunk_steps=chunk_steps, bindings=bindings, fault=fault,
-                          estimate_bytes=estimate_bytes, free_bytes=free_bytes, environment=environment)
+                          sizing=sizing, sizing_run=sizing_run, free_bytes=free_bytes, remote_quota=remote_quota,
+                          environment=environment)
     finally:
         try:
             if not rs.release_lease(store, run_id, token):
@@ -335,7 +345,8 @@ def run_resumable_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id
 
 
 def _run_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id: str, total_steps: int, chunk_steps: int,
-               bindings: dict, fault=None, estimate_bytes: int = 0, free_bytes=None, environment=None) -> dict:
+               bindings: dict, fault=None, sizing=None, sizing_run=False, free_bytes=None, remote_quota=None,
+               environment=None) -> dict:
     """Trains one chunk and commits it. BUILD_TRAINER(max_steps, callbacks) returns a Trainer; it is called with the
     fixed whole-run budget, so the LR schedule is the same in every chunk. Returns the committed manifest, or the
     newest verified one when the run was already complete."""
@@ -348,8 +359,11 @@ def _run_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id: str, to
         return latest["manifest"]
     start = latest["manifest"]["global_step"] if latest else 0
     stop_at = min(start + chunk_steps, total_steps)
+    if sizing is not None:
+        rs.check_sizing(sizing, bindings)
     storage = rs.storage_preflight(store, measured_bytes=rs.checkpoint_bytes(latest) if latest else None,
-                                   estimate_bytes=estimate_bytes, free_bytes=free_bytes)
+                                   sizing=sizing, sizing_run=sizing_run, free_bytes=free_bytes,
+                                   remote_quota=remote_quota)
     resume_from = None
     if latest:
         resume_from = rs.restore(latest, trainer_dir / f"checkpoint-{start}")
@@ -472,7 +486,9 @@ def main(argv=None):
                                            run_id=args.run_id, owner=args.run_dir.name, total_steps=args.total_steps,
                                            chunk_steps=args.chunk_steps, bindings=bindings,
                                            take_over_from=args.take_over_lease,
-                                           estimate_bytes=lower_bound_checkpoint_bytes(model),
+                                           sizing=_load_json(args.checkpoint_size_record),
+                                           sizing_run=args.sizing_run,
+                                           remote_quota=_load_json(args.remote_quota_record),
                                            environment=load_environment_record(args.environment_record,
                                                                                args.environment_id))
         finally:

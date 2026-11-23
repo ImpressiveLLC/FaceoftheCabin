@@ -25,11 +25,29 @@ HERE = Path(__file__).resolve().parent
 TOTAL, FIRST = 6, 2  # 12 rows, batch 1, accumulation 4: 3 updates per epoch, so the cut is mid-epoch
 
 
-def chunk(store, run_id, run_dir, total, steps, *extra, check=True):
+_SIZING = {}
+
+
+def sizing_record():
+    """The separately approved sizing run, done once: one step in its own store, measured, never estimated."""
+    if "path" not in _SIZING:
+        import tempfile
+        root = Path(tempfile.mkdtemp(prefix="sizing-"))
+        path = root / "sizing.json"
+        env = dict(os.environ, HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", PYTHONHASHSEED="0")
+        subprocess.run([sys.executable, str(HERE / "resume_harness.py"), "--store", str(root / "store"), "--run-id",
+                        "sizing-harness", "--run-dir", str(root / "run"), "--total-steps", "1", "--chunk-steps", "1",
+                        "--sizing-run", "--write-sizing-record", str(path)], check=True, cwd=HERE, env=env)
+        _SIZING["path"] = path
+    return _SIZING["path"]
+
+
+def chunk(store, run_id, run_dir, total, steps, *extra, check=True, sized=True):
     env = dict(os.environ, HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", PYTHONHASHSEED="0")
+    sizing = ["--checkpoint-size-record", str(sizing_record())] if sized else []
     done = subprocess.run([sys.executable, str(HERE / "resume_harness.py"), "--store", str(store), "--run-id", run_id,
                            "--run-dir", str(run_dir), "--total-steps", str(total), "--chunk-steps", str(steps),
-                           *extra], check=check, cwd=HERE, env=env, capture_output=not check, text=True)
+                           *sizing, *extra], check=check, cwd=HERE, env=env, capture_output=not check, text=True)
     if not check:
         return done
     return json.loads((run_dir / "trace.json").read_text(encoding="utf-8"))
@@ -153,7 +171,17 @@ def test_amp_accounting_and_storage_preflight_are_recorded(runs):
         assert manifest["optimizer_updates"] == manifest["global_step"]
         assert manifest["evidence"]["amp"] == {"fp16": False, "bf16": False, "skipped_this_chunk": 0,
                                                "optimizer_steps_this_chunk": steps}
-    assert first["manifest"]["evidence"]["storage_preflight"]["basis"] == "lower_bound_estimate"
+    sizing = json.loads(sizing_record().read_text(encoding="utf-8"))
+    first_storage = first["manifest"]["evidence"]["storage_preflight"]
+    assert first_storage["basis"] == "sizing_run_measurement"
+    assert first_storage["checkpoint_bytes"] == sizing["checkpoint_bytes"] > 0
     measured = second["manifest"]["evidence"]["storage_preflight"]
-    assert measured["basis"] == "measured"
+    assert measured["basis"] == "measured_this_run"
     assert measured["checkpoint_bytes"] == sum(f["bytes"] for f in first["manifest"]["files"])
+    assert measured["remote_quota"] == "NOT_MEASURED"
+
+
+def test_a_run_without_a_measured_size_is_refused_before_training(tmp_path):
+    done = chunk(tmp_path / "s", "unsized", tmp_path / "u1", TOTAL, FIRST, check=False, sized=False)
+    assert done.returncode != 0 and "NOT_MEASURED" in done.stderr
+    assert not list((tmp_path / "u1" / "trainer").glob("checkpoint-*")), "it trained before refusing"

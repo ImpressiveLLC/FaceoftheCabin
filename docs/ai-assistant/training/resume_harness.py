@@ -54,7 +54,7 @@ def tiny_model(seed=SEED, dropout=0.0):
 
 
 def run(store: Path, run_id: str, run_dir: Path, total_steps: int, chunk_steps: int, fault=None, seed=SEED,
-        dropout=0.0, drop_rng_on_restore=False) -> dict:
+        dropout=0.0, drop_rng_on_restore=False, sizing=None, sizing_run=False) -> dict:
     import torch
     import sft_tokenize as st
     from transformers import Trainer, TrainingArguments, set_seed
@@ -105,8 +105,8 @@ def run(store: Path, run_id: str, run_dir: Path, total_steps: int, chunk_steps: 
     manifest = train_sft.run_resumable_chunk(build_trainer=build_trainer, trainer_dir=trainer_dir, store=store,
                                              run_id=run_id, owner=run_dir.name, total_steps=total_steps,
                                              chunk_steps=chunk_steps, bindings=bindings, fault=fault,
-                                             estimate_bytes=train_sft.lower_bound_checkpoint_bytes(model))
-    out = {"manifest": manifest, "trace": trace,
+                                             sizing=sizing, sizing_run=sizing_run)
+    out = {"manifest": manifest, "trace": trace, "bindings": bindings,
            "log_history": holder["trainer"].state.log_history if "trainer" in holder else []}
     (run_dir / "trace.json").write_text(json.dumps(out, sort_keys=True, default=str), encoding="utf-8")
     return out
@@ -122,9 +122,19 @@ def main(argv=None):
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument("--dropout", type=float, default=0.0, help="LoRA dropout; >0 makes the run depend on RNG state")
     parser.add_argument("--drop-rng-on-restore", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--sizing-run", action="store_true")
+    parser.add_argument("--checkpoint-size-record", type=Path, default=None)
+    parser.add_argument("--write-sizing-record", type=Path, default=None,
+                        help="after a sizing run, write the sizing record here")
     args = parser.parse_args(argv)
-    run(args.store, args.run_id, args.run_dir, args.total_steps, args.chunk_steps, seed=args.seed,
-        dropout=args.dropout, drop_rng_on_restore=args.drop_rng_on_restore)
+    sizing = json.loads(args.checkpoint_size_record.read_text(encoding="utf-8")) if args.checkpoint_size_record else None
+    out = run(args.store, args.run_id, args.run_dir, args.total_steps, args.chunk_steps, seed=args.seed,
+              dropout=args.dropout, drop_rng_on_restore=args.drop_rng_on_restore, sizing=sizing,
+              sizing_run=args.sizing_run)
+    if args.write_sizing_record:
+        import resumable as rs
+        args.write_sizing_record.write_text(json.dumps(rs.sizing_record(args.store, args.run_id, out["bindings"])),
+                                            encoding="utf-8")
 
 
 if __name__ == "__main__":

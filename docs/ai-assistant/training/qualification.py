@@ -7,6 +7,11 @@ Two commands, both offline and both on invented data:
       Writes N invented conversations in the sft_dataset.jsonl shape. Every row is plainly synthetic (a fixed
       template with a counter); nothing is read from real data, and no data is discovered automatically.
 
+  sizing-record --store DIR --run-id sizing-ID --out FILE
+      After the separately approved one-step sizing run: writes the MEASURED checkpoint size of its committed chunk,
+      bound to the model, code, lock and environment it was measured with. Runs that follow pass it as
+      --checkpoint-size-record; without it they refuse (NOT_MEASURED).
+
   compare --whole RUN_DIR --chunks RUN_DIR [RUN_DIR ...] --whole-store DIR --chunk-store DIR --whole-run ID --chunk-run ID
       Applies the gate fixed before results: every loss finite; matched-step loss allclose (atol 1e-4, rtol 1e-3);
       identical learning rate at every step; the same final step; final adapter relative L2 difference <= 1e-4
@@ -95,6 +100,10 @@ def main(argv=None):
     rows = sub.add_parser("invented-rows")
     rows.add_argument("--out", type=Path, required=True)
     rows.add_argument("--rows", type=int, default=64)
+    size = sub.add_parser("sizing-record")
+    size.add_argument("--store", type=Path, required=True)
+    size.add_argument("--run-id", required=True)
+    size.add_argument("--out", type=Path, required=True)
     cmp = sub.add_parser("compare")
     cmp.add_argument("--whole", type=Path, required=True)
     cmp.add_argument("--chunks", type=Path, nargs="+", required=True)
@@ -108,6 +117,17 @@ def main(argv=None):
             for row in invented_rows(args.rows):
                 out.write(json.dumps(row, sort_keys=True) + "\n")
         print(f"wrote {args.rows} invented rows to {args.out}")
+        return 0
+    if args.cmd == "sizing-record":
+        import resumable as rs
+        marked = [p for p in sorted(args.store.glob(f"{args.run_id}-step*")) if (p / rs.MARKER).exists()]
+        if not args.run_id.startswith("sizing-") or not marked:
+            raise SystemExit(f"no committed sizing chunk for {args.run_id} in {args.store}")
+        bindings = json.loads((marked[-1] / rs.MANIFEST).read_bytes())["bindings"]
+        record = rs.sizing_record(args.store, args.run_id, bindings)  # verifies the chain with its own bindings
+        with open(args.out, "x", encoding="utf-8") as out:
+            json.dump(record, out, indent=2, sort_keys=True)
+        print(f"measured checkpoint size {record['checkpoint_bytes']} bytes from {record['chunk_id']}")
         return 0
     chunked = {}
     for run_dir in args.chunks:
