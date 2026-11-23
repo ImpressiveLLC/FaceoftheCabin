@@ -104,7 +104,8 @@ def run(store: Path, run_id: str, run_dir: Path, total_steps: int, chunk_steps: 
         rs.restore = restore_without_rng
     manifest = train_sft.run_resumable_chunk(build_trainer=build_trainer, trainer_dir=trainer_dir, store=store,
                                              run_id=run_id, owner=run_dir.name, total_steps=total_steps,
-                                             chunk_steps=chunk_steps, bindings=bindings, fault=fault)
+                                             chunk_steps=chunk_steps, bindings=bindings, fault=fault,
+                                             estimate_bytes=train_sft.lower_bound_checkpoint_bytes(model))
     out = {"manifest": manifest, "trace": trace,
            "log_history": holder["trainer"].state.log_history if "trainer" in holder else []}
     (run_dir / "trace.json").write_text(json.dumps(out, sort_keys=True, default=str), encoding="utf-8")

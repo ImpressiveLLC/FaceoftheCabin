@@ -54,7 +54,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 LOCK_PATH = HERE / "requirements.lock"
-CODE_FILES = ("train_sft.py", "resumable.py", "sft_tokenize.py")
+CODE_FILES = ("train_sft.py", "resumable.py", "sft_tokenize.py", "colab_env.py")
 
 DATA_PATH = Path(__file__).parent / "data" / "sft_dataset.jsonl"
 BASE_MODEL = "unsloth/Llama-3.2-3B-Instruct"  # NOT proven equal to the llama3.2:3b Ollama weights; see pins below
@@ -175,6 +175,8 @@ def parse_args(argv=None):
     resume.add_argument("--chunk-steps", type=int, default=None, help="optimizer updates in this invocation")
     resume.add_argument("--environment-id", default=None,
                         help="the recorded environment (slice B's recorder); a different one is a different lineage")
+    resume.add_argument("--environment-record", type=Path, default=None,
+                        help="colab_env.py's record; its environment_id must equal --environment-id")
     resume.add_argument("--take-over-lease", default=None, metavar="TOKEN",
                         help="take over a lease left by a killed session, naming its token exactly (check it is gone first)")
     args = parser.parse_args(argv)
@@ -257,6 +259,44 @@ def run_bindings(*, base_revision, data_sha256, environment_id, total_steps, see
             "training_args_sha256": invariant_args_sha256(seed, use_gpu, total_steps), "fp16": bool(use_gpu)}
 
 
+def load_environment_record(path, environment_id):
+    """The recorder's JSON, refused unless its own id matches --environment-id. None when no record is given."""
+    if path is None:
+        return None
+    import colab_env
+    record = json.loads(Path(path).read_text(encoding="utf-8"))
+    computed = colab_env.environment_id(record)
+    if computed != environment_id:
+        raise SystemExit(f"--environment-record hashes to {computed}, not --environment-id {environment_id}")
+    return record
+
+
+def amp_skip_counter(TrainerCallback):
+    """Counts optimizer updates that the fp16 GradScaler skipped (inf or NaN gradients). Trainer still advances
+    global_step on a skipped update and only skips the scheduler, so the count is needed to know how many real
+    updates happened. accelerate exposes the outcome as AcceleratedOptimizer.step_was_skipped; without a scaler it is
+    always False, so a CPU or fp32 run measures 0 rather than leaving the field unknown."""
+
+    class AmpSkipCounter(TrainerCallback):
+        def __init__(self):
+            self.skipped = 0
+            self.observed = 0
+
+        def on_optimizer_step(self, args, state, control, optimizer=None, **kwargs):
+            self.observed += 1
+            if optimizer is not None and getattr(optimizer, "step_was_skipped", False):
+                self.skipped += 1
+            return control
+
+    return AmpSkipCounter()
+
+
+def lower_bound_checkpoint_bytes(model) -> int:
+    """Before the first chunk: trainable parameters x 12 bytes (fp32 weights plus two Adam moments). A floor only;
+    the first commit replaces it with the measured size."""
+    return 12 * sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
 def chunk_stopper(TrainerCallback, stop_at: int):
     """A callback that saves a full checkpoint and stops at global step STOP_AT. Steps are optimizer updates, so a
     chunk never ends partway through gradient accumulation."""
@@ -272,7 +312,8 @@ def chunk_stopper(TrainerCallback, stop_at: int):
 
 
 def run_resumable_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id: str, owner: str, total_steps: int,
-                        chunk_steps: int, bindings: dict, fault=None, take_over_from=None) -> dict:
+                        chunk_steps: int, bindings: dict, fault=None, take_over_from=None, estimate_bytes: int = 0,
+                        free_bytes=None, environment: dict | None = None) -> dict:
     """See _run_chunk. Holds the run's lease only while this chunk runs; it is released when the chunk ends, whether it
     committed or failed, so the next session's chunk can start. A process killed outright leaves the lease, and the
     next session must name it (--take-over-lease) to proceed."""
@@ -283,7 +324,8 @@ def run_resumable_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id
     print(f"lease token {token} (name it with --take-over-lease only if this session is killed and gone)")
     try:
         return _run_chunk(build_trainer=build_trainer, trainer_dir=trainer_dir, store=store, run_id=run_id,
-                          total_steps=total_steps, chunk_steps=chunk_steps, bindings=bindings, fault=fault)
+                          total_steps=total_steps, chunk_steps=chunk_steps, bindings=bindings, fault=fault,
+                          estimate_bytes=estimate_bytes, free_bytes=free_bytes, environment=environment)
     finally:
         try:
             if not rs.release_lease(store, run_id, token):
@@ -293,7 +335,7 @@ def run_resumable_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id
 
 
 def _run_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id: str, total_steps: int, chunk_steps: int,
-               bindings: dict, fault=None) -> dict:
+               bindings: dict, fault=None, estimate_bytes: int = 0, free_bytes=None, environment=None) -> dict:
     """Trains one chunk and commits it. BUILD_TRAINER(max_steps, callbacks) returns a Trainer; it is called with the
     fixed whole-run budget, so the LR schedule is the same in every chunk. Returns the committed manifest, or the
     newest verified one when the run was already complete."""
@@ -306,17 +348,30 @@ def _run_chunk(*, build_trainer, trainer_dir: Path, store: Path, run_id: str, to
         return latest["manifest"]
     start = latest["manifest"]["global_step"] if latest else 0
     stop_at = min(start + chunk_steps, total_steps)
+    storage = rs.storage_preflight(store, measured_bytes=rs.checkpoint_bytes(latest) if latest else None,
+                                   estimate_bytes=estimate_bytes, free_bytes=free_bytes)
     resume_from = None
     if latest:
         resume_from = rs.restore(latest, trainer_dir / f"checkpoint-{start}")
-    trainer = build_trainer(total_steps, [chunk_stopper(TrainerCallback, stop_at)])
+    counter = amp_skip_counter(TrainerCallback)
+    trainer = build_trainer(total_steps, [chunk_stopper(TrainerCallback, stop_at), counter])
     trainer.train(resume_from_checkpoint=str(resume_from) if resume_from else None)
     if trainer.state.global_step != stop_at:
         raise SystemExit(f"chunk stopped at step {trainer.state.global_step}, planned {stop_at}; nothing committed")
     checkpoint = trainer_dir / f"checkpoint-{stop_at}"
+    previous_skipped = (latest["manifest"].get("skipped_updates") or 0) if latest else 0
+    skipped = previous_skipped + counter.skipped
+    if counter.observed != stop_at - start:
+        raise SystemExit(f"observed {counter.observed} optimizer steps, expected {stop_at - start}; nothing committed")
+    evidence = {"storage_preflight": storage, "amp": {"fp16": bool(bindings.get("fp16")), "bf16": False,
+                                                      "skipped_this_chunk": counter.skipped,
+                                                      "optimizer_steps_this_chunk": counter.observed}}
+    if environment is not None:
+        evidence["environment"] = environment
     manifest = rs.commit(checkpoint, store, run_id=run_id, global_step=stop_at, total_steps=total_steps,
-                         optimizer_updates=trainer.state.global_step, skipped_updates=None, bindings=bindings,
-                         cursor={"epoch": trainer.state.epoch, "resumed_from_step": start}, fault=fault)
+                         optimizer_updates=stop_at - skipped, skipped_updates=skipped, bindings=bindings,
+                         cursor={"epoch": trainer.state.epoch, "resumed_from_step": start}, fault=fault,
+                         evidence=evidence)
     print(f"committed {manifest['chunk_id']} ({'run complete' if manifest['run_complete'] else 'partial'})")
     return manifest
 
@@ -416,7 +471,10 @@ def main(argv=None):
             manifest = run_resumable_chunk(build_trainer=build_trainer, trainer_dir=trainer_dir, store=args.resume_store,
                                            run_id=args.run_id, owner=args.run_dir.name, total_steps=args.total_steps,
                                            chunk_steps=args.chunk_steps, bindings=bindings,
-                                           take_over_from=args.take_over_lease)
+                                           take_over_from=args.take_over_lease,
+                                           estimate_bytes=lower_bound_checkpoint_bytes(model),
+                                           environment=load_environment_record(args.environment_record,
+                                                                               args.environment_id))
         finally:
             if "trainer" in built:
                 write_loss(args.run_dir, built["trainer"].state.log_history)

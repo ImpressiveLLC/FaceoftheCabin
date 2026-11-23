@@ -78,7 +78,8 @@ def _files(root: Path) -> list[Path]:
 
 
 def build_manifest(stage_dir: Path, *, run_id: str, global_step: int, total_steps: int, optimizer_updates: int,
-                   skipped_updates: int, parent: str | None, bindings: dict, cursor: dict) -> dict:
+                   skipped_updates: int, parent: str | None, bindings: dict, cursor: dict,
+                   evidence: dict | None = None) -> dict:
     absent = [key for key in BINDING_KEYS if bindings.get(key) is None or bindings.get(key) == ""]
     if absent:
         raise CommitError(f"bindings missing {absent}")
@@ -107,6 +108,7 @@ def build_manifest(stage_dir: Path, *, run_id: str, global_step: int, total_step
         "parent_manifest_sha256": parent,
         "bindings": {key: bindings[key] for key in BINDING_KEYS},
         "cursor": cursor,
+        "evidence": evidence or {},
         "files": [{"path": p.relative_to(stage_dir).as_posix(), "bytes": p.stat().st_size, "sha256": sha256_file(p)}
                   for p in _files(stage_dir)],
     }
@@ -118,7 +120,8 @@ def _fault(hook, point):
 
 
 def commit(stage_dir: Path, durable_root: Path, *, run_id: str, global_step: int, total_steps: int,
-           optimizer_updates: int, bindings: dict, cursor: dict, skipped_updates: int = 0, fault=None) -> dict:
+           optimizer_updates: int, bindings: dict, cursor: dict, skipped_updates: int = 0, fault=None,
+           evidence: dict | None = None) -> dict:
     """Commits STAGE_DIR as the chunk at GLOBAL_STEP. Returns the manifest. Raises CommitError on refusal; an
     interruption anywhere before the marker leaves a partial chunk that latest_verified() ignores."""
     durable_root.mkdir(parents=True, exist_ok=True)
@@ -128,7 +131,7 @@ def commit(stage_dir: Path, durable_root: Path, *, run_id: str, global_step: int
         raise CommitError(f"step {global_step} is not after the last verified step {previous['manifest']['global_step']}")
     manifest = build_manifest(stage_dir, run_id=run_id, global_step=global_step, total_steps=total_steps,
                               optimizer_updates=optimizer_updates, skipped_updates=skipped_updates, parent=parent,
-                              bindings=bindings, cursor=cursor)
+                              bindings=bindings, cursor=cursor, evidence=evidence)
     dest = durable_root / manifest["chunk_id"]
     if (dest / MARKER).exists():
         raise CommitError(f"{dest.name} is already committed; refusing a second writer for the same step")
@@ -159,6 +162,35 @@ def commit(stage_dir: Path, durable_root: Path, *, run_id: str, global_step: int
     _fault(fault, "after_marker")
     prune(durable_root, run_id, bindings)
     return manifest
+
+
+STORAGE_MARGIN_BYTES = 256 * 1024 * 1024
+STORAGE_CHECKPOINTS = KEEP + 1  # the retained verified chunks plus the one being written
+
+
+def checkpoint_bytes(record: dict) -> int:
+    """The measured size of a committed chunk: the sum of its manifest's file sizes."""
+    return sum(entry["bytes"] for entry in record["manifest"]["files"])
+
+
+def storage_preflight(durable_root: Path, *, measured_bytes: int | None, estimate_bytes: int,
+                      free_bytes: int | None = None) -> dict:
+    """Refuses to start a chunk unless the store has room for KEEP verified chunks plus the in-flight one plus a margin.
+    Uses the newest committed chunk's MEASURED size when there is one; before the first chunk only a lower-bound
+    estimate exists, and the record says so (basis "lower_bound_estimate"), so no size claim stands unmeasured.
+    FREE_BYTES is what the filesystem reports; on a Drive mount that is not proven to be the account's real quota,
+    which the record also says."""
+    basis = "measured" if measured_bytes else "lower_bound_estimate"
+    size = measured_bytes or estimate_bytes
+    free = shutil.disk_usage(durable_root).free if free_bytes is None else free_bytes
+    needed = STORAGE_CHECKPOINTS * size + STORAGE_MARGIN_BYTES
+    record = {"basis": basis, "checkpoint_bytes": size, "checkpoints_reserved": STORAGE_CHECKPOINTS,
+              "margin_bytes": STORAGE_MARGIN_BYTES, "needed_bytes": needed, "free_bytes_reported": free,
+              "free_bytes_source": "shutil.disk_usage; on a Drive mount this is not verified to be the real quota"}
+    if free < needed:
+        raise CommitError(f"store has {free} bytes free, needs {needed} ({STORAGE_CHECKPOINTS} x {size} {basis} + "
+                          f"{STORAGE_MARGIN_BYTES} margin); nothing was trained")
+    return record
 
 
 def _verify_payload(dest: Path, manifest: dict) -> list[str]:
@@ -271,6 +303,8 @@ def _read_lease(path: Path):
         return None
 
 
+GUARD_WAIT_SECONDS = 5.0
+
 # Test hook: called inside the guard after the lease is read, so a test can attempt a competing transition at the
 # exact point a check-then-act race would open. Never set outside tests.
 _in_guard_hook = None
@@ -289,23 +323,44 @@ class _TransitionGuard:
         self.nonce = uuid.uuid4().hex
 
     def __enter__(self):
-        try:
-            with open(self.path, "x", encoding="utf-8") as handle:
-                handle.write(self.nonce)
-        except FileExistsError:
+        # A transition holds the guard for milliseconds, so a busy guard is retried for a bounded time; only a guard
+        # that stays held (another transition stuck, or a killed process) fails closed. Windows reports a guard that is
+        # being created or deleted by another process as PermissionError rather than FileExistsError.
+        import time
+        deadline = time.monotonic() + GUARD_WAIT_SECONDS
+        while True:
             try:
-                held = self.path.read_text(encoding="utf-8")
-            except OSError:
-                held = "?"
-            raise CommitError(f"lease transition guard {self.path.name} is held (nonce {held}): another acquire, "
-                              "takeover or release is in progress, or a killed process left it. Nothing was changed. "
-                              "If no session is running, clear it with clear_stranded_guard naming that nonce.")
-        return self
+                with open(self.path, "x", encoding="utf-8") as handle:
+                    handle.write(self.nonce)
+                return self
+            except (FileExistsError, PermissionError):
+                if time.monotonic() >= deadline:
+                    break
+                time.sleep(0.01)
+        try:
+            held = self.path.read_text(encoding="utf-8")
+        except OSError:
+            held = "?"
+        raise CommitError(f"lease transition guard {self.path.name} is held (nonce {held}): another acquire, "
+                          "takeover or release is in progress, or a killed process left it. Nothing was changed. "
+                          "If no session is running, clear it with clear_stranded_guard naming that nonce.")
 
     def __exit__(self, *exc):
-        if self.path.read_text(encoding="utf-8") == self.nonce:
-            self.path.unlink()
-        return False
+        # Only this holder can have created the guard while it exists, so it is removed without re-reading it (a read
+        # would hold a handle that blocks another process's delete on Windows). A delete blocked by another process's
+        # momentary read is retried.
+        import time
+        deadline = time.monotonic() + GUARD_WAIT_SECONDS
+        while True:
+            try:
+                self.path.unlink()
+                return False
+            except FileNotFoundError:
+                return False
+            except PermissionError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.01)
 
 
 def clear_stranded_guard(durable_root: Path, run_id: str, nonce: str) -> None:

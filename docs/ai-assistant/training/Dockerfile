@@ -44,7 +44,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.lock ./
 RUN pip install --no-cache-dir --default-timeout=300 --require-hashes -r requirements.lock     --extra-index-url https://download.pytorch.org/whl/cpu
 
-COPY export_grades_to_sft.py train_sft.py sft_tokenize.py merge_and_convert.py run_capture.py verify_run_bundle.py resumable.py ./
+COPY export_grades_to_sft.py train_sft.py sft_tokenize.py merge_and_convert.py run_capture.py verify_run_bundle.py resumable.py colab_env.py ./
 
 # No ENTRYPOINT/CMD -- every stage of the pipeline is an explicit,
 # manually-invoked command (see README.md), not a long-running service.

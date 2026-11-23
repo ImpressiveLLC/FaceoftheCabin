@@ -141,3 +141,19 @@ def test_a_changed_budget_or_seed_is_refused_before_training(tmp_path, extra):
     assert done.returncode != 0
     assert "bindings differ" in done.stderr
     assert not (tmp_path / "r2" / "trainer" / f"checkpoint-{FIRST * 2}").exists(), "it trained before refusing"
+
+
+def test_amp_accounting_and_storage_preflight_are_recorded(runs):
+    """Slice B: skipped updates are counted (0 on CPU fp32, measured rather than unknown) and the storage preflight
+    uses an estimate before the first chunk and the measured size after it."""
+    _, whole, first, second = runs
+    for result, steps in ((first, FIRST), (second, TOTAL - FIRST)):
+        manifest = result["manifest"]
+        assert manifest["skipped_updates"] == 0
+        assert manifest["optimizer_updates"] == manifest["global_step"]
+        assert manifest["evidence"]["amp"] == {"fp16": False, "bf16": False, "skipped_this_chunk": 0,
+                                               "optimizer_steps_this_chunk": steps}
+    assert first["manifest"]["evidence"]["storage_preflight"]["basis"] == "lower_bound_estimate"
+    measured = second["manifest"]["evidence"]["storage_preflight"]
+    assert measured["basis"] == "measured"
+    assert measured["checkpoint_bytes"] == sum(f["bytes"] for f in first["manifest"]["files"])
