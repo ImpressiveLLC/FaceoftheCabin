@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -52,6 +53,7 @@ public class DeviceCatalogService {
     private final Map<String, JsonNode> entries;
     private final Set<String> logged = ConcurrentHashMap.newKeySet();
 
+    @Autowired
     public DeviceCatalogService(@Value("${cabin.catalog.path:/app/docs/ontology/device-catalog.json}") String mountPath) {
         this(mountPath, DeviceCatalogService.class.getClassLoader());
     }
