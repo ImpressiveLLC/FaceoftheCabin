@@ -179,6 +179,14 @@ public class Zigbee2MqttAdapter implements MqttCallback {
         String prefix() { return topicPrefix + "/"; }
     }
 
+    // Catalog S3b rule shadow (observation only). Optional so existing constructors and tests need no catalog.
+    private com.cabin.orchestrator.ontology.DeviceCatalogService catalogService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setCatalogService(com.cabin.orchestrator.ontology.DeviceCatalogService catalogService) {
+        this.catalogService = catalogService;
+    }
+
     @Autowired
     public Zigbee2MqttAdapter(DeviceRegistry registry, EventPublisher eventPublisher,
                                SignalQualityRegistry signalQualityRegistry,
@@ -473,6 +481,15 @@ public class Zigbee2MqttAdapter implements MqttCallback {
                 JsonNode definition = device.path("definition");
                 Set<DeviceCapability> caps = inferCapabilities(definition);
                 DeviceType type = inferType(definition, caps, friendlyName);
+                if (catalogService != null) {
+                    // S3b: the catalog's rules on the identical input; only a hash of the read fields is kept.
+                    Map<String, Object> read = new java.util.LinkedHashMap<>();
+                    for (String key : List.of("model", "description", "vendor", "exposes")) read.put(key, definition.path(key));
+                    read.put("caps", caps.stream().map(Enum::name).sorted().toList());
+                    read.put("friendly_name", friendlyName);
+                    catalogService.observe(deviceId, com.cabin.orchestrator.ontology.CatalogRuleEvaluator.SiteInput
+                        .zigbee(definition, caps, friendlyName), type, read);
+                }
                 inferredShapes.put(deviceId, new InferredShape(type, Set.copyOf(caps)));
                 List<String> vendorReportedFields = extractVendorReportedFields(definition, type);
 

@@ -13,7 +13,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
 import java.util.Collections;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -52,6 +56,21 @@ public class DeviceCatalogService {
     private final String catalogHash;
     private final Map<String, JsonNode> entries;
     private final Set<String> logged = ConcurrentHashMap.newKeySet();
+    // S3b: the catalog's own match rules, evaluated independently of inferType (null when the rule set is unusable).
+    private final CatalogRuleEvaluator evaluator;
+    private final String evaluatorProblem;
+    private final Map<String, RuleObservation> observations = new ConcurrentHashMap<>();
+    private static final ObjectMapper CANONICAL = new ObjectMapper()
+        .configure(com.fasterxml.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
+
+    /** S3b: what the catalog's rules said about one device's classifier input, beside what inferType said about the
+     *  SAME input. Only a hash of the input is kept; no raw names or values. */
+    public record RuleObservation(String status, String ruleId, DeviceType ruleType, DeviceType inferredType,
+                                  boolean independent, boolean workaround, String inputSha256, Instant capturedAt,
+                                  String catalogHash) {
+        public static final String EVALUATED = "EVALUATED";
+        public static final String UNAVAILABLE = "RULE_EVALUATION_UNAVAILABLE";
+    }
 
     @Autowired
     public DeviceCatalogService(@Value("${cabin.catalog.path:/app/docs/ontology/device-catalog.json}") String mountPath) {
@@ -88,6 +107,18 @@ public class DeviceCatalogService {
         this.source = from;
         this.catalogHash = hash;
         this.entries = Collections.unmodifiableMap(byId);
+        CatalogRuleEvaluator loaded = null;
+        String problem = catalog == null ? "no catalog loaded" : null;
+        if (catalog != null) {
+            try {
+                loaded = CatalogRuleEvaluator.load(catalog.get("match_rules"));
+            } catch (CatalogRuleEvaluator.InvalidRules e) {
+                problem = e.getMessage();
+                log.warn("Device catalog match rules are unusable ({}); rule shadow reports RULE_EVALUATION_UNAVAILABLE", problem);
+            }
+        }
+        this.evaluator = loaded;
+        this.evaluatorProblem = problem;
         log.info("Device catalog shadow read: source={}, entries={}, hash={}", source, entries.size(),
             hash == null ? "none" : hash.substring(0, Math.min(12, hash.length())));
     }
@@ -121,6 +152,47 @@ public class DeviceCatalogService {
         }
         String ontologyHash = entry.path("stamp").path("ontology_content_hash").asText(null);
         return new ShadowMatch(entry.path("id").asText(), MATCHED_BY_ASSIGNED_TYPE, ontologyHash, null);
+    }
+
+    /** Null when the rule set is usable, otherwise why not. */
+    public String evaluatorProblem() { return evaluatorProblem; }
+
+    /**
+     * S3b: evaluates the catalog's rules on the same classifier input inferType just saw and records the result for
+     * DEVICE_ID. Observation only: it changes no type, registration or telemetry, and it never throws; a failure is
+     * recorded as RULE_EVALUATION_UNAVAILABLE. HASH_INPUT is what the classifier read (hashed, never stored).
+     */
+    public void observe(String deviceId, CatalogRuleEvaluator.SiteInput input, DeviceType inferred, Object hashInput) {
+        try {
+            if (deviceId == null) return;
+            String inputHash = sha256(CANONICAL.writeValueAsString(Map.of("site", input.site(), "input", hashInput)));
+            if (evaluator == null) {
+                observations.put(deviceId, new RuleObservation(RuleObservation.UNAVAILABLE, null, null, inferred,
+                    false, false, inputHash, Instant.now(), catalogHash));
+                return;
+            }
+            CatalogRuleEvaluator.Match match = evaluator.evaluate(input);
+            observations.put(deviceId, new RuleObservation(RuleObservation.EVALUATED, match.ruleId(), match.type(),
+                inferred, true, match.workaround(), inputHash, Instant.now(), catalogHash));
+        } catch (RuntimeException | com.fasterxml.jackson.core.JsonProcessingException e) {
+            observations.put(deviceId, new RuleObservation(RuleObservation.UNAVAILABLE, null, null, inferred, false,
+                false, null, Instant.now(), catalogHash));
+            if (logged.add(deviceId + "|rule-eval")) {
+                log.warn("Device catalog rule shadow could not evaluate device={} ({})", deviceId, e.toString());
+            }
+        }
+    }
+
+    public Optional<RuleObservation> observation(String deviceId) {
+        return Optional.ofNullable(observations.get(deviceId));
+    }
+
+    private static String sha256(String text) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /** Logs a disagreement once per device and reason, so a read-heavy page cannot flood the log. */
