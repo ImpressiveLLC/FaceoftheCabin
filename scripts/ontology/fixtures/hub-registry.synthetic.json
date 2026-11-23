@@ -1,0 +1,8 @@
+{
+ "note": "Synthetic hub view for the W-169 C1 tests: per Zigbee2MQTT device key, the assigned DeviceType and the fields the hub registered. Not live data.",
+ "devices": {
+  "0x00000000000000a1": {"assigned_type": "TEMPERATURE_SENSOR", "registered_fields": ["temperature", "humidity", "battery"], "has_command": false},
+  "0x00000000000000b2": {"assigned_type": "POWER_METER", "registered_fields": ["power", "energy", "current", "voltage"], "has_command": true},
+  "0x00000000000000c3": {"assigned_type": "MOTION_SENSOR", "registered_fields": ["occupancy", "battery"], "has_command": false}
+ }
+}
