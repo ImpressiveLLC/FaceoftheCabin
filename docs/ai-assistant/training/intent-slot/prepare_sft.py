@@ -351,7 +351,10 @@ def _split_rows(rows, gold):
         if provenance.get("reviewer_kind") == "agent":
             check_agent_audit(row, provenance)
         text = normalize(row["text"])
-        if not text or text in seen or text in forbidden_text or row["group"] in forbidden_group:
+        # Codex HOLD 7094064757: binding renames `group`, so the gold-family exclusion checks the original group
+        # (`source_group`) as well as the canonical one; renaming a gold family must not admit its rows.
+        groups = {row["group"], row.get("source_group", row["group"])}
+        if not text or text in seen or text in forbidden_text or groups & forbidden_group:
             raise ValueError(f"Empty, duplicate or held-out example: {row['id']}")
         if not row["group"]:
             raise ValueError("Missing paraphrase family")

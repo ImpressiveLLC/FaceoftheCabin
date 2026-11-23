@@ -151,6 +151,44 @@ class ExistingCallersUnchanged(unittest.TestCase):
         self.assertIs(prepare_sft.G8_BOUND_FAMILIES, False)
 
 
+class GoldFamilyExclusionSurvivesBinding(unittest.TestCase):
+    """Codex HOLD 7094064757 on #566: a gold-family row with distinct text must stay out after its family is renamed."""
+
+    def setUp(self):
+        self.gold = gold_rows()
+        self.rows = reviewed_rows(100)
+        self.families = {}
+        for r in self.rows:
+            self.families.setdefault(r["group"], []).append(r["id"])
+        self.gold_group = sorted({g["group"] for g in self.gold})[0]
+        used = {r["group"] for r in self.rows} | {g["group"] for g in self.gold}
+        self.fresh = next(f"renamed-family-{n}" for n in range(1000) if f"renamed-family-{n}" not in used)
+
+    def with_extra(self, extra_group, canonical):
+        extra = row("extra-1", extra_group, text="a distinct synthetic request about the cabin pump schedule")
+        return self.rows + [extra], dict(self.families, **{canonical: [extra["id"]]})
+
+    def test_gold_family_row_is_rejected_without_binding(self):
+        rows, _ = self.with_extra(self.gold_group, self.fresh)
+        with self.assertRaisesRegex(ValueError, "held-out example: extra-1"):
+            split_rows(rows, self.gold)
+
+    def test_gold_family_row_stays_rejected_when_bound_to_a_renamed_family(self):
+        rows, families = self.with_extra(self.gold_group, self.fresh)
+        with self.assertRaisesRegex(ValueError, "held-out example: extra-1"):
+            split_rows(rows, self.gold, families=families)
+
+    def test_an_ordinary_row_bound_into_a_gold_named_family_is_rejected(self):
+        rows, families = self.with_extra("ordinary-synthetic-family", self.gold_group)
+        with self.assertRaisesRegex(ValueError, "held-out example: extra-1"):
+            split_rows(rows, self.gold, families=families)
+
+    def test_control_an_ordinary_renamed_family_is_still_accepted(self):
+        rows, families = self.with_extra("ordinary-synthetic-family", self.fresh)
+        placed = split_of(split_rows(rows, self.gold, families=families))
+        self.assertIn("extra-1", placed)
+
+
 class OverlayComposition(unittest.TestCase):
     def test_replace_by_key_keeps_every_prior_member(self):
         base = {"hot": ["h1", "h2"], "dark": ["d1"]}
