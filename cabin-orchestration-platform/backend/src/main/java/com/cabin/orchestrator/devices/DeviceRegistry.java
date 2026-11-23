@@ -785,7 +785,13 @@ public class DeviceRegistry {
      * Catalog S3 (W-161): stamps the catalog the read was checked against and the entry the assigned type maps to.
      * Observation only: the assigned type, capabilities, telemetry and every other field are untouched.
      */
+    static final List<String> SHADOW_KEYS = List.of("catalogSource", "catalogHash", "matchedBy", "ontologyTypeId",
+        "ontologyContentHash", "catalogDisagreement");
+
     private void addCatalogShadow(DeviceStatus status, Map<String, Object> attrs) {
+        // Owned keys are cleared first: a stored or incoming attribute map may carry a previous result, and a stale
+        // disagreement or ontology id must never survive next to the current one (Codex HOLD on #584).
+        SHADOW_KEYS.forEach(attrs::remove);
         DeviceCatalogService.ShadowMatch match = catalogService.shadow(status.type());
         attrs.put("catalogSource", catalogService.source());
         catalogService.catalogHash().ifPresent(hash -> attrs.put("catalogHash", hash));

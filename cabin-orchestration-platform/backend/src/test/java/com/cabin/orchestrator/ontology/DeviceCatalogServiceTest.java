@@ -60,6 +60,28 @@ class DeviceCatalogServiceTest {
     }
 
     @Test
+    void everyUnusableMountFallsBackToAValidImage(@TempDir Path dir) throws Exception {
+        String image = imageCopyHash();
+        Path missing = dir.resolve("missing.json");
+        assertEquals("image", new DeviceCatalogService(missing.toString(), getClass().getClassLoader()).source());
+        for (String body : List.of("{ not json", "{}", "null", "[]", "{\"catalog_hash\":\"h\"}",
+                "{\"entries\":[]}", "{\"catalog_hash\":\"\",\"entries\":[]}", "{\"catalog_hash\":1,\"entries\":[]}")) {
+            Path mount = dir.resolve("device-catalog.json");
+            Files.writeString(mount, body);
+            DeviceCatalogService service = new DeviceCatalogService(mount.toString(), getClass().getClassLoader());
+            assertEquals("image", service.source(), "mount body " + body);
+            assertEquals(image, service.catalogHash().orElseThrow(), "mount body " + body);
+        }
+    }
+
+    @Test
+    void unavailableOnlyWhenNoCandidateIsUsable(@TempDir Path dir) throws Exception {
+        Path mount = dir.resolve("device-catalog.json");
+        Files.writeString(mount, "{}");
+        assertEquals("unavailable", new DeviceCatalogService(mount.toString(), NO_RESOURCES).source());
+    }
+
+    @Test
     void noCatalogAnywhereIsReportedNotThrown() {
         DeviceCatalogService none = new DeviceCatalogService("/nonexistent/device-catalog.json", NO_RESOURCES);
         assertEquals("unavailable", none.source());
@@ -119,6 +141,33 @@ class DeviceCatalogServiceTest {
         Map<String, Object> rest = new java.util.LinkedHashMap<>(attrs);
         List.of("ontologyTypeId", "matchedBy", "catalogSource", "catalogHash", "ontologyContentHash").forEach(rest::remove);
         assertEquals(before.attributes(), rest, "only the five shadow keys are added");
+    }
+
+    @Test
+    void staleShadowKeysNeverSurviveAFreshResult(@TempDir Path dir) throws Exception {
+        // stale failure, current success
+        DeviceRegistry ok = new DeviceRegistry(List.of());
+        ok.setCatalogService(imageOnly());
+        ok.register(new DeviceStatus("z2m-lock", DeviceType.LOCK, "lock", "ONLINE", Instant.parse("2026-11-23T00:00:00Z"),
+            Map.of("catalogDisagreement", "CATALOG_UNAVAILABLE", "temperature", 1), "cabin"));
+        Map<String, Object> success = ok.get("z2m-lock").attributes();
+        assertFalse(success.containsKey("catalogDisagreement"), "stale disagreement survived a successful match");
+        assertEquals("LOCK", success.get("ontologyTypeId"));
+        assertEquals(1, success.get("temperature"), "attributes the shadow does not own are untouched");
+
+        // stale success, current failure
+        DeviceRegistry failing = new DeviceRegistry(List.of());
+        failing.setCatalogService(new DeviceCatalogService("/nonexistent/device-catalog.json", NO_RESOURCES));
+        failing.register(new DeviceStatus("z2m-lock", DeviceType.LOCK, "lock", "ONLINE", Instant.parse("2026-11-23T00:00:00Z"),
+            Map.of("ontologyTypeId", "LOCK", "ontologyContentHash", "old", "catalogHash", "old", "matchedBy", "assigned_type",
+                "temperature", 1), "cabin"));
+        Map<String, Object> failure = failing.get("z2m-lock").attributes();
+        assertEquals("CATALOG_UNAVAILABLE", failure.get("catalogDisagreement"));
+        assertEquals("unavailable", failure.get("catalogSource"));
+        for (String key : List.of("ontologyTypeId", "ontologyContentHash", "catalogHash", "matchedBy")) {
+            assertFalse(failure.containsKey(key), "stale " + key + " survived a failed match");
+        }
+        assertEquals(1, failure.get("temperature"));
     }
 
     @Test

@@ -65,35 +65,44 @@ public class DeviceCatalogService {
         Path mount = mountPath == null || mountPath.isBlank() ? null : Path.of(mountPath);
         if (mount != null && Files.isReadable(mount)) {
             try (InputStream in = Files.newInputStream(mount)) {
-                catalog = mapper.readTree(in);
-                from = "mount";
+                catalog = usable(mapper.readTree(in), "mount " + mount);
             } catch (IOException | RuntimeException e) {
                 log.warn("Device catalog at {} is unreadable ({}); trying the image copy", mount, e.toString());
             }
+            if (catalog != null) from = "mount";
         }
         if (catalog == null) {
             try (InputStream in = classLoader.getResourceAsStream(CLASSPATH_COPY)) {
-                if (in != null) {
-                    catalog = mapper.readTree(in);
-                    from = "image";
-                }
+                if (in != null) catalog = usable(mapper.readTree(in), "image copy " + CLASSPATH_COPY);
             } catch (IOException | RuntimeException e) {
                 log.warn("Device catalog image copy is unreadable ({})", e.toString());
             }
+            if (catalog != null) from = "image";
         }
         Map<String, JsonNode> byId = new LinkedHashMap<>();
         String hash = null;
-        if (catalog != null && catalog.path("entries").isArray() && catalog.path("catalog_hash").isTextual()) {
+        if (catalog != null) {
             catalog.path("entries").forEach(entry -> byId.put(entry.path("id").asText(), entry));
             hash = catalog.path("catalog_hash").asText();
-        } else {
-            from = "unavailable";
         }
         this.source = from;
         this.catalogHash = hash;
         this.entries = Collections.unmodifiableMap(byId);
         log.info("Device catalog shadow read: source={}, entries={}, hash={}", source, entries.size(),
             hash == null ? "none" : hash.substring(0, Math.min(12, hash.length())));
+    }
+
+    /**
+     * A candidate is usable only with a non-empty catalog_hash and an entries array; anything else (an empty object, a
+     * JSON null, a wrong shape) is rejected with a log line naming it, so the next candidate is tried.
+     */
+    private static JsonNode usable(JsonNode candidate, String label) {
+        if (candidate != null && candidate.path("entries").isArray() && candidate.path("catalog_hash").isTextual()
+                && !candidate.path("catalog_hash").asText().isBlank()) {
+            return candidate;
+        }
+        log.warn("Device catalog {} has the wrong shape (needs catalog_hash and entries); rejected", label);
+        return null;
     }
 
     /** {@code mount}, {@code image} or {@code unavailable}. */
