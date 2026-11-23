@@ -1,0 +1,1454 @@
+{
+ "allowed_changes": [],
+ "catalog_hash": "7ed499bc61d3b07c7187da9eac7e6cad9ece1b7dd21045b6465f6a001524772a",
+ "entries": [
+  {
+   "category": "CLIMATE",
+   "checkin_minutes": {
+    "non_zigbee": 30,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "AIR_QUALITY_SENSOR",
+   "match_rule_ids": [
+    "ha-13-voc-or-aqi"
+   ],
+   "protocols": [
+    "home_assistant"
+   ],
+   "reason": null,
+   "reported_fields": [
+    "airQualityIndex"
+   ],
+   "stamp": {
+    "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "seed_hash": "ffa240cc8cb837f04cb569fe36db7b3c55525f6abf7495311dbf520bd2fe5fd1",
+    "source_hash": "ae4df9b837162dacceb99b4eefb0ecb2ff8b3ebc762271abfa412f7567a3995b"
+   },
+   "status": "enum",
+   "triggers_naming_type": []
+  },
+  {
+   "category": "SECURITY",
+   "checkin_minutes": {
+    "non_zigbee": 5,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "CAMERA",
+   "match_rule_ids": [
+    "ha-03-camera"
+   ],
+   "protocols": [
+    "home_assistant"
+   ],
+   "reason": null,
+   "reported_fields": [],
+   "stamp": {
+    "ontology_content_hash": "b750ef0a8efd1d10a732b721d1c101b8f909b12d6b88a618b1f6a2e9aa04f920",
+    "seed_hash": "60079a16af02e42e93faf833d20075d267d670fa48d00a4d3d7d8e6c492a5cd9",
+    "source_hash": "98f5e798e7b2f10b2b775f97877aa5773aa46b1423fc9fcb0dd964fa1c970179"
+   },
+   "status": "enum",
+   "triggers_naming_type": [
+    "trigger_blink_motion_cleared",
+    "trigger_blink_motion_detected",
+    "trigger_camera_detection"
+   ]
+  },
+  {
+   "category": "CLIMATE",
+   "checkin_minutes": {
+    "non_zigbee": 30,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "CO2_SENSOR",
+   "match_rule_ids": [
+    "ha-12-carbon-dioxide"
+   ],
+   "protocols": [
+    "home_assistant"
+   ],
+   "reason": null,
+   "reported_fields": [
+    "co2"
+   ],
+   "stamp": {
+    "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "seed_hash": "505de6e78187a4ac0385787bd0082bd3baa216c99c2b407896d18fcaf2b639ba",
+    "source_hash": "1956397cf6178f15bb6c626a8bfe69950a5e031e51e3f26b9d17e16abd5d75d1"
+   },
+   "status": "enum",
+   "triggers_naming_type": []
+  },
+  {
+   "category": "SECURITY",
+   "checkin_minutes": {
+    "non_zigbee": 30,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "CONTACT_SENSOR",
+   "match_rule_ids": [
+    "ha-08-door-or-opening",
+    "zb-03-snzb-04-or-contact",
+    "zb-14-expose-contact"
+   ],
+   "protocols": [
+    "home_assistant",
+    "zigbee2mqtt"
+   ],
+   "reason": null,
+   "reported_fields": [],
+   "stamp": {
+    "ontology_content_hash": "96f610cc23d12a0ed8b382f94e8c2b34aef58b2ca47abbae616c3ed15967a958",
+    "seed_hash": "f65d86c4256944f7a33616334da34e52a70ddf7f319cb4256ab9c33fcf520d53",
+    "source_hash": "a29bf237ce1c200ae8457d451b4770f8b196499aaaa9500c908c06bf6de54c43"
+   },
+   "status": "enum",
+   "triggers_naming_type": [
+    "trigger_door_contact_closed",
+    "trigger_door_contact_opened",
+    "trigger_liebherr_door_open"
+   ]
+  },
+  {
+   "category": "SAFETY",
+   "checkin_minutes": {
+    "non_zigbee": 15,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "CO_ALARM",
+   "match_rule_ids": [
+    "ha-05-carbon-monoxide-alarm"
+   ],
+   "protocols": [
+    "home_assistant"
+   ],
+   "reason": null,
+   "reported_fields": [],
+   "stamp": {
+    "ontology_content_hash": "cdfc5c2fea112f695c8694b3119192598f044aa1e51d25c100a7ce1a97efedba",
+    "seed_hash": "f976a455dd66a9d23366c9f554f241acc9505b781ef4d8c2c9b62b2dfe528712",
+    "source_hash": "29aad1412e10ff1553bb00af776f855d6cb6ad29d23ce0540e30a03be2391f7f"
+   },
+   "status": "enum",
+   "triggers_naming_type": [
+    "trigger_kidde_co_alarm",
+    "trigger_kidde_co_alarm_cleared"
+   ]
+  },
+  {
+   "category": "CLIMATE",
+   "checkin_minutes": {
+    "non_zigbee": 30,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "CO_SENSOR",
+   "match_rule_ids": [
+    "ha-14-unit-ppm",
+    "ha-15-name-co-level"
+   ],
+   "protocols": [
+    "home_assistant"
+   ],
+   "reason": null,
+   "reported_fields": [
+    "co"
+   ],
+   "stamp": {
+    "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "seed_hash": "3f45e99904dfa228abc85dc187e0615f848ae98a1a1c1ed26e3c1618844e280f",
+    "source_hash": "e667e1071605464ef22b3b26f5b768667bbf47a8d569664d95c04beeadcbd1f7"
+   },
+   "status": "enum",
+   "triggers_naming_type": []
+  },
+  {
+   "category": "PLATFORM",
+   "checkin_minutes": {
+    "non_zigbee": 30,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "DASHBOARD",
+   "match_rule_ids": [],
+   "protocols": [],
+   "reason": null,
+   "reported_fields": [],
+   "stamp": {
+    "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "seed_hash": "61bfb281e378b3bf1a59c6299faa2aaf37026f03beb41cf8f131b52303d4b4d9",
+    "source_hash": "5efb19a87a0494e8f0efe3beda7f7edbf9f954448a9200d39597d63a7da1e896"
+   },
+   "status": "enum",
+   "triggers_naming_type": []
+  },
+  {
+   "category": "APPLIANCES",
+   "checkin_minutes": {
+    "non_zigbee": 15,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "DISHWASHER",
+   "match_rule_ids": [],
+   "protocols": [],
+   "reason": null,
+   "reported_fields": [],
+   "stamp": {
+    "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "seed_hash": "ad4d4b5f8e48ba8d3f307537cd3bfb2a8a5a1db91430e2d0720f7ef085849bf5",
+    "source_hash": "b4225d4515c57ae81f7cfd37a0470e78bcbce719e1a5c5592a16d9481400e407"
+   },
+   "status": "enum",
+   "triggers_naming_type": []
+  },
+  {
+   "category": "APPLIANCES",
+   "checkin_minutes": {
+    "non_zigbee": 15,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "DRYER",
+   "match_rule_ids": [],
+   "protocols": [],
+   "reason": null,
+   "reported_fields": [],
+   "stamp": {
+    "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "seed_hash": "ad4d4b5f8e48ba8d3f307537cd3bfb2a8a5a1db91430e2d0720f7ef085849bf5",
+    "source_hash": "274c97258fd3af6568618f7fc7d4f0adaaa5f9a9d5ef70f5732418279d1475e0"
+   },
+   "status": "enum",
+   "triggers_naming_type": []
+  },
+  {
+   "category": "PLATFORM",
+   "checkin_minutes": {
+    "non_zigbee": 30,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "GOOGLE_HOME_DEVICE",
+   "match_rule_ids": [],
+   "protocols": [],
+   "reason": null,
+   "reported_fields": [],
+   "stamp": {
+    "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "seed_hash": "61bfb281e378b3bf1a59c6299faa2aaf37026f03beb41cf8f131b52303d4b4d9",
+    "source_hash": "22d76f7c7513e76b908a5524fbd0ab90cfdb59ae9fa2a2bdba1731af67805fc4"
+   },
+   "status": "enum",
+   "triggers_naming_type": []
+  },
+  {
+   "category": "PLATFORM",
+   "checkin_minutes": {
+    "non_zigbee": 30,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "HOME_ASSISTANT_ENTITY",
+   "match_rule_ids": [
+    "ha-16-default",
+    "zb-07-zbminir-or-switch-description",
+    "zb-17-default",
+    "mb-06-default"
+   ],
+   "protocols": [
+    "home_assistant",
+    "mqtt_bridge",
+    "zigbee2mqtt"
+   ],
+   "reason": null,
+   "reported_fields": [],
+   "stamp": {
+    "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "seed_hash": "e7529096731fda14344037e7cb560f97a22a31a10f76aa38acee35745df5a4f7",
+    "source_hash": "2954ecd4a8169c5630796b22f64586fcacb0de395fe4e6b5a2ede92120826897"
+   },
+   "status": "enum",
+   "triggers_naming_type": []
+  },
+  {
+   "category": "CLIMATE",
+   "checkin_minutes": {
+    "non_zigbee": 30,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "HUMIDITY_SENSOR",
+   "match_rule_ids": [
+    "ha-10-humidity",
+    "zb-16-expose-humidity"
+   ],
+   "protocols": [
+    "home_assistant",
+    "zigbee2mqtt"
+   ],
+   "reason": null,
+   "reported_fields": [
+    "humidity"
+   ],
+   "stamp": {
+    "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "seed_hash": "638629652aafbe749b0ffa3c5b5e16f9383d18ef26d2db8dc1e19227cb1ad0a0",
+    "source_hash": "4980b7a4128182a2e20c61ef71e68ad4faf06beda0e2ec63ee557d65b8897015"
+   },
+   "status": "enum",
+   "triggers_naming_type": []
+  },
+  {
+   "category": "SECURITY",
+   "checkin_minutes": {
+    "non_zigbee": 15,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "LOCK",
+   "match_rule_ids": [
+    "ha-01-lock",
+    "zb-11-access-control-capability",
+    "mb-04-locked"
+   ],
+   "protocols": [
+    "home_assistant",
+    "mqtt_bridge",
+    "zigbee2mqtt"
+   ],
+   "reason": null,
+   "reported_fields": [],
+   "stamp": {
+    "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "seed_hash": "7fb8ee4dec6acd19c2fa0aad6a1d949e0fa2e3ea5221a587e80d739eaf48b78b",
+    "source_hash": "56ae1dc7dd6537e48bd91b675c5933851160ab1f78995776005b91d431c19520"
+   },
+   "status": "enum",
+   "triggers_naming_type": []
+  },
+  {
+   "category": "SECURITY",
+   "checkin_minutes": {
+    "non_zigbee": 30,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "MOTION_SENSOR",
+   "match_rule_ids": [
+    "ha-07-motion-or-occupancy",
+    "zb-02-snzb-03-or-motion",
+    "zb-13-expose-occupancy",
+    "mb-05-motion"
+   ],
+   "protocols": [
+    "home_assistant",
+    "mqtt_bridge",
+    "zigbee2mqtt"
+   ],
+   "reason": null,
+   "reported_fields": [],
+   "stamp": {
+    "ontology_content_hash": "84cb31af8fe409bd972f9841652ffc28d6f54297f1371139d5075641f8a38248",
+    "seed_hash": "f96ba5bc24cfe9e5726661e44da8759ad366dd3f2d4c9f32c4d106156ac6e1ea",
+    "source_hash": "d8ff55aeec46d2337e2da18307c8860042a3aaca7a181ef37ace4f9647ab70dd"
+   },
+   "status": "enum",
+   "triggers_naming_type": [
+    "trigger_motion_cleared",
+    "trigger_motion_detected"
+   ]
+  },
+  {
+   "category": "UTILITIES",
+   "checkin_minutes": {
+    "non_zigbee": 15,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "POWER_METER",
+   "match_rule_ids": [
+    "ha-11-power-class",
+    "zb-06-smart-switch",
+    "zb-09-smart-plug-or-outlet"
+   ],
+   "protocols": [
+    "home_assistant",
+    "zigbee2mqtt"
+   ],
+   "reason": null,
+   "reported_fields": [
+    "current",
+    "energy",
+    "power",
+    "voltage"
+   ],
+   "stamp": {
+    "ontology_content_hash": "4f609096275ec096bde508648b2a5a6f1087a9c82b8ffda57d376e461ce68bdc",
+    "seed_hash": "1cf66bddd6d179ab36684c795f450142acba401d47e35fa9607de7ceaa2a7831",
+    "source_hash": "7f7ea9a37c29a471f4d5cf421931f24041d524edcebe5f82534f394b3fcdeaf5"
+   },
+   "status": "enum",
+   "triggers_naming_type": [
+    "trigger_plug_turned_off",
+    "trigger_plug_turned_on"
+   ]
+  },
+  {
+   "category": null,
+   "checkin_minutes": null,
+   "field_sources": {
+    "id": "docs/ontology.yaml",
+    "reason": "seed ontology_only",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "RF_TRIPWIRE",
+   "match_rule_ids": [],
+   "protocols": [],
+   "reason": "trigger_rf_tripwire_crossed is a candidate trigger for a device type that is not built yet; the enum gains the constant when that device is enrolled",
+   "reported_fields": [],
+   "stamp": {
+    "ontology_content_hash": "7b9a99ab47970f50d5032a796869a14db38cd50f846c8489b04d469f2f226172",
+    "seed_hash": "261606c52a43c368ae07d11a38d6e246ec38529b0b2a6863f19e50dcc7e998f5",
+    "source_hash": null
+   },
+   "status": "ontology_only",
+   "triggers_naming_type": [
+    "trigger_rf_tripwire_crossed"
+   ]
+  },
+  {
+   "category": "NETWORK",
+   "checkin_minutes": {
+    "non_zigbee": 30,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "ROUTER",
+   "match_rule_ids": [],
+   "protocols": [],
+   "reason": null,
+   "reported_fields": [],
+   "stamp": {
+    "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "seed_hash": "61bfb281e378b3bf1a59c6299faa2aaf37026f03beb41cf8f131b52303d4b4d9",
+    "source_hash": "3e484bd647bd815fdba740516bd1527c6b11a964f26b93ed6f3618143c5280c5"
+   },
+   "status": "enum",
+   "triggers_naming_type": []
+  },
+  {
+   "category": "SAFETY",
+   "checkin_minutes": {
+    "non_zigbee": 15,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "SMOKE_ALARM",
+   "match_rule_ids": [
+    "ha-04-smoke",
+    "zb-08-smoke-or-co-alarm",
+    "mb-03-alarm"
+   ],
+   "protocols": [
+    "home_assistant",
+    "mqtt_bridge",
+    "zigbee2mqtt"
+   ],
+   "reason": null,
+   "reported_fields": [],
+   "stamp": {
+    "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "seed_hash": "bc53101cb755c76873413fb67f5c6ef212a8b528ef3aadb0982c8d39a3ea4e48",
+    "source_hash": "3734241c384fbd5bd30e13ef1bada27fee6a7bd4ee5de3d3c687b7cde7ca5c91"
+   },
+   "status": "enum",
+   "triggers_naming_type": []
+  },
+  {
+   "category": "CLIMATE",
+   "checkin_minutes": {
+    "non_zigbee": 30,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "TEMPERATURE_SENSOR",
+   "match_rule_ids": [
+    "ha-09-temperature",
+    "zb-04-snzb-02-or-temperature",
+    "zb-15-expose-temperature",
+    "mb-02-temp-f"
+   ],
+   "protocols": [
+    "home_assistant",
+    "mqtt_bridge",
+    "zigbee2mqtt"
+   ],
+   "reason": null,
+   "reported_fields": [
+    "humidity",
+    "temperature"
+   ],
+   "stamp": {
+    "ontology_content_hash": "aad870bc20e10591e122c3fabca29093e3967490d0aaed9aa5e69a547d3344ce",
+    "seed_hash": "b8a4fd8989f4d984015867e59afa3591126d441acfcdab23cf10be5a509c2455",
+    "source_hash": "d91167057786db82b0ac081ca266d828633a7be40b80bdef5abd402afcbb06a2"
+   },
+   "status": "enum",
+   "triggers_naming_type": [
+    "trigger_freeze_risk_cleared",
+    "trigger_freeze_risk_detected"
+   ]
+  },
+  {
+   "category": "CLIMATE",
+   "checkin_minutes": {
+    "non_zigbee": 15,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "THERMOSTAT",
+   "match_rule_ids": [
+    "ha-02-climate",
+    "zb-10-climate-capability"
+   ],
+   "protocols": [
+    "home_assistant",
+    "zigbee2mqtt"
+   ],
+   "reason": null,
+   "reported_fields": [],
+   "stamp": {
+    "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "seed_hash": "9c187e0c40abacc522515edb11edd653bf4fc64a30a1d39fef96b3a26255f3fa",
+    "source_hash": "b7fd806c42cbda9e5fc40baeba3ea2ffd89fb27ba7c86cde41be36055ab851a2"
+   },
+   "status": "enum",
+   "triggers_naming_type": []
+  },
+  {
+   "category": "NETWORK",
+   "checkin_minutes": {
+    "non_zigbee": 30,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "UPS",
+   "match_rule_ids": [],
+   "protocols": [],
+   "reason": null,
+   "reported_fields": [],
+   "stamp": {
+    "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "seed_hash": "61bfb281e378b3bf1a59c6299faa2aaf37026f03beb41cf8f131b52303d4b4d9",
+    "source_hash": "f03a31d980a519614189216580cf452e1aa15e78bd723a3748a37cbfe8e249bb"
+   },
+   "status": "enum",
+   "triggers_naming_type": []
+  },
+  {
+   "category": "APPLIANCES",
+   "checkin_minutes": {
+    "non_zigbee": 15,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "WASHING_MACHINE",
+   "match_rule_ids": [],
+   "protocols": [],
+   "reason": null,
+   "reported_fields": [],
+   "stamp": {
+    "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "seed_hash": "ad4d4b5f8e48ba8d3f307537cd3bfb2a8a5a1db91430e2d0720f7ef085849bf5",
+    "source_hash": "29d090fc42ae632601d73834c91f0708e1e5f6e6ac30cce63990ec35d159c959"
+   },
+   "status": "enum",
+   "triggers_naming_type": []
+  },
+  {
+   "category": "SAFETY",
+   "checkin_minutes": {
+    "non_zigbee": 30,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "WATER_LEAK_SENSOR",
+   "match_rule_ids": [
+    "ha-06-moisture",
+    "zb-01-snzb-05-or-water-leak",
+    "zb-12-alarm-capability"
+   ],
+   "protocols": [
+    "home_assistant",
+    "zigbee2mqtt"
+   ],
+   "reason": null,
+   "reported_fields": [],
+   "stamp": {
+    "ontology_content_hash": "c86a4b89fe9e57072f3ced23c22d336bde11717fc499f3815394caf5ca9347db",
+    "seed_hash": "71aa8e3a5b73dd9d97952ce910d6a1d868d34549482f71137a76bcd4ef01d6fa",
+    "source_hash": "40e4c2fd46a56985ce4e26ccf17d92b28923acbad99873c5880bbb299ab76b6f"
+   },
+   "status": "enum",
+   "triggers_naming_type": [
+    "trigger_water_leak_cleared",
+    "trigger_water_leak_detected"
+   ]
+  },
+  {
+   "category": "UTILITIES",
+   "checkin_minutes": {
+    "non_zigbee": 30,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "WATER_PRESSURE_SENSOR",
+   "match_rule_ids": [
+    "mb-01-psi"
+   ],
+   "protocols": [
+    "mqtt_bridge"
+   ],
+   "reason": null,
+   "reported_fields": [],
+   "stamp": {
+    "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "seed_hash": "7a591a42f067f6f75bbc9e241e6c073a295086884c522ff4b640422dbc85c0e6",
+    "source_hash": "533a4f240ecbec9a13bc4c408b2fa7005306dde65f36a90c42ffb66937470ecd"
+   },
+   "status": "enum",
+   "triggers_naming_type": []
+  },
+  {
+   "category": "SAFETY",
+   "checkin_minutes": {
+    "non_zigbee": 30,
+    "zigbee_battery": 1560,
+    "zigbee_mains": 10
+   },
+   "field_sources": {
+    "category": "DeviceType.java",
+    "checkin_minutes": "seed",
+    "id": "DeviceType.java",
+    "match_rule_ids": "seed",
+    "protocols": "seed match rules",
+    "reported_fields": "DeviceType.java",
+    "triggers_naming_type": "docs/ontology.yaml"
+   },
+   "id": "WATER_VALVE",
+   "match_rule_ids": [
+    "zb-05-valve-actuator"
+   ],
+   "protocols": [
+    "zigbee2mqtt"
+   ],
+   "reason": null,
+   "reported_fields": [],
+   "stamp": {
+    "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "seed_hash": "7f02cf7cacf82cb8bd84129b07705b6293cc9ad3f3d4b33d0b5f88c7afec5931",
+    "source_hash": "fbb62674c9a5e95bde828c2f2e217110df28aba013dce52694abe4e33b73c2e9"
+   },
+   "status": "enum",
+   "triggers_naming_type": []
+  }
+ ],
+ "generated_from": {
+  "device_type_source_sha256": "32ca157ef6c6af47358215e7f79944938866afb4a3f964d2ee747cf9445f57fe",
+  "generator_version": 1,
+  "ontology_sha256": "6dffe897c7fed2dec275fe0ae0b4c1c2cfcf4e0edbd8483c2baf14435f32070a",
+  "ontology_version_label": "0.6.0",
+  "seed_sha256": "3263cabd79f5ff99022b117611c5801063340f8b2c44a6cfd1479ed8125d2a60"
+ },
+ "match_rules": [
+  {
+   "describes": "HA domain is lock",
+   "id": "ha-01-lock",
+   "input": {
+    "attributes": {},
+    "domain": "lock"
+   },
+   "returns": "LOCK",
+   "site": "home_assistant",
+   "source": "inferType"
+  },
+  {
+   "describes": "HA domain is climate",
+   "id": "ha-02-climate",
+   "input": {
+    "attributes": {},
+    "domain": "climate"
+   },
+   "returns": "THERMOSTAT",
+   "site": "home_assistant",
+   "source": "inferType"
+  },
+  {
+   "describes": "HA domain is camera",
+   "id": "ha-03-camera",
+   "input": {
+    "attributes": {},
+    "domain": "camera"
+   },
+   "returns": "CAMERA",
+   "site": "home_assistant",
+   "source": "inferType"
+  },
+  {
+   "describes": "device_class contains smoke",
+   "id": "ha-04-smoke",
+   "input": {
+    "attributes": {
+     "device_class": "smoke"
+    },
+    "domain": "binary_sensor"
+   },
+   "returns": "SMOKE_ALARM",
+   "site": "home_assistant",
+   "source": "inferType"
+  },
+  {
+   "describes": "device_class contains carbon_monoxide or equals co (the binary alarm class)",
+   "id": "ha-05-carbon-monoxide-alarm",
+   "input": {
+    "attributes": {
+     "device_class": "carbon_monoxide"
+    },
+    "domain": "binary_sensor"
+   },
+   "returns": "CO_ALARM",
+   "site": "home_assistant",
+   "source": "inferType"
+  },
+  {
+   "describes": "device_class contains moisture",
+   "id": "ha-06-moisture",
+   "input": {
+    "attributes": {
+     "device_class": "moisture"
+    },
+    "domain": "binary_sensor"
+   },
+   "returns": "WATER_LEAK_SENSOR",
+   "site": "home_assistant",
+   "source": "inferType"
+  },
+  {
+   "describes": "device_class contains motion or occupancy",
+   "id": "ha-07-motion-or-occupancy",
+   "input": {
+    "attributes": {
+     "device_class": "motion"
+    },
+    "domain": "binary_sensor"
+   },
+   "returns": "MOTION_SENSOR",
+   "site": "home_assistant",
+   "source": "inferType"
+  },
+  {
+   "describes": "device_class contains door or opening",
+   "id": "ha-08-door-or-opening",
+   "input": {
+    "attributes": {
+     "device_class": "door"
+    },
+    "domain": "binary_sensor"
+   },
+   "returns": "CONTACT_SENSOR",
+   "site": "home_assistant",
+   "source": "inferType"
+  },
+  {
+   "describes": "device_class contains temperature",
+   "id": "ha-09-temperature",
+   "input": {
+    "attributes": {
+     "device_class": "temperature"
+    },
+    "domain": "sensor"
+   },
+   "returns": "TEMPERATURE_SENSOR",
+   "site": "home_assistant",
+   "source": "inferType"
+  },
+  {
+   "describes": "device_class contains humidity",
+   "id": "ha-10-humidity",
+   "input": {
+    "attributes": {
+     "device_class": "humidity"
+    },
+    "domain": "sensor"
+   },
+   "returns": "HUMIDITY_SENSOR",
+   "site": "home_assistant",
+   "source": "inferType"
+  },
+  {
+   "describes": "sensor domain and device_class is power, energy, voltage or current",
+   "id": "ha-11-power-class",
+   "input": {
+    "attributes": {
+     "device_class": "power"
+    },
+    "domain": "sensor"
+   },
+   "returns": "POWER_METER",
+   "site": "home_assistant",
+   "source": "inferType"
+  },
+  {
+   "describes": "device_class contains carbon_dioxide",
+   "id": "ha-12-carbon-dioxide",
+   "input": {
+    "attributes": {
+     "device_class": "carbon_dioxide"
+    },
+    "domain": "sensor"
+   },
+   "returns": "CO2_SENSOR",
+   "site": "home_assistant",
+   "source": "inferType"
+  },
+  {
+   "describes": "device_class contains volatile_organic_compounds or equals aqi",
+   "id": "ha-13-voc-or-aqi",
+   "input": {
+    "attributes": {
+     "device_class": "aqi"
+    },
+    "domain": "sensor"
+   },
+   "returns": "AIR_QUALITY_SENSOR",
+   "site": "home_assistant",
+   "source": "inferType"
+  },
+  {
+   "describes": "sensor domain with no matched class and unit ppm (vendor workaround: Kidde sets no device_class)",
+   "id": "ha-14-unit-ppm",
+   "input": {
+    "attributes": {
+     "unit_of_measurement": "ppm"
+    },
+    "domain": "sensor"
+   },
+   "returns": "CO_SENSOR",
+   "site": "home_assistant",
+   "source": "inferType"
+  },
+  {
+   "describes": "sensor domain, no class, no unit, friendly name contains co level or co-level (vendor workaround, Bug #3)",
+   "id": "ha-15-name-co-level",
+   "input": {
+    "attributes": {
+     "friendly_name": "Kidde CO Level"
+    },
+    "domain": "sensor"
+   },
+   "returns": "CO_SENSOR",
+   "site": "home_assistant",
+   "source": "inferType"
+  },
+  {
+   "describes": "nothing matched: generic entity, no tile and no chart",
+   "id": "ha-16-default",
+   "input": {
+    "attributes": {},
+    "domain": "light"
+   },
+   "returns": "HOME_ASSISTANT_ENTITY",
+   "site": "home_assistant",
+   "source": "inferType"
+  },
+  {
+   "describes": "model contains snzb-05 or description contains water leak",
+   "id": "zb-01-snzb-05-or-water-leak",
+   "input": {
+    "caps": [],
+    "definition": {
+     "description": "Leak sensor",
+     "model": "SNZB-05P"
+    },
+    "friendly_name": "leak"
+   },
+   "returns": "WATER_LEAK_SENSOR",
+   "site": "zigbee2mqtt",
+   "source": "inferType"
+  },
+  {
+   "describes": "model contains snzb-03 or description contains motion",
+   "id": "zb-02-snzb-03-or-motion",
+   "input": {
+    "caps": [],
+    "definition": {
+     "description": "Presence",
+     "model": "SNZB-03P"
+    },
+    "friendly_name": "pir"
+   },
+   "returns": "MOTION_SENSOR",
+   "site": "zigbee2mqtt",
+   "source": "inferType"
+  },
+  {
+   "describes": "model contains snzb-04 or description contains contact",
+   "id": "zb-03-snzb-04-or-contact",
+   "input": {
+    "caps": [],
+    "definition": {
+     "description": "Door sensor",
+     "model": "SNZB-04P"
+    },
+    "friendly_name": "door"
+   },
+   "returns": "CONTACT_SENSOR",
+   "site": "zigbee2mqtt",
+   "source": "inferType"
+  },
+  {
+   "describes": "model contains snzb-02 or description contains temperature",
+   "id": "zb-04-snzb-02-or-temperature",
+   "input": {
+    "caps": [],
+    "definition": {
+     "description": "Sensor",
+     "model": "SNZB-02P"
+    },
+    "friendly_name": "temp"
+   },
+   "returns": "TEMPERATURE_SENSOR",
+   "site": "zigbee2mqtt",
+   "source": "inferType"
+  },
+  {
+   "describes": "description, model or name says valve and the device exposes a writable relay state",
+   "id": "zb-05-valve-actuator",
+   "input": {
+    "caps": [],
+    "definition": {
+     "description": "Water valve",
+     "exposes": [
+      {
+       "access": 7,
+       "name": "state",
+       "property": "state",
+       "type": "binary"
+      }
+     ],
+     "model": "VALVE1"
+    },
+    "friendly_name": "main valve"
+   },
+   "returns": "WATER_VALVE",
+   "site": "zigbee2mqtt",
+   "source": "inferType"
+  },
+  {
+   "describes": "a relay that is not a valve, leak or smoke sensor, or a power-monitoring switch, plug, outlet or relay",
+   "id": "zb-06-smart-switch",
+   "input": {
+    "caps": [],
+    "definition": {
+     "description": "Mini relay",
+     "exposes": [
+      {
+       "access": 7,
+       "name": "state",
+       "property": "state",
+       "type": "binary"
+      }
+     ],
+     "model": "R1"
+    },
+    "friendly_name": "relay"
+   },
+   "returns": "POWER_METER",
+   "site": "zigbee2mqtt",
+   "source": "inferType"
+  },
+  {
+   "describes": "model contains zbminir or description contains switch, with no relay exposed",
+   "id": "zb-07-zbminir-or-switch-description",
+   "input": {
+    "caps": [],
+    "definition": {
+     "description": "Wall switch",
+     "exposes": [],
+     "model": "W1"
+    },
+    "friendly_name": "wall"
+   },
+   "returns": "HOME_ASSISTANT_ENTITY",
+   "site": "zigbee2mqtt",
+   "source": "inferType"
+  },
+  {
+   "describes": "description contains smoke or co alarm",
+   "id": "zb-08-smoke-or-co-alarm",
+   "input": {
+    "caps": [],
+    "definition": {
+     "description": "Smoke detector",
+     "model": "S1"
+    },
+    "friendly_name": "smoke"
+   },
+   "returns": "SMOKE_ALARM",
+   "site": "zigbee2mqtt",
+   "source": "inferType"
+  },
+  {
+   "describes": "description contains smart plug or outlet",
+   "id": "zb-09-smart-plug-or-outlet",
+   "input": {
+    "caps": [],
+    "definition": {
+     "description": "Smart outlet",
+     "model": "P1"
+    },
+    "friendly_name": "plug"
+   },
+   "returns": "POWER_METER",
+   "site": "zigbee2mqtt",
+   "source": "inferType"
+  },
+  {
+   "describes": "capability CLIMATE",
+   "id": "zb-10-climate-capability",
+   "input": {
+    "caps": [
+     "CLIMATE"
+    ],
+    "definition": {
+     "description": "Wall unit",
+     "model": "C1"
+    },
+    "friendly_name": "climate"
+   },
+   "returns": "THERMOSTAT",
+   "site": "zigbee2mqtt",
+   "source": "inferType"
+  },
+  {
+   "describes": "capability ACCESS_CONTROL",
+   "id": "zb-11-access-control-capability",
+   "input": {
+    "caps": [
+     "ACCESS_CONTROL"
+    ],
+    "definition": {
+     "description": "Entry device",
+     "model": "L1"
+    },
+    "friendly_name": "entry"
+   },
+   "returns": "LOCK",
+   "site": "zigbee2mqtt",
+   "source": "inferType"
+  },
+  {
+   "describes": "capability ALARM with no description rule matched",
+   "id": "zb-12-alarm-capability",
+   "input": {
+    "caps": [
+     "ALARM"
+    ],
+    "definition": {
+     "description": "Siren",
+     "model": "A1"
+    },
+    "friendly_name": "siren"
+   },
+   "returns": "WATER_LEAK_SENSOR",
+   "site": "zigbee2mqtt",
+   "source": "inferType"
+  },
+  {
+   "describes": "no description rule matched and the device exposes occupancy",
+   "id": "zb-13-expose-occupancy",
+   "input": {
+    "caps": [],
+    "definition": {
+     "description": "Unit",
+     "exposes": [
+      {
+       "property": "occupancy"
+      }
+     ],
+     "model": "X1"
+    },
+    "friendly_name": "x"
+   },
+   "returns": "MOTION_SENSOR",
+   "site": "zigbee2mqtt",
+   "source": "inferType"
+  },
+  {
+   "describes": "no description rule matched and the device exposes contact",
+   "id": "zb-14-expose-contact",
+   "input": {
+    "caps": [],
+    "definition": {
+     "description": "Unit",
+     "exposes": [
+      {
+       "property": "contact"
+      }
+     ],
+     "model": "X2"
+    },
+    "friendly_name": "x"
+   },
+   "returns": "CONTACT_SENSOR",
+   "site": "zigbee2mqtt",
+   "source": "inferType"
+  },
+  {
+   "describes": "no description rule matched and the device exposes temperature",
+   "id": "zb-15-expose-temperature",
+   "input": {
+    "caps": [],
+    "definition": {
+     "description": "Unit",
+     "exposes": [
+      {
+       "property": "temperature"
+      }
+     ],
+     "model": "X3"
+    },
+    "friendly_name": "x"
+   },
+   "returns": "TEMPERATURE_SENSOR",
+   "site": "zigbee2mqtt",
+   "source": "inferType"
+  },
+  {
+   "describes": "no description rule matched and the device exposes humidity",
+   "id": "zb-16-expose-humidity",
+   "input": {
+    "caps": [],
+    "definition": {
+     "description": "Unit",
+     "exposes": [
+      {
+       "property": "humidity"
+      }
+     ],
+     "model": "X4"
+    },
+    "friendly_name": "x"
+   },
+   "returns": "HUMIDITY_SENSOR",
+   "site": "zigbee2mqtt",
+   "source": "inferType"
+  },
+  {
+   "describes": "nothing matched: left generic and a warning is logged",
+   "id": "zb-17-default",
+   "input": {
+    "caps": [],
+    "definition": {
+     "description": "Unit",
+     "exposes": [],
+     "model": "X5"
+    },
+    "friendly_name": "x"
+   },
+   "returns": "HOME_ASSISTANT_ENTITY",
+   "site": "zigbee2mqtt",
+   "source": "inferType"
+  },
+  {
+   "describes": "payload has psi",
+   "id": "mb-01-psi",
+   "input": {
+    "data": {
+     "psi": 55
+    }
+   },
+   "returns": "WATER_PRESSURE_SENSOR",
+   "site": "mqtt_bridge",
+   "source": "inferType"
+  },
+  {
+   "describes": "payload has temp_f",
+   "id": "mb-02-temp-f",
+   "input": {
+    "data": {
+     "temp_f": 70
+    }
+   },
+   "returns": "TEMPERATURE_SENSOR",
+   "site": "mqtt_bridge",
+   "source": "inferType"
+  },
+  {
+   "describes": "payload has alarm",
+   "id": "mb-03-alarm",
+   "input": {
+    "data": {
+     "alarm": false
+    }
+   },
+   "returns": "SMOKE_ALARM",
+   "site": "mqtt_bridge",
+   "source": "inferType"
+  },
+  {
+   "describes": "payload has locked",
+   "id": "mb-04-locked",
+   "input": {
+    "data": {
+     "locked": true
+    }
+   },
+   "returns": "LOCK",
+   "site": "mqtt_bridge",
+   "source": "inferType"
+  },
+  {
+   "describes": "payload has motion",
+   "id": "mb-05-motion",
+   "input": {
+    "data": {
+     "motion": true
+    }
+   },
+   "returns": "MOTION_SENSOR",
+   "site": "mqtt_bridge",
+   "source": "inferType"
+  },
+  {
+   "describes": "nothing matched",
+   "id": "mb-06-default",
+   "input": {
+    "data": {}
+   },
+   "returns": "HOME_ASSISTANT_ENTITY",
+   "site": "mqtt_bridge",
+   "source": "inferType"
+  }
+ ],
+ "safety_types": [
+  "CO_ALARM",
+  "LOCK",
+  "WATER_LEAK_SENSOR",
+  "WATER_VALVE"
+ ],
+ "schema_version": 1
+}

@@ -12,6 +12,7 @@ on:
       - 'cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/integrations/zigbee/Zigbee2MqttAdapter.java'
       - 'cabin-orchestration-platform/backend/src/main/java/com/cabin/orchestrator/mqtt/MqttBridgeService.java'
       - 'cabin-orchestration-platform/backend/src/test/java/com/cabin/orchestrator/ontology/**'
+      - 'cabin-orchestration-platform/backend/src/main/resources/ontology/**'
       - '.github/workflows/ontology-catalog-gate.yml'
   push:
     branches: [main]
@@ -19,6 +20,7 @@ on:
       - 'docs/ontology.yaml'
       - 'docs/ontology/**'
       - 'scripts/ontology/**'
+      - 'cabin-orchestration-platform/backend/src/main/resources/ontology/**'
       - '.github/workflows/ontology-catalog-gate.yml'
 permissions:
   contents: read
@@ -75,7 +77,7 @@ jobs:
           REQUIRE_ONTOLOGY_DOCS: "true"  # a missing docs or source input fails here instead of skipping
         run: |
           set +e
-          mvn -B -ntp -Dtest='DeviceCatalogParityTest,DeviceCatalogRequireInputsTest,DeviceTypeOntologyParityTest' test 2>&1 | tee "$RUNNER_TEMP/mvn.txt"
+          mvn -B -ntp -Dtest='DeviceCatalogParityTest,DeviceCatalogRequireInputsTest,DeviceTypeOntologyParityTest,DeviceCatalogServiceTest' test 2>&1 | tee "$RUNNER_TEMP/mvn.txt"
           rc=${PIPESTATUS[0]}
           { echo "- java parity tests: $(grep -E 'Tests run:.*Fail' "$RUNNER_TEMP/mvn.txt" | tail -n 1)"; } >> "$GITHUB_STEP_SUMMARY"
           exit $rc

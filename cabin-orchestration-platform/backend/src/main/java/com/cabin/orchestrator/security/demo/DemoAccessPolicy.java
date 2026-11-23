@@ -32,7 +32,7 @@ public final class DemoAccessPolicy {
         // Explicit DENY entries that would otherwise be shadowed by a broader
         // ALLOW_REDACT template below.
         put(RouteClass.DENY,
-            "/api/devices/candidates", "/api/devices/previously-exposed",
+            "/api/devices/candidates", "/api/devices/previously-exposed", "/api/devices/catalog-shadow",
             "/api/devices/{id}/config", "/api/devices/{id}/discovery/latest", "/api/devices/{id}/jsonld",
             "/api/events/live", "/api/events/export", "/api/events/status-checks", "/api/alerts/history");
 
