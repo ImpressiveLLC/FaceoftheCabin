@@ -4,13 +4,24 @@
 Design: docs/governance/proposals/2026-11-22-device-capability-coverage-design.md. For each device it compares three
 layers and puts every capability the device OFFERS into exactly one status:
 
-  shown                    the hub registers it and the device's catalog type reports it (charts, tiles)
-  registered_not_shown     the hub reads it, but the device's catalog type does not report it
-  offered_not_registered   the device offers it and the ontology has a row for it, but the hub does not read it
-  offered_not_mappable     the device offers it and there is no ontology row for it yet (a W-168 candidate)
-  setting_or_diagnostic    a configuration setting or diagnostic value; listed, not counted as a gap
-  control                  something the hub could command (access bit 2); listed with whether the device has the
-                           COMMAND capability, not counted as a reading gap
+  catalog_declared             the hub registers it and the device's catalog type declares it in reported_fields
+  registered_not_catalog_declared  the hub reads it, but the device's catalog type does not declare it
+  offered_not_registered       the device offers it and the ontology has a row for it, but the hub does not read it
+  offered_not_mappable         the device offers it and there is no ontology row for it yet (a W-168 candidate)
+  setting_or_diagnostic        a configuration setting or diagnostic value (its own category, or inherited from a
+                               parent expose); listed, not counted as a gap
+  control                      anything writable (access bit 2) that is not a setting or diagnostic, standalone or
+                               nested in a composite; listed with whether the hub has the COMMAND capability, not
+                               counted as a reading gap
+
+The catalog layer is a declaration, not evidence of what a person sees: whether a value reaches a tile, chart,
+workflow or Ask answer is NOT measured here, and the report says so (`ui_visibility: not_measured`). An earlier draft
+called this layer "shown"; that label claimed more than a catalog lookup can prove.
+
+Identity: a capability keeps three things apart. `semantic_name` is the Zigbee2MQTT `name` (what the ontology
+vocabulary and the catalog are keyed on); `property` is the payload key, endpoint-qualified when the device has
+endpoints (`temperature_l1`); `endpoint` is the endpoint label. Vocabulary and catalog lookups use the semantic name;
+registration matching uses the property; two channels of one device stay two rows. Nothing strips suffixes.
 
 Inputs, all files, nothing live:
   --z2m-devices  a captured, REDACTED Zigbee2MQTT `bridge/devices` message (the list with definition.exposes)
@@ -34,10 +45,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CATALOG = ROOT / "docs" / "ontology" / "device-catalog.json"
 VOCABULARY = ROOT / "docs" / "ontology" / "schema" / "device-reporting-relationship.schema.json"
-REPORT_VERSION = 1
-STATUSES = ("shown", "registered_not_shown", "offered_not_registered", "offered_not_mappable",
+REPORT_VERSION = 2
+STATUSES = ("catalog_declared", "registered_not_catalog_declared", "offered_not_registered", "offered_not_mappable",
             "setting_or_diagnostic", "control")
-GAP_STATUSES = ("registered_not_shown", "offered_not_registered", "offered_not_mappable")
+GAP_STATUSES = ("registered_not_catalog_declared", "offered_not_registered", "offered_not_mappable")
 ACCESS_SET = 2
 # Mirrors Zigbee2MqttAdapter.PRESENCE_FIELD_BY_DEVICE_TYPE: a binary expose counts as a reading only for this type.
 PRESENCE_FIELD_BY_TYPE = {"MOTION_SENSOR": "occupancy", "CONTACT_SENSOR": "contact", "WATER_LEAK_SENSOR": "water_leak"}
@@ -85,42 +96,56 @@ def camel(name):
 
 
 def flatten_exposes(exposes):
-    """Leaf exposes with their property, type, category and access, composites and features expanded."""
+    """Leaf exposes with identity, type, category and access, composites and features expanded.
+
+    A leaf keeps what its ancestors say: a composite's (or any parent's) `category` applies to its features, the
+    ancestor types are recorded (a numeric x inside a light's color composite is still a light control), and the
+    endpoint is inherited. `semantic_name` is the Zigbee2MQTT `name`; `property` is the payload key (endpoint-
+    qualified on multi-endpoint devices); `identity` is the composite path plus the property, unique within a device.
+    """
     out = []
 
-    def walk(items, parent_type=None):
+    def walk(items, ancestors=(), path=(), category=None, endpoint=None):
         for item in items or []:
             if not isinstance(item, dict):
                 continue
+            own_category = item.get("category") or category
+            own_endpoint = item.get("endpoint") or endpoint
             features = item.get("features")
             if isinstance(features, list) and features:
-                walk(features, item.get("type"))
+                label = item.get("property") or item.get("name")
+                walk(features, ancestors + (str(item.get("type", "")),),
+                     path + ((str(label),) if label else ()), own_category, own_endpoint)
                 continue
-            name = item.get("property") or item.get("name")
-            if not name:
+            prop = item.get("property") or item.get("name")
+            if not prop:
                 continue
-            out.append({"name": str(name), "type": str(item.get("type", "")), "category": item.get("category"),
-                        "access": int(item.get("access", 1) or 0), "parent": parent_type})
+            semantic = item.get("name") or prop
+            out.append({"semantic_name": str(semantic), "property": str(prop), "endpoint": own_endpoint,
+                        "identity": ".".join(path + (str(prop),)), "type": str(item.get("type", "")),
+                        "category": own_category, "access": int(item.get("access", 1) or 0),
+                        "ancestors": ancestors})
 
     walk(exposes)
     return out
 
 
-CONTROL_PARENTS = ("switch", "light", "lock", "climate", "fan", "cover")
-
-
 def classify(leaf, assigned_type, registered, type_reports, vocabulary):
-    """One status for one offered capability."""
-    name, kind = leaf["name"], leaf["type"]
+    """One status for one offered capability.
+
+    Writable (access bit 2) and not a setting or diagnostic means control, whatever the type or nesting. Vocabulary
+    and catalog lookups use the semantic name; registration matching uses the property.
+    """
+    semantic, prop, kind = leaf["semantic_name"], leaf["property"], leaf["type"]
     if leaf["category"] in ("config", "diagnostic"):
         return "setting_or_diagnostic"
-    writable = bool(leaf["access"] & ACCESS_SET)
-    if writable and (kind != "numeric" or leaf["parent"] in CONTROL_PARENTS):
+    if leaf["access"] & ACCESS_SET:
         return "control"
-    is_reading_kind = kind == "numeric" or (kind == "binary" and PRESENCE_FIELD_BY_TYPE.get(assigned_type) == name)
-    mappable = name in vocabulary
-    if name in registered:
-        return "shown" if camel(name) in type_reports or name in type_reports else "registered_not_shown"
+    is_reading_kind = kind == "numeric" or (kind == "binary" and PRESENCE_FIELD_BY_TYPE.get(assigned_type) == semantic)
+    mappable = semantic in vocabulary
+    if prop in registered or leaf["identity"] in registered:
+        declared = camel(semantic) in type_reports or semantic in type_reports
+        return "catalog_declared" if declared else "registered_not_catalog_declared"
     if not mappable:
         return "offered_not_mappable"
     if is_reading_kind or kind == "binary":
@@ -128,11 +153,29 @@ def classify(leaf, assigned_type, registered, type_reports, vocabulary):
     return "offered_not_mappable"
 
 
+def validate_registry(registry):
+    """The documented shape: {"devices": {key: {assigned_type, registered_fields, has_command}}}. A wrong shape is an
+    error, never an empty registry: that would rank every device as a new gap."""
+    if not isinstance(registry, dict) or not isinstance(registry.get("devices"), dict):
+        raise CoverageError('the registry must be a JSON object with a "devices" object')
+    for key, entry in registry["devices"].items():
+        if not isinstance(entry, dict):
+            raise CoverageError(f"registry device {key}: the record must be an object")
+        if entry.get("assigned_type") is not None and not isinstance(entry["assigned_type"], str):
+            raise CoverageError(f"registry device {key}: assigned_type must be a string or null")
+        fields = entry.get("registered_fields")
+        if not isinstance(fields, list) or not all(isinstance(f, str) for f in fields):
+            raise CoverageError(f"registry device {key}: registered_fields must be a list of strings")
+        if not isinstance(entry.get("has_command"), bool):
+            raise CoverageError(f"registry device {key}: has_command must be true or false")
+    return registry["devices"]
+
+
 def build_report(z2m_devices, registry, catalog, vocabulary, inputs, now=None):
     if not isinstance(z2m_devices, list):
         raise CoverageError("the Zigbee2MQTT device list must be a JSON list (the bridge/devices message)")
     reports_by_type = {e["id"]: set(e.get("reported_fields", [])) for e in catalog.get("entries", [])}
-    hub = registry.get("devices", {}) if isinstance(registry, dict) else {}
+    hub = validate_registry(registry)
     devices = []
     for device in sorted(z2m_devices, key=lambda d: str(d.get("ieee_address") or d.get("friendly_name") or "")):
         if device.get("type") == "Coordinator":
@@ -149,11 +192,14 @@ def build_report(z2m_devices, registry, catalog, vocabulary, inputs, now=None):
         capabilities = []
         seen = set()
         for leaf in flatten_exposes(definition.get("exposes")):
-            if leaf["name"] in seen:
+            if leaf["identity"] in seen:
                 continue
-            seen.add(leaf["name"])
+            seen.add(leaf["identity"])
             status = classify(leaf, assigned, registered, type_reports, vocabulary)
-            item = {"name": leaf["name"], "expose_type": leaf["type"], "status": status}
+            item = {"name": leaf["identity"], "semantic_name": leaf["semantic_name"], "property": leaf["property"],
+                    "expose_type": leaf["type"], "status": status}
+            if leaf["endpoint"]:
+                item["endpoint"] = leaf["endpoint"]
             if status == "control":
                 item["hub_can_command"] = has_command
             capabilities.append(item)
@@ -176,6 +222,7 @@ def build_report(z2m_devices, registry, catalog, vocabulary, inputs, now=None):
         "site": "zigbee2mqtt",
         "generated_at": now or datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "catalog_hash": catalog.get("catalog_hash"),
+        "ui_visibility": "not_measured",
         "inputs": inputs,
         "summary": {
             "devices": len(devices),
