@@ -32,6 +32,9 @@ CATALOG = ROOT / "docs" / "ontology" / "device-catalog.json"
 DEVICE_TYPE_JAVA = (ROOT / "cabin-orchestration-platform" / "backend" / "src" / "main" / "java" / "com" / "cabin"
                     / "orchestrator" / "devices" / "model" / "DeviceType.java")
 GENERATOR_VERSION = 1
+# Types whose protection the guard enforces on its own, whatever the seed says (Codex HOLD 7092427980, Cowork ruling
+# 7092777924: "mandatory means the guard fails on its own, with no seed override"). Leak, valve, lock and CO.
+MANDATORY_SAFETY_TYPES = frozenset({"WATER_LEAK_SENSOR", "WATER_VALVE", "LOCK", "CO_ALARM"})
 FIX_COMMAND = "python scripts/ontology/generate_catalog.py"
 
 
@@ -125,6 +128,9 @@ def build(java_text, ontology_bytes, seed_bytes):
     for type_name in seed.get("safety_types", []):
         if type_name not in constants:
             raise CatalogError(f"safety type {type_name} is not a DeviceType constant")
+    unprotected = sorted(MANDATORY_SAFETY_TYPES - set(seed.get("safety_types", [])))
+    if unprotected:
+        raise CatalogError(f"safety_types must keep the mandatory types {', '.join(unprotected)}; they cannot be removed")
 
     entries = []
     for type_name in sorted(constants):
@@ -195,26 +201,60 @@ def generate(root=ROOT):
     return build(java_text, lf_bytes(root / ONTOLOGY.relative_to(ROOT)), lf_bytes(root / SEED.relative_to(ROOT)))
 
 
+def _exception_matches(exception, type_name, change, before_value, after_value):
+    """An allowed change covers exactly one delta: this type, this kind of change, from this value to that value."""
+    return (exception.get("type") == type_name and exception.get("change") == change and exception.get("reason")
+            and canonical(exception.get("from")) == canonical(before_value)
+            and canonical(exception.get("to")) == canonical(after_value))
+
+
 def safety_violations(old, new):
-    """Changes to a safety type that the seed's allowed_changes do not list (design #475 section 3, rule d)."""
-    allowed = {(a["type"], a["change"]) for a in new.get("allowed_changes", []) if a.get("reason")}
+    """Changes to a protected type that no exact, reasoned allowed_change covers (design #475 section 3, rule d).
+
+    Protected types are MANDATORY_SAFETY_TYPES plus every type either catalog lists in safety_types. Removing a type
+    from safety_types is itself a violation. A mandatory type can never lose its entry or its protection, whatever
+    allowed_changes says. An allowed_change carries `from` and `to` and covers only that exact delta, so an exception
+    reviewed for one change cannot cover a later, different change; an exception that matches no delta in this
+    transition is reported as stale."""
+    exceptions = [a for a in new.get("allowed_changes", []) if isinstance(a, dict)]
+    used = set()
     old_by_id = {e["id"]: e for e in old["entries"]}
     new_by_id = {e["id"]: e for e in new["entries"]}
+    old_protected, new_protected = set(old.get("safety_types", [])), set(new.get("safety_types", []))
     problems = []
-    for type_name in sorted(set(old.get("safety_types", [])) | set(new.get("safety_types", []))):
+
+    def allowed(type_name, change, before_value, after_value):
+        for index, exception in enumerate(exceptions):
+            if _exception_matches(exception, type_name, change, before_value, after_value):
+                used.add(index)
+                return True
+        return False
+
+    for type_name in sorted(MANDATORY_SAFETY_TYPES - new_protected):
+        problems.append(f"{type_name}: mandatory safety protection removed from safety_types")
+    for type_name in sorted(old_protected - new_protected - MANDATORY_SAFETY_TYPES):
+        if not allowed(type_name, "unprotected", True, False):
+            problems.append(f"{type_name}: safety protection removed from safety_types")
+    for type_name in sorted(MANDATORY_SAFETY_TYPES | old_protected | new_protected):
         before, after = old_by_id.get(type_name), new_by_id.get(type_name)
         if before is None and after is None:
             continue
         if after is None:
-            if (type_name, "removed") not in allowed:
+            if type_name in MANDATORY_SAFETY_TYPES or not allowed(type_name, "removed", canonical_hash(before), None):
                 problems.append(f"{type_name}: entry removed or renamed")
             continue
         if before is None:
             continue
-        if before["category"] != after["category"] and (type_name, "category") not in allowed:
+        if before["category"] != after["category"] and not allowed(type_name, "category", before["category"],
+                                                                   after["category"]):
             problems.append(f"{type_name}: category {before['category']} -> {after['category']}")
-        if before["checkin_minutes"] != after["checkin_minutes"] and (type_name, "checkin") not in allowed:
+        if before["checkin_minutes"] != after["checkin_minutes"] and not allowed(
+                type_name, "checkin", before["checkin_minutes"], after["checkin_minutes"]):
             problems.append(f"{type_name}: check-in window changed")
+    for index, exception in enumerate(exceptions):
+        if index not in used:
+            problems.append(f"{exception.get('type')}: allowed_change '{exception.get('change')}' matches no change "
+                            "in this transition (stale or wrong from/to); remove it or correct it")
     return problems
 
 

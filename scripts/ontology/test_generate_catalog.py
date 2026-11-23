@@ -184,14 +184,15 @@ class SafetyGuard(unittest.TestCase):
     def setUp(self):
         self.old = build()
 
-    def test_removing_a_safety_entry_is_refused_unless_allowed_with_a_reason(self):
+    def test_removing_a_mandatory_safety_entry_is_refused_even_with_an_exception(self):
         new = copy.deepcopy(self.old)
+        before = next(e for e in new["entries"] if e["id"] == "WATER_VALVE")
         new["entries"] = [e for e in new["entries"] if e["id"] != "WATER_VALVE"]
         self.assertIn("WATER_VALVE: entry removed or renamed", gc.safety_violations(self.old, new))
-        new["allowed_changes"] = [{"type": "WATER_VALVE", "change": "removed", "reason": "synthetic test"}]
-        self.assertEqual(gc.safety_violations(self.old, new), [])
-        new["allowed_changes"] = [{"type": "WATER_VALVE", "change": "removed", "reason": ""}]
-        self.assertIn("WATER_VALVE: entry removed or renamed", gc.safety_violations(self.old, new))
+        new["allowed_changes"] = [{"type": "WATER_VALVE", "change": "removed", "from": gc.canonical_hash(before),
+                                   "to": None, "reason": "synthetic test"}]
+        problems = gc.safety_violations(self.old, new)
+        self.assertIn("WATER_VALVE: entry removed or renamed", problems)  # mandatory: no seed override
 
     def test_deleting_the_enum_constant_a_rule_returns_stops_the_generator_first(self):
         java = JAVA.replace("    WATER_VALVE(DeviceCategory.SAFETY),\n", "")
@@ -208,10 +209,78 @@ class SafetyGuard(unittest.TestCase):
         new = build(seed=seed_with(lambda d: d["checkin_defaults"]["non_zigbee_by_type"].update({"LOCK": 60})))
         self.assertIn("LOCK: check-in window changed", gc.safety_violations(self.old, new))
 
+    def lock_checkin(self, catalog):
+        return next(e for e in catalog["entries"] if e["id"] == "LOCK")["checkin_minutes"]
+
+    def lock_checkin_change(self, minutes, allowed=()):
+        return build(seed=seed_with(lambda d: (d["checkin_defaults"]["non_zigbee_by_type"].update({"LOCK": minutes}),
+                                               d.update({"allowed_changes": list(allowed)}))))
+
     def test_a_reason_is_required_for_an_allowed_change(self):
-        new = build(seed=seed_with(lambda d: (d["checkin_defaults"]["non_zigbee_by_type"].update({"LOCK": 60}),
-                                              d.update({"allowed_changes": [{"type": "LOCK", "change": "checkin", "reason": ""}]}))))
+        target = dict(self.lock_checkin(self.old), non_zigbee=60)
+        new = self.lock_checkin_change(60, [{"type": "LOCK", "change": "checkin", "from": self.lock_checkin(self.old),
+                                             "to": target, "reason": ""}])
         self.assertIn("LOCK: check-in window changed", gc.safety_violations(self.old, new))
+
+    def test_an_exception_covers_exactly_its_approved_delta(self):
+        before = self.lock_checkin(self.old)
+        approved = {"type": "LOCK", "change": "checkin", "from": before, "to": dict(before, non_zigbee=60),
+                    "reason": "reviewed synthetic change"}
+        first = self.lock_checkin_change(60, [approved])
+        self.assertEqual(gc.safety_violations(self.old, first), [])
+        wrong_to = dict(approved, to=dict(before, non_zigbee=61))
+        self.assertIn("LOCK: check-in window changed",
+                      gc.safety_violations(self.old, self.lock_checkin_change(60, [wrong_to])))
+
+    def test_a_retained_exception_cannot_cover_a_later_different_change(self):
+        """Codex HOLD 7092427980 finding 2: the old exception stays in the seed while LOCK moves on to 9999."""
+        before = self.lock_checkin(self.old)
+        approved = {"type": "LOCK", "change": "checkin", "from": before, "to": dict(before, non_zigbee=60),
+                    "reason": "reviewed synthetic change"}
+        first = self.lock_checkin_change(60, [approved])
+        second = self.lock_checkin_change(9999, [approved])
+        problems = gc.safety_violations(first, second)
+        self.assertIn("LOCK: check-in window changed", problems)
+        self.assertTrue(any("matches no change" in p for p in problems), problems)
+
+    def test_an_exception_with_no_change_is_reported_as_stale(self):
+        before = self.lock_checkin(self.old)
+        stale = {"type": "LOCK", "change": "checkin", "from": before, "to": dict(before, non_zigbee=60),
+                 "reason": "approved long ago"}
+        new = self.lock_checkin_change(before["non_zigbee"], [stale])
+        problems = gc.safety_violations(self.old, new)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("LOCK: allowed_change 'checkin' matches no change", problems[0])
+
+    def test_dropping_a_mandatory_type_from_safety_types_is_refused_in_two_transitions(self):
+        """Codex HOLD 7092427980 finding 1: remove LOCK's protection, then change LOCK in a later transition."""
+        unprotected_seed = seed_with(lambda d: d.update({"safety_types": [t for t in d["safety_types"] if t != "LOCK"]}))
+        with self.assertRaises(gc.CatalogError) as ctx:
+            build(seed=unprotected_seed)
+        self.assertIn("LOCK", str(ctx.exception))
+        # Transition 1, from a hand-built catalog: protection dropped, entry unchanged.
+        step1 = copy.deepcopy(self.old)
+        step1["safety_types"] = [t for t in step1["safety_types"] if t != "LOCK"]
+        self.assertIn("LOCK: mandatory safety protection removed from safety_types",
+                      gc.safety_violations(self.old, step1))
+        # Transition 2: the baseline no longer lists LOCK, and LOCK's category changes. Still protected.
+        step2 = copy.deepcopy(step1)
+        next(e for e in step2["entries"] if e["id"] == "LOCK")["category"] = "UTILITIES"
+        problems = gc.safety_violations(step1, step2)
+        self.assertIn("LOCK: category SECURITY -> UTILITIES", problems)
+        self.assertIn("LOCK: mandatory safety protection removed from safety_types", problems)
+
+    def test_a_non_mandatory_protected_type_needs_an_exact_unprotect_exception(self):
+        old = copy.deepcopy(self.old)
+        old["safety_types"] = sorted(set(old["safety_types"]) | {"SMOKE_ALARM"})
+        new = copy.deepcopy(self.old)
+        self.assertIn("SMOKE_ALARM: safety protection removed from safety_types", gc.safety_violations(old, new))
+        new["allowed_changes"] = [{"type": "SMOKE_ALARM", "change": "unprotected", "from": True, "to": False,
+                                   "reason": "reviewed synthetic change"}]
+        self.assertEqual(gc.safety_violations(old, new), [])
+
+    def test_mandatory_set_is_leak_valve_lock_co(self):
+        self.assertEqual(gc.MANDATORY_SAFETY_TYPES, {"WATER_LEAK_SENSOR", "WATER_VALVE", "LOCK", "CO_ALARM"})
 
     def test_changes_to_a_non_safety_type_are_not_blocked(self):
         new = build(seed=seed_with(lambda d: d["checkin_defaults"]["non_zigbee_by_type"].update({"CAMERA": 9})))
