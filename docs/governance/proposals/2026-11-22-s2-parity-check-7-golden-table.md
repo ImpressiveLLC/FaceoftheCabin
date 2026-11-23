@@ -18,7 +18,7 @@ It is a regression fence for S3 to S5 (shadow read, gate, check-in from the cata
 |---|---|---|
 | Home Assistant discovery | `HomeAssistantDiscoveryService.inferType(String domain, Map attrs)` | `domain`, `attrs.device_class`, plus every other attribute the method reads, such as the unit fallback |
 | Zigbee2MQTT | `Zigbee2MqttAdapter.inferType(JsonNode definition, Set<DeviceCapability> caps, String friendlyName)` | `definition.model`, `definition.vendor`, `definition.description`, `definition.exposes`, the capability set, and `friendlyName`, which the valve and smart-switch predicates use |
-| MQTT bridge | `MqttBridgeService.inferType(Map data)` | the payload **keys** (`psi`, `temp_f`, `alarm`, `locked`, `motion` and the rest) and `alarm`'s value; never other payload values |
+| MQTT bridge | `MqttBridgeService.inferType(Map data)` | the payload **keys** only (`psi`, `temp_f`, `alarm`, `locked`, `motion`), checked for presence in that order. No payload value is captured: `alarm`'s value feeds `determineState`, not `inferType` (corrected 2026-11-23 per Codex 7099691462 item 7) |
 
 The implementation must re-read each method and list every field it touches. The table above is a reading, not a contract.
 
