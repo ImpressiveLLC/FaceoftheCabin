@@ -244,5 +244,41 @@ class SeedRules(unittest.TestCase):
             self.assertEqual(numbers, list(range(1, len(ids) + 1)), site)
 
 
+
+class CrlfCheckoutTests(unittest.TestCase):
+    """Cowork 7075465576 item (b): a Windows (CRLF) checkout of the inputs must regenerate the identical catalog."""
+
+    INPUTS = (gc.ONTOLOGY, gc.SEED, gc.DEVICE_TYPE_JAVA)
+
+    def copy_inputs(self, root, crlf):
+        for source in self.INPUTS:
+            target = Path(root) / source.relative_to(gc.ROOT)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            data = gc.lf_bytes(source)
+            target.write_bytes(data.replace(b"\n", b"\r\n") if crlf else data)
+
+    def test_crlf_inputs_give_the_same_catalog_and_hashes(self):
+        with tempfile.TemporaryDirectory() as lf_root, tempfile.TemporaryDirectory() as crlf_root:
+            self.copy_inputs(lf_root, crlf=False)
+            self.copy_inputs(crlf_root, crlf=True)
+            self.assertIn(b"\r\n", (Path(crlf_root) / gc.SEED.relative_to(gc.ROOT)).read_bytes())
+            lf, crlf = gc.generate(lf_root), gc.generate(crlf_root)
+            self.assertEqual(gc.render(lf), gc.render(crlf))
+            self.assertEqual((lf["generated_from"], lf["catalog_hash"]), (crlf["generated_from"], crlf["catalog_hash"]))
+
+    def test_crlf_regeneration_equals_the_committed_catalog(self):
+        with tempfile.TemporaryDirectory() as crlf_root:
+            self.copy_inputs(crlf_root, crlf=True)
+            committed = gc.lf_bytes(gc.CATALOG).decode("utf-8")
+            self.assertEqual(gc.render(gc.generate(crlf_root)), committed)
+
+    def test_generate_reads_the_root_it_is_given(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.copy_inputs(root, crlf=False)
+            seed = Path(root) / gc.SEED.relative_to(gc.ROOT)
+            seed.write_bytes(seed.read_bytes() + b"\n# a comment changes the seed hash\n")
+            self.assertNotEqual(gc.generate(root)["generated_from"]["seed_sha256"], gc.generate()["generated_from"]["seed_sha256"])
+
+
 if __name__ == "__main__":
     unittest.main()
