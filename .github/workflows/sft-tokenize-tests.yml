@@ -2,6 +2,8 @@ name: SFT tokenizer and loss-mask tests
 # Runs docs/ai-assistant/training/test_sft_tokenize.py: the pinned Ollama-shaped chat template, the assistant-only
 # loss mask, control-token injection refusal and the train_sft.py checks, plus test_run_capture.py (the
 # run_capture.py Stage 1 tests with a stub trainer). No model or tokenizer download and no training (pip and setup-python still use the network).
+# test_resumable.py (durable chunk commits, lineage, faults) runs here. test_resume_equivalence.py needs torch and is
+# SKIPPED here (run it in the training image); its skip is reported, not counted as a pass.
 # The 5 real-tokenizer tests need the pinned tokenizer.json (SFT_TOKENIZER_JSON) and are SKIPPED here, not passed;
 # the summary says so. Training itself stays NOT_RUN and is not started by this workflow.
 on:
@@ -35,7 +37,7 @@ jobs:
         run: |
           python -m pip install pytest==8.3.4
           set -o pipefail
-          python -m pytest -q -rs test_sft_tokenize.py test_run_capture.py test_verify_run_bundle.py 2>&1 | tee "$RUNNER_TEMP/sft-tests.txt"
+          python -m pytest -q -rs test_sft_tokenize.py test_run_capture.py test_verify_run_bundle.py test_resumable.py test_resume_equivalence.py 2>&1 | tee "$RUNNER_TEMP/sft-tests.txt"
       - name: Write the result to the run summary
         if: always()
         run: |
