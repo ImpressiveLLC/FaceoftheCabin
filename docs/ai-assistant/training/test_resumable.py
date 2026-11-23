@@ -15,6 +15,12 @@ BINDINGS = {"base_revision": "rev", "code_sha256": "c" * 64, "lock_sha256": "l" 
 RUN = "synthrun"
 
 
+@pytest.fixture(autouse=True)
+def short_guard_wait(monkeypatch):
+    """In-process tests expect a held guard to fail closed quickly; spawned processes keep the real wait."""
+    monkeypatch.setattr(rs, "GUARD_WAIT_SECONDS", 0.05)
+
+
 _STAGES = iter(range(1_000_000))
 
 

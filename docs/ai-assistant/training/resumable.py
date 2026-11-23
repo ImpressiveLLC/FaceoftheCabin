@@ -78,7 +78,8 @@ def _files(root: Path) -> list[Path]:
 
 
 def build_manifest(stage_dir: Path, *, run_id: str, global_step: int, total_steps: int, optimizer_updates: int,
-                   skipped_updates: int, parent: str | None, bindings: dict, cursor: dict) -> dict:
+                   skipped_updates: int, parent: str | None, bindings: dict, cursor: dict,
+                   evidence: dict | None = None) -> dict:
     absent = [key for key in BINDING_KEYS if bindings.get(key) is None or bindings.get(key) == ""]
     if absent:
         raise CommitError(f"bindings missing {absent}")
@@ -107,6 +108,7 @@ def build_manifest(stage_dir: Path, *, run_id: str, global_step: int, total_step
         "parent_manifest_sha256": parent,
         "bindings": {key: bindings[key] for key in BINDING_KEYS},
         "cursor": cursor,
+        "evidence": evidence or {},
         "files": [{"path": p.relative_to(stage_dir).as_posix(), "bytes": p.stat().st_size, "sha256": sha256_file(p)}
                   for p in _files(stage_dir)],
     }
@@ -118,7 +120,8 @@ def _fault(hook, point):
 
 
 def commit(stage_dir: Path, durable_root: Path, *, run_id: str, global_step: int, total_steps: int,
-           optimizer_updates: int, bindings: dict, cursor: dict, skipped_updates: int = 0, fault=None) -> dict:
+           optimizer_updates: int, bindings: dict, cursor: dict, skipped_updates: int = 0, fault=None,
+           evidence: dict | None = None) -> dict:
     """Commits STAGE_DIR as the chunk at GLOBAL_STEP. Returns the manifest. Raises CommitError on refusal; an
     interruption anywhere before the marker leaves a partial chunk that latest_verified() ignores."""
     durable_root.mkdir(parents=True, exist_ok=True)
@@ -128,7 +131,7 @@ def commit(stage_dir: Path, durable_root: Path, *, run_id: str, global_step: int
         raise CommitError(f"step {global_step} is not after the last verified step {previous['manifest']['global_step']}")
     manifest = build_manifest(stage_dir, run_id=run_id, global_step=global_step, total_steps=total_steps,
                               optimizer_updates=optimizer_updates, skipped_updates=skipped_updates, parent=parent,
-                              bindings=bindings, cursor=cursor)
+                              bindings=bindings, cursor=cursor, evidence=evidence)
     dest = durable_root / manifest["chunk_id"]
     if (dest / MARKER).exists():
         raise CommitError(f"{dest.name} is already committed; refusing a second writer for the same step")
@@ -159,6 +162,74 @@ def commit(stage_dir: Path, durable_root: Path, *, run_id: str, global_step: int
     _fault(fault, "after_marker")
     prune(durable_root, run_id, bindings)
     return manifest
+
+
+STORAGE_MARGIN_BYTES = 256 * 1024 * 1024
+STORAGE_CHECKPOINTS = KEEP + 1  # the retained verified chunks plus the one being written
+
+
+def checkpoint_bytes(record: dict) -> int:
+    """The measured size of a committed chunk: the sum of its manifest's file sizes."""
+    return sum(entry["bytes"] for entry in record["manifest"]["files"])
+
+
+NOT_MEASURED = "NOT_MEASURED"
+
+
+def storage_preflight(durable_root: Path, *, measured_bytes: int | None, sizing: dict | None = None,
+                      sizing_run: bool = False, free_bytes: int | None = None,
+                      remote_quota: dict | None = None) -> dict:
+    """Refuses to start a chunk unless the store has room for KEEP verified chunks plus the in-flight one plus a margin,
+    sized from a MEASURED checkpoint (Codex 7105613707): the newest committed chunk of this run, or else a sizing record
+    from the separately approved sizing run on the same environment and model. With neither, the size is NOT_MEASURED
+    and the run is refused; no estimate, and no tiny CPU checkpoint, is ever substituted. The sizing run itself
+    (SIZING_RUN) is the one run allowed without a size, because it produces the measurement; it still needs the margin.
+
+    Free space is recorded twice and separately: what the local mount reports, and the account's remote quota as
+    entered from the provider (REMOTE_QUOTA), or NOT_MEASURED. The smaller known figure is used."""
+    local_free = shutil.disk_usage(durable_root).free if free_bytes is None else free_bytes
+    remote_free = remote_quota.get("free_bytes") if remote_quota else None
+    free = min(local_free, remote_free) if remote_free is not None else local_free
+    if measured_bytes:
+        basis, size = "measured_this_run", measured_bytes
+    elif sizing:
+        basis, size = "sizing_run_measurement", int(sizing["checkpoint_bytes"])
+    elif sizing_run:
+        basis, size = NOT_MEASURED + " (this is the sizing run)", 0
+    else:
+        raise CommitError("checkpoint size is NOT_MEASURED: run the separately approved sizing run first and pass its "
+                          "record; no estimate is substituted. Nothing was trained.")
+    needed = STORAGE_CHECKPOINTS * size + STORAGE_MARGIN_BYTES
+    record = {"basis": basis, "checkpoint_bytes": size or None, "checkpoints_reserved": STORAGE_CHECKPOINTS,
+              "margin_bytes": STORAGE_MARGIN_BYTES, "needed_bytes": needed,
+              "local_free_bytes": local_free,
+              "local_free_source": "shutil.disk_usage of the store's mount; not the account quota on a Drive mount",
+              "remote_quota": remote_quota or NOT_MEASURED, "free_bytes_used": free,
+              "sizing_source": sizing.get("chunk_id") if sizing else None}
+    if free < needed:
+        raise CommitError(f"store has {free} bytes free, needs {needed} ({STORAGE_CHECKPOINTS} x {size} {basis} + "
+                          f"{STORAGE_MARGIN_BYTES} margin); nothing was trained")
+    return record
+
+
+def sizing_record(durable_root: Path, run_id: str, bindings: dict) -> dict:
+    """The measured size of the newest committed chunk of a sizing run, bound to its environment and model, for use by
+    other runs' preflights."""
+    latest = latest_verified(durable_root, run_id, bindings)
+    if latest is None:
+        raise CommitError(f"no committed sizing chunk for {run_id}")
+    return {"checkpoint_bytes": checkpoint_bytes(latest), "chunk_id": latest["manifest"]["chunk_id"],
+            "manifest_sha256": latest["manifest_sha256"],
+            "binds": {k: bindings[k] for k in ("base_revision", "code_sha256", "lock_sha256", "environment_id")}}
+
+
+def check_sizing(sizing: dict, bindings: dict) -> None:
+    """A size measured on a different model, code, lock or environment is not this run's size."""
+    for key, value in sizing.get("binds", {}).items():
+        if bindings.get(key) != value:
+            raise CommitError(f"sizing record was measured with {key}={value!r}, this run has {bindings.get(key)!r}")
+    if set(sizing.get("binds", {})) != {"base_revision", "code_sha256", "lock_sha256", "environment_id"}:
+        raise CommitError("sizing record does not say what it was measured with")
 
 
 def _verify_payload(dest: Path, manifest: dict) -> list[str]:
@@ -271,6 +342,8 @@ def _read_lease(path: Path):
         return None
 
 
+GUARD_WAIT_SECONDS = 5.0
+
 # Test hook: called inside the guard after the lease is read, so a test can attempt a competing transition at the
 # exact point a check-then-act race would open. Never set outside tests.
 _in_guard_hook = None
@@ -289,23 +362,44 @@ class _TransitionGuard:
         self.nonce = uuid.uuid4().hex
 
     def __enter__(self):
-        try:
-            with open(self.path, "x", encoding="utf-8") as handle:
-                handle.write(self.nonce)
-        except FileExistsError:
+        # A transition holds the guard for milliseconds, so a busy guard is retried for a bounded time; only a guard
+        # that stays held (another transition stuck, or a killed process) fails closed. Windows reports a guard that is
+        # being created or deleted by another process as PermissionError rather than FileExistsError.
+        import time
+        deadline = time.monotonic() + GUARD_WAIT_SECONDS
+        while True:
             try:
-                held = self.path.read_text(encoding="utf-8")
-            except OSError:
-                held = "?"
-            raise CommitError(f"lease transition guard {self.path.name} is held (nonce {held}): another acquire, "
-                              "takeover or release is in progress, or a killed process left it. Nothing was changed. "
-                              "If no session is running, clear it with clear_stranded_guard naming that nonce.")
-        return self
+                with open(self.path, "x", encoding="utf-8") as handle:
+                    handle.write(self.nonce)
+                return self
+            except (FileExistsError, PermissionError):
+                if time.monotonic() >= deadline:
+                    break
+                time.sleep(0.01)
+        try:
+            held = self.path.read_text(encoding="utf-8")
+        except OSError:
+            held = "?"
+        raise CommitError(f"lease transition guard {self.path.name} is held (nonce {held}): another acquire, "
+                          "takeover or release is in progress, or a killed process left it. Nothing was changed. "
+                          "If no session is running, clear it with clear_stranded_guard naming that nonce.")
 
     def __exit__(self, *exc):
-        if self.path.read_text(encoding="utf-8") == self.nonce:
-            self.path.unlink()
-        return False
+        # Only this holder can have created the guard while it exists, so it is removed without re-reading it (a read
+        # would hold a handle that blocks another process's delete on Windows). A delete blocked by another process's
+        # momentary read is retried.
+        import time
+        deadline = time.monotonic() + GUARD_WAIT_SECONDS
+        while True:
+            try:
+                self.path.unlink()
+                return False
+            except FileNotFoundError:
+                return False
+            except PermissionError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.01)
 
 
 def clear_stranded_guard(durable_root: Path, run_id: str, nonce: str) -> None:
