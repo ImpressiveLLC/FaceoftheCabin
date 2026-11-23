@@ -1364,7 +1364,9 @@ body {
 .dm-row-icon { color: var(--text-muted); flex-shrink: 0; }
 .dm-row-info { flex: 1; min-width: 0; }
 .dm-row-name { display: block; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dm-row-meta { display: block; font-size: 11px; color: var(--text-dim); }
+/* One line, ellipsized: a wrapping meta line made the row height depend on the width of the badges beside it, so a state
+   flipping ONLINE <-> UNKNOWN or a battery chip appearing changed the row height and resized the list's scrollbar thumb. */
+.dm-row-meta { display: block; font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Found 2026-08-12 (user report): neither badge had flex-shrink:0 (unlike
    .dm-row-icon, which correctly does), so in a tight row they compressed
    under flexbox's default shrink behavior instead of holding their own
@@ -1373,7 +1375,7 @@ body {
    own base rules, which are reused in other layout contexts (device
    detail panel, KPI tiles) that already work fine. */
 .dm-device-row .candidate-badge,
-.dm-device-row .state-badge { flex-shrink: 0; white-space: nowrap; }
+.dm-device-row .state-badge { flex-shrink: 0; white-space: nowrap; min-width: 7.5ch; text-align: center; }
 /* Enable/disable directly from the row -- see DmRowEnableToggle. Same
    flex-shrink:0 treatment as the badges above so a tight row can't
    compress it either; padding kept small (2px) since the icon itself
