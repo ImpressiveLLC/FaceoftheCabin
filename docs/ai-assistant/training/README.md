@@ -224,3 +224,12 @@ The [intent-slot r1 package](intent-slot/README.md) adds offline proposal schema
 source adapters, reviewed-data export and evaluation tooling for a hybrid
 RAG + semantic SFT + live resolver design. It is a reconstructed starter;
 resolver/runtime wiring, training and live evaluation remain follow-on work.
+
+## Synthetic CPU length ladder (ladder.py, ladder_rung.py)
+
+Invented rows at 128/256/512/1024/2048 tokens through the unchanged train_sft.py configuration (fp32, effective batch 4, a few
+optimizer steps, adapter save then reload). One child process per rung; the parent stops at the first failed rung and marks
+later rungs NOT_RUN. `python ladder.py plan --budget-bytes N` prints the rungs and thresholds and runs nothing. The tests
+(`test_ladder.py`) cover the stop rules and the runner with stub children; the torch tests use a tiny random model.
+A `--model synthetic` summary is mechanics only and says `qualification: false`. The pinned-model path has NOT been run.
+Starting a real ladder needs the host-memory gate, the operator's per-rung Windows available readings, and the go recorded on #244.
