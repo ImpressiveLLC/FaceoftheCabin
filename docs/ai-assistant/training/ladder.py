@@ -38,6 +38,10 @@ HOST_START_MIN_BYTES = 6 * 1024 ** 3     # Windows available before the first ru
 HOST_STOP_BELOW_BYTES = 4 * 1024 ** 3    # stop if Windows available falls below this
 MAJOR_FAULT_DELTA_LIMIT = 200            # sustained paging: more major faults than this during a rung
 LENGTH_TOLERANCE = 3                     # tokens a built row may be below the target (never above)
+CEILING_METRICS = {
+    "original": "A-original: ceiling on the larger of cgroup memory.current and process RSS (counts page cache)",
+    "anon_shmem": "B-anon-shmem: ceiling on cgroup anon plus shmem (non-reclaimable). NEW labelled configuration, not a retry of A",
+}
 FILLER = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel"]
 
 
@@ -103,11 +107,13 @@ def judge_rung(record: dict, *, budget_bytes: int, host_before=None, host_after=
         reasons.append("adapter save not confirmed")
     if record.get("adapter_reload_equal") is not True:
         reasons.append("adapter reload did not reproduce the saved tensors")
-    peak = record.get("memory_peak_bytes")
+    # The ceiling is judged on the metric the rung ran under; records without one are the original configuration.
+    metric = record.get("ceiling_metric") or "original"
+    peak = record.get("ceiling_metric_peak_bytes") if record.get("ceiling_metric_peak_bytes") is not None else record.get("memory_peak_bytes")
     if peak is None:
         reasons.append("memory high-water not recorded")
     elif peak > CEILING_FRACTION * budget_bytes:
-        reasons.append(f"memory high-water {peak} above {int(CEILING_FRACTION * 100)} percent of the fixed budget {budget_bytes}")
+        reasons.append(f"memory high-water {peak} ({metric}) above {int(CEILING_FRACTION * 100)} percent of the fixed budget {budget_bytes}")
     if (record.get("swap_peak_bytes") or 0) > 0:
         reasons.append(f"swap used ({record['swap_peak_bytes']} bytes); no swap-dependent qualification")
     if (record.get("major_fault_delta") or 0) > MAJOR_FAULT_DELTA_LIMIT:
@@ -130,7 +136,7 @@ def host_start_gate(host_available_bytes) -> list:
 
 # ---------------------------------------------------------------- parent runner
 def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, rung_timeout=RUNG_TIMEOUT_SECONDS,
-               host_available_start=None, host_available_end_of_rung=None, host_min_reader=None, host_clock_offset=0.0, child_command=None) -> dict:
+               host_available_start=None, host_available_end_of_rung=None, host_min_reader=None, host_clock_offset=0.0, ceiling_metric="original", child_command=None) -> dict:
     """Runs rungs in order in separate processes. `child_command(rung, rung_dir)` -> argv list (tests inject a stub).
     `host_available_end_of_rung(rung)` -> bytes or None, supplied by the operator's host reader.
     `host_min_reader(start_epoch, end_epoch)` -> the lowest Windows-available reading taken during the rung, or None if there
@@ -141,6 +147,7 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
     out_dir.mkdir(parents=True, exist_ok=True)
     summary = {"kind": "length_ladder", "model": model, "synthetic_only": True, "qualification": model == "pinned",
                "budget_bytes": budget_bytes, "ceiling_bytes": int(CEILING_FRACTION * budget_bytes), "steps": steps,
+               "configuration": {"ceiling_metric": ceiling_metric, "label": CEILING_METRICS[ceiling_metric]},
                "rungs": [], "stopped_at": None, "host_clock_offset_seconds": host_clock_offset, "host_start_gate": host_start_gate(host_available_start),
                "host_available_start": host_available_start}
     if model != "pinned":
@@ -157,7 +164,7 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
             continue
         rung_dir = out_dir / f"rung-{rung}"
         rung_dir.mkdir(parents=True, exist_ok=True)
-        argv = (child_command or default_child_command)(rung, rung_dir)
+        argv = (child_command or (lambda r, d: default_child_command(r, d, model, steps, budget_bytes, ceiling_metric)))(rung, rung_dir)
         started = time.monotonic()
         started_epoch = time.time()
         reasons = []
@@ -227,9 +234,9 @@ def read_host_min(csv_path, start_epoch, end_epoch, slack=10):
     return best
 
 
-def default_child_command(rung, rung_dir, model="pinned", steps=3, budget_bytes=0):
+def default_child_command(rung, rung_dir, model="pinned", steps=3, budget_bytes=0, ceiling_metric="original"):
     return [sys.executable, str(HERE / "ladder_rung.py"), "--rung", str(rung), "--out", str(rung_dir),
-            "--model", model, "--steps", str(steps), "--budget-bytes", str(budget_bytes)]
+            "--model", model, "--steps", str(steps), "--budget-bytes", str(budget_bytes), "--ceiling-metric", ceiling_metric]
 
 
 def main(argv=None):
@@ -239,6 +246,8 @@ def main(argv=None):
         p = sub.add_parser(name)
         p.add_argument("--budget-bytes", type=int, required=True, help="fixed pre-run usable training budget, bytes")
         p.add_argument("--rungs", default=",".join(str(r) for r in DEFAULT_RUNGS))
+        p.add_argument("--ceiling-metric", choices=sorted(CEILING_METRICS), default="original",
+                       help="what the 90 percent ceiling is measured on; anon_shmem is a new labelled configuration")
     run = sub.choices["run"]
     run.add_argument("--out", type=Path, required=True)
     run.add_argument("--model", choices=("pinned", "synthetic"), default="pinned")
@@ -271,9 +280,9 @@ def main(argv=None):
         rung_timeout=args.rung_timeout, host_available_start=args.host_available_start,
         host_available_end_of_rung=host_reader,
         host_min_reader=(lambda a, b: read_host_min(args.host_csv, a, b)) if args.host_csv else None,
-        host_clock_offset=clock_offset(args.host_epoch_at_start),
-        child_command=lambda rung, d: default_child_command(rung, d, args.model, args.steps, args.budget_bytes))
-    print(json.dumps({k: summary[k] for k in ("model", "qualification", "stopped_at", "complete")}, indent=2))
+        host_clock_offset=clock_offset(args.host_epoch_at_start), ceiling_metric=args.ceiling_metric,
+        child_command=lambda rung, d: default_child_command(rung, d, args.model, args.steps, args.budget_bytes, args.ceiling_metric))
+    print(json.dumps({k: summary[k] for k in ("model", "qualification", "configuration", "stopped_at", "complete")}, indent=2))
     return 0 if summary["complete"] else 1
 
 

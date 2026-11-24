@@ -92,8 +92,11 @@ def _major_faults():
 class Watcher(threading.Thread):
     """Tracks the memory high-water and stops the process above the fixed ceiling."""
 
-    def __init__(self, budget_bytes, ceiling_fraction, on_breach):
+    def __init__(self, budget_bytes, ceiling_fraction, on_breach, ceiling_metric="original"):
         super().__init__(daemon=True)
+        self.ceiling_metric = ceiling_metric
+        self.metric_peak = 0
+        self.metric_fallback = False   # anon_shmem asked for but memory.stat unreadable: judged on the original, stricter figure
         self.ceiling = int(budget_bytes * ceiling_fraction) if budget_bytes else None
         self.on_breach = on_breach
         self.peak = 0
@@ -124,15 +127,30 @@ class Watcher(threading.Thread):
         swap = _read_int(CGROUP / "memory.swap.current")
         if swap:
             self.swap_peak = max(self.swap_peak, swap)
-        if self.ceiling and self.peak > self.ceiling:
-            self.on_breach(self.peak)
+        metric_value = self.peak_now(cur, rss, stat)
+        self.metric_peak = max(self.metric_peak, metric_value)
+        if self.ceiling and metric_value > self.ceiling:
+            self.on_breach(metric_value)
+
+    def peak_now(self, cur, rss, stat):
+        """The figure the ceiling is judged on, per --ceiling-metric. `original` is the larger of memory.current and RSS.
+        `anon_shmem` is cgroup anon plus shmem; if memory.stat cannot be read it falls back to the original figure (the
+        stricter one) and says so, never to a looser one."""
+        original = max([v for v in (cur, rss) if v is not None] or [0])
+        if self.ceiling_metric != "anon_shmem":
+            return original
+        if "anon" in stat:
+            return stat["anon"] + stat.get("shmem", 0)
+        self.metric_fallback = True
+        return original
 
     def breakdown(self):
         """Where the memory figure came from, for the record. Evidence only: it decides nothing."""
         source = None
         if self.peak:
             source = "cgroup_memory_current" if self.cur_peak == self.peak else "process_rss" if self.rss_peak == self.peak else "cgroup_memory_peak_file"
-        return {"memory_breakdown": {
+        return {"ceiling_metric": self.ceiling_metric, "ceiling_metric_peak_bytes": self.metric_peak or None,
+                "ceiling_metric_fallback_to_original": self.metric_fallback, "memory_breakdown": {
             "peak_source": source, "cgroup_current_peak_bytes": self.cur_peak, "rss_peak_bytes": self.rss_peak,
             "anon_peak_bytes": self.anon_peak, "file_cache_peak_bytes": self.file_peak,
             "memory_stat_at_current_peak": self.at_cur_peak,
@@ -228,23 +246,25 @@ def main(argv=None):
     parser.add_argument("--model", choices=("pinned", "synthetic"), default="pinned")
     parser.add_argument("--steps", type=int, default=3)
     parser.add_argument("--budget-bytes", type=int, default=0)
+    parser.add_argument("--ceiling-metric", choices=("original", "anon_shmem"), default="original")
     args = parser.parse_args(argv)
 
     import ladder
     record = {"rung": args.rung, "model": args.model, "steps": args.steps, "completed": False, "failure": None,
-              "synthetic_only": True, "budget_bytes": args.budget_bytes,
+              "synthetic_only": True, "budget_bytes": args.budget_bytes, "ceiling_metric": args.ceiling_metric,
+              "configuration_label": ladder.CEILING_METRICS[args.ceiling_metric],
               "cgroup_memory_max": _read_int(CGROUP / "memory.max"),
               "oom_events_start": _read_events(CGROUP / "memory.events")}
     started = time.monotonic()
 
     def breach(peak):
-        record.update(failure=f"memory {peak} above {int(ladder.CEILING_FRACTION * 100)} percent of budget {args.budget_bytes}",
+        record.update(failure=f"memory {peak} ({args.ceiling_metric}) above {int(ladder.CEILING_FRACTION * 100)} percent of budget {args.budget_bytes}",
                       memory_peak_bytes=peak, oom_events=0, wall_seconds=time.monotonic() - started,
                       **watcher.breakdown())
         write_record(args.out, record)
         os._exit(3)
 
-    watcher = Watcher(args.budget_bytes, ladder.CEILING_FRACTION, breach)
+    watcher = Watcher(args.budget_bytes, ladder.CEILING_FRACTION, breach, args.ceiling_metric)
     watcher.start()
     try:
         import torch

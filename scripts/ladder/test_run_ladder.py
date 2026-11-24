@@ -93,6 +93,15 @@ class DryRunTests(unittest.TestCase):
         for line in runs:
             self.assertIn("--pull=never", line)
 
+    def test_ceiling_metric_defaults_to_original_and_b_is_explicit(self):
+        _, p = plan(22)
+        self.assertEqual(p["ceiling_metric"], "original")
+        self.assertEqual(p["docker_argv"][p["docker_argv"].index("--ceiling-metric") + 1], "original")
+        _, b = plan(22, "-Run", "-CeilingMetric", "anon_shmem")
+        self.assertEqual(b["docker_argv"][b["docker_argv"].index("--ceiling-metric") + 1], "anon_shmem")
+        bad = run("-Run", "-DryRun", "-FakeAvailableBytes", str(22 * GIB), "-CeilingMetric", "nonsense")
+        self.assertNotEqual(bad.returncode, 0)
+
     def test_six_gib_start_minimum_is_named_when_below_it(self):
         _, p = plan(5)
         self.assertTrue(any("start minimum" in r for r in p["gate_reasons"]))
