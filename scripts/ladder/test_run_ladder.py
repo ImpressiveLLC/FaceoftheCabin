@@ -100,6 +100,7 @@ class DryRunTests(unittest.TestCase):
         self.assertEqual(argv[argv.index("--budget-bytes") + 1], str(18 * GIB))
         self.assertEqual(argv[argv.index("--host-available-start") + 1], str(22 * GIB))
         self.assertEqual(argv[argv.index("--host-csv") + 1], "/out/host.csv")
+        self.assertIn("--host-epoch-at-start", argv)
         mounts = [argv[i + 1] for i, a in enumerate(argv) if a == "-v"]
         self.assertTrue(any(m.endswith(":/work:ro") for m in mounts), "training dir must be read-only")
         self.assertFalse(any("/data" in m or "eval-results" in m for m in mounts), "no real-data mount")

@@ -222,6 +222,53 @@ class HostMinTests(unittest.TestCase):
         self.assertEqual(summary["rungs"][0]["host_available_min_during"], 9 * GIB)
 
 
+class ClockOffsetTests(unittest.TestCase):
+    """The WSL clock was seen 65 s ahead of Windows, so a rung's time window missed every sampler line."""
+
+    def test_offset_is_windows_epoch_minus_local_clock(self):
+        self.assertEqual(ladder.clock_offset(1000, now=1065), -65.0)
+        self.assertEqual(ladder.clock_offset(1065, now=1000), 65.0)
+
+    def test_no_epoch_means_no_correction(self):
+        self.assertEqual(ladder.clock_offset(0), 0.0)
+        self.assertEqual(ladder.clock_offset(None), 0.0)
+        self.assertEqual(ladder.clock_offset(-5), 0.0)
+
+    def test_rung_window_is_shifted_onto_the_windows_clock(self):
+        seen = []
+
+        def reader(a, b):
+            seen.append((a, b))
+            return 9 * GIB
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = ladder.run_ladder(rungs=[128], budget_bytes=BUDGET, out_dir=Path(tmp), model="pinned",
+                                        host_available_start=8 * GIB, child_command=stub(good_record()),
+                                        host_min_reader=reader, host_clock_offset=-65.0)
+        self.assertEqual(summary["host_clock_offset_seconds"], -65.0)
+        start, end = seen[0]
+        self.assertGreater(end, start)
+        import time
+        self.assertLess(abs(start - (time.time() - 65.0)), 120)  # near local-now minus 65 s, not near local-now
+
+    def test_skewed_samples_are_found_only_with_the_offset(self):
+        import time
+        local_now = time.time()
+        windows_now = local_now - 65.0   # Windows behind the container clock, as seen
+        with tempfile.TemporaryDirectory() as tmp:
+            csv = Path(tmp) / "host.csv"
+            csv.write_text("epoch,bytes\n" + "".join(f"{int(windows_now) + k},{9 * GIB}\n" for k in range(-3, 4)), encoding="utf-8")
+            reader = lambda a, b: ladder.read_host_min(csv, a, b)  # noqa: E731
+            without = ladder.run_ladder(rungs=[128], budget_bytes=BUDGET, out_dir=Path(tmp) / "a", model="pinned",
+                                        host_available_start=8 * GIB, child_command=stub(good_record()), host_min_reader=reader)
+            with_offset = ladder.run_ladder(rungs=[128], budget_bytes=BUDGET, out_dir=Path(tmp) / "b", model="pinned",
+                                            host_available_start=8 * GIB, child_command=stub(good_record()), host_min_reader=reader,
+                                            host_clock_offset=-65.0)
+        self.assertEqual(without["rungs"][0]["status"], "FAILURE")   # the bug that hid the readings
+        self.assertTrue(any("no Windows-available reading" in r for r in without["rungs"][0]["reasons"]))
+        self.assertEqual(with_offset["rungs"][0]["status"], "PASS")
+        self.assertEqual(with_offset["rungs"][0]["host_available_min_during"], 9 * GIB)
+
+
 try:
     import torch  # noqa: F401
     import peft  # noqa: F401
@@ -280,6 +327,63 @@ class ChildTests(unittest.TestCase):
         self.assertTrue(ladder_rung.adapter_tensors_equal(Fake(same, same.clone()), "default", "reloaded")[0])
         self.assertFalse(ladder_rung.adapter_tensors_equal(Fake(same, same + 1e-6), "default", "reloaded")[0])
         self.assertFalse(ladder_rung.adapter_tensors_equal(Fake(same, same), "nothere", "reloaded")[0])
+
+    def test_memory_stat_parse(self):
+        import ladder_rung
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "memory.stat"
+            path.write_text("anon 100\nfile 250\nshmem 7\nbad line\nkernel 3\n", encoding="utf-8")
+            parsed = ladder_rung._read_stat(path)
+            self.assertEqual((parsed["anon"], parsed["file"], parsed["shmem"], parsed["kernel"]), (100, 250, 7, 3))
+            self.assertEqual(ladder_rung._read_stat(Path(tmp) / "missing"), {})
+
+    def test_watcher_records_anon_and_file_split_without_changing_the_stop_rule(self):
+        import ladder_rung
+        with tempfile.TemporaryDirectory() as tmp:
+            cg = Path(tmp)
+            old = ladder_rung.CGROUP
+            ladder_rung.CGROUP = cg
+            try:
+                breaches = []
+                watcher = ladder_rung.Watcher(10 ** 12, 0.9, breaches.append)   # ceiling 9e11
+                (cg / "memory.current").write_text("600000000000\n")
+                (cg / "memory.stat").write_text("anon 200\nfile 400\nshmem 0\n")
+                watcher.sample()
+                (cg / "memory.current").write_text("850000000000\n")
+                (cg / "memory.stat").write_text("anon 300\nfile 550\nshmem 0\n")
+                watcher.sample()
+                self.assertEqual(breaches, [])   # 8.5e11 is under 9e11; the split does not enter the rule
+                (cg / "memory.current").write_text("950000000000\n")
+                (cg / "memory.stat").write_text("anon 310\nfile 640\nshmem 0\n")
+                watcher.sample()
+                self.assertEqual(len(breaches), 1)   # ceiling is still on memory.current, as before
+                b = watcher.breakdown()["memory_breakdown"]
+                self.assertEqual((b["cgroup_current_peak_bytes"], b["anon_peak_bytes"], b["file_cache_peak_bytes"]), (950000000000, 310, 640))
+                self.assertEqual(b["memory_stat_at_current_peak"]["file"], 640)
+                self.assertIn("Not used by any stop rule", b["note"])
+            finally:
+                ladder_rung.CGROUP = old
+
+    def test_breakdown_without_a_cgroup_is_explicit_none(self):
+        import ladder_rung
+        with tempfile.TemporaryDirectory() as tmp:
+            old = ladder_rung.CGROUP
+            ladder_rung.CGROUP = Path(tmp) / "no-cgroup"
+            try:
+                watcher = ladder_rung.Watcher(0, 0.9, lambda peak: None)
+                watcher.sample()
+                b = watcher.breakdown()["memory_breakdown"]
+                self.assertIsNone(b["anon_peak_bytes"])
+                self.assertIsNone(b["file_cache_peak_bytes"])
+                self.assertIsNone(b["cgroup_current_peak_bytes"])
+            finally:
+                ladder_rung.CGROUP = old
+
+    def test_rung_record_carries_the_breakdown(self):
+        proc, record = self.run_child(48)
+        self.assertEqual(proc.returncode, 0, proc.stderr[-2000:])
+        self.assertIn("memory_breakdown", record)
+        self.assertIn("peak_source", record["memory_breakdown"])
 
     def test_wrong_length_rows_are_refused(self):
         import ladder_rung
