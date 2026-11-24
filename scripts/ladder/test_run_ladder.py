@@ -86,6 +86,13 @@ class DryRunTests(unittest.TestCase):
         self.assertIn("function Invoke-Docker { & wsl -d $Distro --exec docker @args }", text)
         self.assertNotIn("& docker ", text)  # never the Windows docker (Docker Desktop)
 
+    def test_no_docker_run_can_pull_an_image(self):
+        text = SCRIPT.read_text(encoding="utf-8")
+        runs = [line for line in text.splitlines() if "Invoke-Docker run" in line]
+        self.assertTrue(runs)
+        for line in runs:
+            self.assertIn("--pull=never", line)
+
     def test_six_gib_start_minimum_is_named_when_below_it(self):
         _, p = plan(5)
         self.assertTrue(any("start minimum" in r for r in p["gate_reasons"]))
@@ -93,7 +100,7 @@ class DryRunTests(unittest.TestCase):
     def test_docker_argv_has_the_fixed_safety_settings(self):
         _, p = plan(22)
         argv = p["docker_argv"]
-        for needed in ("--rm", "--memory=22g", "--memory-swap=22g", "HF_HUB_OFFLINE=1"):
+        for needed in ("--rm", "--pull=never", "--memory=22g", "--memory-swap=22g", "HF_HUB_OFFLINE=1"):
             self.assertIn(needed, argv)
         self.assertEqual(argv[argv.index("--network") + 1], "none")
         self.assertEqual(argv[argv.index("--model") + 1], "pinned")
