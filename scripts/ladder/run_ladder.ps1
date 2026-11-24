@@ -123,7 +123,7 @@ if ($DryRun) {
     $reasons = @(Get-GateReasons $avail)
     $budget = Get-Budget $avail
     $id = New-RunId
-    $outDir = Join-Path $OutRoot $id
+    $outDir = ($OutRoot.TrimEnd([char]92, [char]47)) + [IO.Path]::DirectorySeparatorChar + $id   # plain string: Join-Path rejects C: paths on Linux
     $plan = [ordered]@{
         mode = if ($Run) { 'run' } elseif ($Preflight) { 'preflight' } elseif ($Cleanup) { 'cleanup' } else { 'stop' }
         executed = $false
