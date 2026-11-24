@@ -92,8 +92,13 @@ def _major_faults():
 class Watcher(threading.Thread):
     """Tracks the memory high-water and stops the process above the fixed ceiling."""
 
-    def __init__(self, budget_bytes, ceiling_fraction, on_breach, ceiling_metric="original"):
+    def __init__(self, budget_bytes, ceiling_fraction, on_breach, ceiling_metric="original", trace_path=None):
         super().__init__(daemon=True)
+        self.trace = None
+        if trace_path:
+            Path(trace_path).parent.mkdir(parents=True, exist_ok=True)
+            self.trace = open(trace_path, "w", encoding="utf-8", buffering=1)   # line-buffered: survives a SIGKILL
+            self.trace.write("epoch,current,rss,anon,file,shmem,metric\n")
         self.ceiling_metric = ceiling_metric
         self.metric_peak = 0
         self.metric_fallback = False   # anon_shmem asked for but memory.stat unreadable: judged on the original, stricter figure
@@ -129,6 +134,9 @@ class Watcher(threading.Thread):
             self.swap_peak = max(self.swap_peak, swap)
         metric_value = self.peak_now(cur, rss, stat)
         self.metric_peak = max(self.metric_peak, metric_value)
+        if self.trace is not None:
+            cells = [f"{time.time():.1f}"] + ["" if v is None else str(v) for v in (cur, rss, stat.get("anon"), stat.get("file"), stat.get("shmem"))] + [str(metric_value)]
+            self.trace.write(",".join(cells) + "\n")
         if self.ceiling and metric_value > self.ceiling:
             self.on_breach(metric_value)
 
@@ -164,6 +172,9 @@ class Watcher(threading.Thread):
     def finish(self):
         self.stop.set()
         self.sample()
+        if self.trace is not None:
+            self.trace.close()
+            self.trace = None
         cg_peak = _read_int(CGROUP / "memory.peak")
         if cg_peak is not None:
             self.peak = max(self.peak, cg_peak)
@@ -264,7 +275,7 @@ def main(argv=None):
         write_record(args.out, record)
         os._exit(3)
 
-    watcher = Watcher(args.budget_bytes, ladder.CEILING_FRACTION, breach, args.ceiling_metric)
+    watcher = Watcher(args.budget_bytes, ladder.CEILING_FRACTION, breach, args.ceiling_metric, args.out / "memory-trace.csv")
     watcher.start()
     try:
         import torch

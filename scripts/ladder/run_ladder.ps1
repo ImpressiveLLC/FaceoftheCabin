@@ -32,6 +32,7 @@ param(
     [string]$OutRoot = 'C:\ladder-run',
     [string]$Distro = 'Ubuntu-24.04',
     [ValidateSet('original', 'anon_shmem')][string]$CeilingMetric = 'original',
+    [ValidateSet('fixed', 'budget')][string]$ContainerCap = 'fixed',
     [string]$Image = 'fotc-dev-sft-r1:stage2',
     [string]$ModelVolume = 'fotc-hf-cache',
     [string]$RepoDir = '',
@@ -48,7 +49,8 @@ $Stage2PeakBytes = [int64][math]::Round(14.21 * $GiB)
 # The 90 percent ceiling is on the budget (available minus the floor), so the budget itself must hold the Stage 2 peak / 0.9.
 $NeedAtStartBytes = [int64][math]::Ceiling($Stage2PeakBytes / 0.9) + $FloorBytes
 $ContainerLimitBytes = 22 * $GiB
-$PollSeconds = 5
+$PollSeconds = 1   # the host fell 14 GiB in 5 s in run 2; a 5 s poll with two samples was too slow
+$OverheadMarginBytes = 2 * $GiB
 $ModelRevision = '006f5dcd1393c3add266de40994ba96225e9689d'
 $ModelCacheDir = 'models--unsloth--Llama-3.2-3B-Instruct'
 
@@ -88,10 +90,19 @@ function Test-DistroRunning {
     return [bool]($state -match "$Distro +Running")
 }
 
+function Get-ContainerLimitBytes([int64]$Budget) {
+    # fixed = the first two runs (22 GiB). budget = the fixed budget less a VM and host overhead margin, so the cgroup reclaims
+    # page cache inside the container instead of leaving it to count against Windows.
+    if ($ContainerCap -eq 'budget') { return [int64]($Budget - $OverheadMarginBytes) }
+    return $ContainerLimitBytes
+}
+
 function Get-DockerArgv([string]$Name, [string]$OutDir, [int64]$Budget, [int64]$AvailableAtStart, [int64]$HostEpoch = 0) {
+    $limit = Get-ContainerLimitBytes $Budget
+    $mem = if ($ContainerCap -eq 'budget') { "$limit" } else { '22g' }
     return @(
         'run', '--rm', '--pull=never', '--name', $Name,
-        '--memory=22g', '--memory-swap=22g', '--network', 'none',
+        "--memory=$mem", "--memory-swap=$mem", '--network', 'none',
         '-e', 'HF_HUB_OFFLINE=1', '-e', 'HF_HOME=/root/.cache/huggingface', '-e', 'PYTHONDONTWRITEBYTECODE=1',
         '-v', "${ModelVolume}:/root/.cache/huggingface",
         '-v', ((ConvertTo-WslPath $TrainingDir) + ':/work:ro'),
@@ -100,6 +111,7 @@ function Get-DockerArgv([string]$Name, [string]$OutDir, [int64]$Budget, [int64]$
         'python', 'ladder.py', 'run', '--model', 'pinned',
         '--budget-bytes', "$Budget", '--out', '/out/ladder',
         '--ceiling-metric', $CeilingMetric,
+        '--container-cap', $ContainerCap, '--container-memory-bytes', "$limit",
         '--host-available-start', "$AvailableAtStart", '--host-csv', '/out/host.csv',
         '--host-epoch-at-start', "$HostEpoch"
     )
@@ -160,6 +172,8 @@ if ($DryRun) {
         gate_reasons = $reasons
         budget_bytes = $budget
         ceiling_metric = $CeilingMetric
+        container_cap = $ContainerCap
+        container_memory_bytes = (Get-ContainerLimitBytes $budget)
         ceiling_bytes = [int64][math]::Floor($budget * 0.9)
         out_dir = $outDir
         docker_argv = @(if ($reasons.Count -eq 0) { Get-DockerArgv "ladder-$id" '/out-dir' $budget $avail })
@@ -260,6 +274,7 @@ try {
     if ($LASTEXITCODE -ne 0) { Refuse @("pinned model revision is not in volume $ModelVolume; fetching it is a download that needs Nate's yes") }
 
     $budget = Get-Budget $avail2
+    Log ("container memory limit: {0} bytes (cap mode {1})" -f (Get-ContainerLimitBytes $budget), $ContainerCap)
     Log "ceiling metric: $CeilingMetric (original = first-run gate; anon_shmem = new labelled configuration)"
     Log "fixed budget $budget bytes (min of 22 GiB and available minus 4 GiB); ceiling 90 percent"
     $csv = Join-Path $out 'host.csv'
@@ -272,7 +287,7 @@ try {
             $e = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
             Add-Content -Path $csv -Value "$e,$b"
             if ($b -lt $floor) { $low++ } else { $low = 0 }
-            if ($low -ge 2) {
+            if ($low -ge 1) {
                 & wsl -d $distro --exec docker kill $name | Out-Null
                 Set-Content $breachFile "{`"epoch`":$e,`"available_bytes`":$b,`"floor_bytes`":$floor}"
                 break

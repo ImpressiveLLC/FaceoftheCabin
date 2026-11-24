@@ -299,7 +299,8 @@ class CeilingMetricJudgeTests(unittest.TestCase):
                                             host_available_start=8 * GIB, child_command=stub(good_record()),
                                             ceiling_metric=metric)
             self.assertEqual(summary["configuration"]["ceiling_metric"], metric)
-            self.assertEqual(summary["configuration"]["label"], ladder.CEILING_METRICS[metric])
+            self.assertEqual(summary["configuration"]["metric_label"], ladder.CEILING_METRICS[metric])
+            self.assertEqual(summary["configuration"]["label"], ladder.CONFIG_LABELS[(metric, "fixed")])
         self.assertIn("NEW labelled configuration", ladder.CEILING_METRICS["anon_shmem"])
         self.assertNotIn("NEW labelled", ladder.CEILING_METRICS["original"])
 
@@ -308,6 +309,49 @@ class CeilingMetricJudgeTests(unittest.TestCase):
         self.assertEqual(argv[argv.index("--ceiling-metric") + 1], "original")
         argv = ladder.default_child_command(128, Path("x"), ceiling_metric="anon_shmem")
         self.assertEqual(argv[argv.index("--ceiling-metric") + 1], "anon_shmem")
+
+
+class ConfigCTests(unittest.TestCase):
+    """Configuration C = B + a container cap from the fixed budget + 1 s host watchdog + per-second memory trace."""
+
+    def test_labels_name_every_combination_and_mark_new_ones(self):
+        self.assertEqual(set(ladder.CONFIG_LABELS), {(m, c) for m in ladder.CEILING_METRICS for c in ladder.CONTAINER_CAPS})
+        self.assertTrue(ladder.CONFIG_LABELS[("anon_shmem", "budget")].startswith("C:"))
+        self.assertIn("NEW labelled configuration", ladder.CONFIG_LABELS[("anon_shmem", "budget")])
+        self.assertNotIn("NEW labelled", ladder.CONFIG_LABELS[("original", "fixed")])
+
+    def test_summary_records_the_cap_and_label_for_c(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = ladder.run_ladder(rungs=[128], budget_bytes=BUDGET, out_dir=Path(tmp), model="pinned",
+                                        host_available_start=8 * GIB, child_command=stub(good_record()),
+                                        ceiling_metric="anon_shmem", container_cap="budget", container_memory_bytes=8 * GIB)
+        cfg = summary["configuration"]
+        self.assertEqual((cfg["ceiling_metric"], cfg["container_cap"], cfg["container_memory_bytes"]), ("anon_shmem", "budget", 8 * GIB))
+        self.assertTrue(cfg["label"].startswith("C:"))
+
+    def test_trace_summary_survives_a_killed_rung(self):
+        rows = ["epoch,current,rss,anon,file,shmem,metric"] + [f"{1000 + k}.0,{(k + 1) * 10},{k},{k * 5},{k * 4},0,{k * 5}" for k in range(6)]
+        with tempfile.TemporaryDirectory() as tmp:
+            trace = Path(tmp) / "memory-trace.csv"
+            trace.write_text("\n".join(rows) + "\n1006.0,70,6,3", encoding="utf-8")   # last line cut off by the kill
+            summary = ladder.summarize_trace(trace)
+        self.assertEqual(summary["rows"], 6)
+        self.assertEqual((summary["current_peak_bytes"], summary["anon_peak_bytes"], summary["file_peak_bytes"]), (60, 25, 20))
+        self.assertIsNone(ladder.summarize_trace(Path("no-such-trace.csv")))
+
+    def test_killed_rung_entry_carries_its_trace(self):
+        def command(rung, rung_dir):
+            script = ("import sys,pathlib\n"
+                      "p=pathlib.Path(sys.argv[1]);(p/'memory-trace.csv').write_text('epoch,current,rss,anon,file,shmem,metric\\n1.0,100,50,60,40,0,60\\n2.0,300,90,200,100,0,200\\n')\n"
+                      "sys.exit(137)\n")
+            return [sys.executable, "-c", script, str(rung_dir)]
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = ladder.run_ladder(rungs=[128, 256], budget_bytes=BUDGET, out_dir=Path(tmp), model="pinned",
+                                        host_available_start=8 * GIB, child_command=command)
+        entry = summary["rungs"][0]
+        self.assertEqual(entry["status"], "FAILURE")
+        self.assertEqual((entry["memory_trace"]["current_peak_bytes"], entry["memory_trace"]["anon_peak_bytes"]), (300, 200))
+        self.assertEqual(summary["rungs"][1]["status"], "NOT_RUN")
 
 
 try:
@@ -472,6 +516,41 @@ class ChildTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr[-2000:])
         self.assertEqual(record["ceiling_metric"], "anon_shmem")
         self.assertIn("NEW labelled configuration", record["configuration_label"])
+
+    def test_watcher_writes_a_per_sample_trace_that_survives_without_finish(self):
+        import ladder_rung
+        with tempfile.TemporaryDirectory() as tmp:
+            cg = Path(tmp) / "cg"
+            cg.mkdir()
+            (cg / "memory.current").write_text("500\n")
+            (cg / "memory.stat").write_text("anon 300\nfile 150\nshmem 5\n")
+            old = ladder_rung.CGROUP
+            ladder_rung.CGROUP = cg
+            try:
+                trace = Path(tmp) / "run" / "memory-trace.csv"
+                watcher = ladder_rung.Watcher(10 ** 12, 0.9, lambda peak: None, "anon_shmem", trace)
+                watcher.sample()
+                watcher.sample()
+                # read BEFORE finish(): a SIGKILL never reaches finish(), so the lines must already be on disk
+                lines = trace.read_text(encoding="utf-8").splitlines()
+                self.assertEqual(lines[0], "epoch,current,rss,anon,file,shmem,metric")
+                self.assertEqual(len(lines), 3)
+                cells = lines[1].split(",")
+                self.assertEqual(cells[1], "500")
+                self.assertEqual((cells[3], cells[4], cells[5], cells[6]), ("300", "150", "5", "305"))
+                watcher.finish()
+            finally:
+                ladder_rung.CGROUP = old
+
+    def test_child_writes_a_trace_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = subprocess.run([sys.executable, str(HERE / "ladder_rung.py"), "--rung", "48", "--out", tmp, "--model", "synthetic",
+                                   "--steps", "3", "--budget-bytes", str(8 * GIB)],
+                                  cwd=str(HERE), capture_output=True, text=True, timeout=300)
+            self.assertEqual(proc.returncode, 0, proc.stderr[-2000:])
+            trace = (Path(tmp) / "memory-trace.csv").read_text(encoding="utf-8").splitlines()
+        self.assertGreaterEqual(len(trace), 3)
+        self.assertEqual(trace[0], "epoch,current,rss,anon,file,shmem,metric")
 
     def test_wrong_length_rows_are_refused(self):
         import ladder_rung

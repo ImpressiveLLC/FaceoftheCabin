@@ -102,6 +102,38 @@ class DryRunTests(unittest.TestCase):
         bad = run("-Run", "-DryRun", "-FakeAvailableBytes", str(22 * GIB), "-CeilingMetric", "nonsense")
         self.assertNotEqual(bad.returncode, 0)
 
+    def test_config_c_caps_the_container_from_the_budget_and_a_is_unchanged(self):
+        _, a = plan(22)
+        argv = a["docker_argv"]
+        self.assertIn("--memory=22g", argv)       # first two runs: unchanged
+        self.assertEqual(argv[argv.index("--container-cap") + 1], "fixed")
+        _, c = plan(22, "-Run", "-CeilingMetric", "anon_shmem", "-ContainerCap", "budget")
+        argv = c["docker_argv"]
+        limit = 18 * GIB - 2 * GIB                # budget (22 - 4) less the 2 GiB overhead margin
+        self.assertIn(f"--memory={limit}", argv)
+        self.assertIn(f"--memory-swap={limit}", argv)   # no swap: swap limit equals the memory limit
+        self.assertEqual(argv[argv.index("--container-cap") + 1], "budget")
+        self.assertEqual(argv[argv.index("--container-memory-bytes") + 1], str(limit))
+        self.assertEqual(c["container_memory_bytes"], limit)
+        self.assertEqual(c["ceiling_metric"], "anon_shmem")
+        self.assertNotIn("--memory=22g", argv)
+
+    def test_budget_cap_follows_available_memory(self):
+        for avail in (21.5, 24.0, 30.0):
+            with self.subTest(avail=avail):
+                _, c = plan(avail, "-Run", "-ContainerCap", "budget")
+                budget = min(22, avail - 4)
+                self.assertEqual(c["container_memory_bytes"], int(budget * GIB) - 2 * GIB)
+
+    def test_watchdog_polls_every_second_and_kills_on_one_low_sample(self):
+        text = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("$PollSeconds = 1", text)
+        self.assertIn("if ($low -ge 1) {", text)
+        self.assertNotIn("$low -ge 2", text)
+
+    def test_invalid_container_cap_is_rejected(self):
+        self.assertNotEqual(run("-Run", "-DryRun", "-FakeAvailableBytes", str(22 * GIB), "-ContainerCap", "nonsense").returncode, 0)
+
     def test_six_gib_start_minimum_is_named_when_below_it(self):
         _, p = plan(5)
         self.assertTrue(any("start minimum" in r for r in p["gate_reasons"]))
