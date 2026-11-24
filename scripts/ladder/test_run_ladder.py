@@ -27,11 +27,7 @@ def plan(avail_gib, mode="-Run", *extra):
     try:
         return proc, json.loads(proc.stdout)
     except ValueError:
-        raise AssertionError(f"no JSON plan; exit {proc.returncode}
-STDOUT:
-{proc.stdout}
-STDERR:
-{proc.stderr}")
+        raise AssertionError("no JSON plan; exit %s | STDOUT: %s | STDERR: %s" % (proc.returncode, proc.stdout, proc.stderr))
 
 
 @unittest.skipUnless(PWSH, "pwsh is not installed")
