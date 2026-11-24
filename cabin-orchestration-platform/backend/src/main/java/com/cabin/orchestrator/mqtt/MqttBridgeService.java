@@ -112,6 +112,14 @@ public class MqttBridgeService implements MqttCallback {
         this.blinkRelayPulse = pulse;
     }
 
+    // Catalog S3b rule shadow (observation only). Optional so existing constructors and tests need no catalog.
+    private com.cabin.orchestrator.ontology.DeviceCatalogService catalogService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setCatalogService(com.cabin.orchestrator.ontology.DeviceCatalogService catalogService) {
+        this.catalogService = catalogService;
+    }
+
     public MqttBridgeService(DeviceRegistry registry, EventPublisher eventPublisher,
                               PresenceService presenceService, PresenceSignalRegistry presenceSignalRegistry,
                               SecurityStateRegistry securityStateRegistry,
@@ -298,6 +306,13 @@ public class MqttBridgeService implements MqttCallback {
             registry.registerCandidate(descriptor, Map.of("discoveredFrom", "MQTT topic"));
             existing = registry.get(deviceId);
             log.info("Auto-registered new device: {} as {} at {}", deviceId, type, loc);
+        }
+        if (catalogService != null) {
+            // S3b: inferType runs only for an unknown device, so an existing device's messages would never be
+            // evaluated. Observe every message: the pure key-presence inferType and the catalog's rules on the same
+            // keys. Nothing here reaches the registry; the persisted type and registration are untouched.
+            catalogService.observe(deviceId, com.cabin.orchestrator.ontology.CatalogRuleEvaluator.SiteInput.mqtt(data),
+                inferType(data), data.keySet().stream().map(String::valueOf).sorted().toList());
         }
         Map<String, Object> attrs = new LinkedHashMap<>(existing.attributes());
         attrs.putAll(data);

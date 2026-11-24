@@ -56,6 +56,14 @@ public class HomeAssistantDiscoveryService {
     private final Map<String, Map<String, Object>> lastPolledAttrs = new ConcurrentHashMap<>();
     private final Map<String, String> lastPolledState = new ConcurrentHashMap<>();
 
+    // Catalog S3b rule shadow (observation only). Optional so existing constructors and tests need no catalog.
+    private com.cabin.orchestrator.ontology.DeviceCatalogService catalogService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setCatalogService(com.cabin.orchestrator.ontology.DeviceCatalogService catalogService) {
+        this.catalogService = catalogService;
+    }
+
     public HomeAssistantDiscoveryService(HomeAssistantAdapter adapter, DeviceRegistry registry,
             PresenceSignalRegistry presenceSignals, PresenceService presenceService, EventPublisher eventPublisher) {
         this.adapter = adapter;
@@ -101,6 +109,16 @@ public class HomeAssistantDiscoveryService {
             String id = registry.descriptorByConnection("ha_rest", entity.entityId(), location)
                 .map(DeviceDescriptor::deviceId).orElse(generatedId);
             DeviceType type = inferType(domain, entity.attributes());
+            if (catalogService != null) {
+                // S3b: the catalog's rules on the identical input; only a hash of the read fields is kept.
+                Map<String, Object> read = new java.util.LinkedHashMap<>();
+                read.put("domain", domain);
+                for (String key : List.of("device_class", "unit_of_measurement", "friendly_name")) {
+                    if (entity.attributes() != null && entity.attributes().containsKey(key)) read.put(key, entity.attributes().get(key));
+                }
+                catalogService.observe(id, com.cabin.orchestrator.ontology.CatalogRuleEvaluator.SiteInput
+                    .homeAssistant(domain, entity.attributes()), type, read);
+            }
             Set<DeviceCapability> capabilities = inferCapabilities(domain, type);
             String name = String.valueOf(entity.attributes().getOrDefault("friendly_name", entity.entityId()));
             DeviceDescriptor descriptor = new DeviceDescriptor(id, name, type, capabilities,
