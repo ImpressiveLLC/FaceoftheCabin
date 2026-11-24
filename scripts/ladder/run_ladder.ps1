@@ -33,6 +33,8 @@ param(
     [string]$Distro = 'Ubuntu-24.04',
     [ValidateSet('original', 'anon_shmem')][string]$CeilingMetric = 'original',
     [ValidateSet('fixed', 'budget')][string]$ContainerCap = 'fixed',
+    [ValidateSet('v1', 'v2')][string]$PagingRule = 'v1',
+    [double]$PagingMaxTrainRefaultsPerSecond = -1,
     [string]$Image = 'fotc-dev-sft-r1:stage2',
     [string]$ModelVolume = 'fotc-hf-cache',
     [string]$RepoDir = '',
@@ -56,6 +58,7 @@ $ModelCacheDir = 'models--unsloth--Llama-3.2-3B-Instruct'
 
 $modes = @($Preflight, $Run, $Stop, $Cleanup | Where-Object { $_ }).Count
 if ($modes -ne 1) { Write-Error 'Choose exactly one of -Preflight, -Run, -Stop, -Cleanup.'; exit 2 }
+if ($PagingRule -eq 'v2' -and $PagingMaxTrainRefaultsPerSecond -lt 0) { [Console]::Error.WriteLine('-PagingRule v2 needs -PagingMaxTrainRefaultsPerSecond (no limit has been ruled, so there is no default).'); exit 2 }
 if ($FakeAvailableBytes -gt 0 -and -not $DryRun) { Write-Error '-FakeAvailableBytes is only allowed with -DryRun.'; exit 2 }
 if (-not $RepoDir) { $RepoDir = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path }
 $TrainingDir = Join-Path (Join-Path (Join-Path $RepoDir 'docs') 'ai-assistant') 'training'
@@ -112,9 +115,10 @@ function Get-DockerArgv([string]$Name, [string]$OutDir, [int64]$Budget, [int64]$
         '--budget-bytes', "$Budget", '--out', '/out/ladder',
         '--ceiling-metric', $CeilingMetric,
         '--container-cap', $ContainerCap, '--container-memory-bytes', "$limit",
+        '--paging-rule', $PagingRule,
         '--host-available-start', "$AvailableAtStart", '--host-csv', '/out/host.csv',
         '--host-epoch-at-start', "$HostEpoch"
-    )
+    ) + $(if ($PagingRule -eq 'v2') { @('--paging-max-train-refaults-per-s', "$PagingMaxTrainRefaultsPerSecond") } else { @() })
 }
 
 function New-RunId { if ($RunId) { return $RunId } else { return (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ') } }
@@ -173,6 +177,7 @@ if ($DryRun) {
         budget_bytes = $budget
         ceiling_metric = $CeilingMetric
         container_cap = $ContainerCap
+        paging_rule = $PagingRule
         container_memory_bytes = (Get-ContainerLimitBytes $budget)
         ceiling_bytes = [int64][math]::Floor($budget * 0.9)
         out_dir = $outDir

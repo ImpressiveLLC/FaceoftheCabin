@@ -36,7 +36,11 @@ CEILING_FRACTION = 0.90
 RUNG_TIMEOUT_SECONDS = 20 * 60
 HOST_START_MIN_BYTES = 6 * 1024 ** 3     # Windows available before the first rung
 HOST_STOP_BELOW_BYTES = 4 * 1024 ** 3    # stop if Windows available falls below this
-MAJOR_FAULT_DELTA_LIMIT = 200            # sustained paging: more major faults than this during a rung
+MAJOR_FAULT_DELTA_LIMIT = 200            # paging rule v1 (set by Code, never ruled): whole-rung process major faults, cold reads included
+PAGING_RULES = ("v1", "v2")
+TRACE_COLUMNS_V2 = ("epoch", "current", "rss", "anon", "file", "shmem", "metric", "phase", "majflt", "pgmajfault", "refault_file", "refault_anon")
+PAGING_COUNTERS = ("majflt", "pgmajfault", "refault_file", "refault_anon")
+PAGING_WINDOW_SECONDS = 5.0
 LENGTH_TOLERANCE = 3                     # tokens a built row may be below the target (never above)
 CEILING_METRICS = {
     "original": "A-original: ceiling on the larger of cgroup memory.current and process RSS (counts page cache)",
@@ -65,11 +69,11 @@ def summarize_trace(path):
     rows, last = 0, None
     for line in lines[1:]:
         parts = line.split(",")
-        if len(parts) != 7:
+        if len(parts) not in (7, 12):
             continue   # header, or a partly written last line
         rows += 1
         last = parts[0]
-        for name, raw in zip(cols, parts[1:]):
+        for name, raw in zip(cols, parts[1:7]):
             try:
                 value = int(raw)
             except ValueError:
@@ -77,6 +81,57 @@ def summarize_trace(path):
             if peaks[name] is None or value > peaks[name]:
                 peaks[name] = value
     return {"rows": rows, "last_epoch": last, **{f"{c}_peak_bytes": v for c, v in peaks.items()}} if rows else None
+
+
+def paging_from_trace(path):
+    """Per-phase paging counters from a rung's memory-trace.csv (12-column rows: load, train, save). All four counters are
+    cumulative, so a phase's figure is last minus first inside it. `refault_file` is the cgroup's workingset_refault_file:
+    file pages that were evicted and read again, which is real cache pressure; cold reads of the weights on a fresh VM show
+    up in `majflt` and `pgmajfault` but not in `refault_*`. None if the trace has no 12-column rows."""
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    phases = {}
+    for line in lines[1:]:
+        parts = line.split(",")
+        if len(parts) != 12:
+            continue
+        try:
+            epoch = float(parts[0])
+        except ValueError:
+            continue
+        values = {}
+        for name, raw in zip(PAGING_COUNTERS, parts[8:12]):
+            try:
+                values[name] = int(raw)
+            except ValueError:
+                values[name] = None
+        phases.setdefault(parts[7], []).append((epoch, values))
+    if not phases:
+        return None
+    out = {}
+    for phase, rows in phases.items():
+        seconds = rows[-1][0] - rows[0][0]
+        entry = {"rows": len(rows), "seconds": round(seconds, 1)}
+        for name in PAGING_COUNTERS:
+            first = next((v[name] for _, v in rows if v[name] is not None), None)
+            last = next((v[name] for _, v in reversed(rows) if v[name] is not None), None)
+            entry[name + "_delta"] = None if None in (first, last) else last - first
+        # worst rate over any window of at least PAGING_WINDOW_SECONDS inside the phase
+        best = None
+        for i, (t0, v0) in enumerate(rows):
+            if v0["refault_file"] is None:
+                continue
+            for t1, v1 in rows[i + 1:]:
+                if t1 - t0 >= PAGING_WINDOW_SECONDS and v1["refault_file"] is not None:
+                    rate = (v1["refault_file"] - v0["refault_file"]) / (t1 - t0)
+                    best = rate if best is None or rate > best else best
+                    break
+        entry["max_refault_file_per_s"] = None if best is None else round(best, 2)
+        out[phase] = entry
+    return {"window_seconds": PAGING_WINDOW_SECONDS, "phases": out,
+            "note": "counters are cumulative; the gap between phases (under one sample) is not attributed"}
 
 
 FILLER = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel"]
@@ -122,7 +177,8 @@ def build_row(row_index: int, target_tokens: int, encode, bos_id: int, build_exa
 
 
 # ---------------------------------------------------------------- stop rules
-def judge_rung(record: dict, *, budget_bytes: int, host_before=None, host_after=None, host_min_seen=None) -> dict:
+def judge_rung(record: dict, *, budget_bytes: int, host_before=None, host_after=None, host_min_seen=None,
+               paging_rule="v1", paging_limit=None) -> dict:
     """Applies the stop rules to one rung's record. Returns {"status": "PASS"|"FAILURE", "reasons": [...]}.
     Missing evidence is a failure, never a pass. The record keys are those ladder_rung.py writes."""
     reasons = []
@@ -153,7 +209,24 @@ def judge_rung(record: dict, *, budget_bytes: int, host_before=None, host_after=
         reasons.append(f"memory high-water {peak} ({metric}) above {int(CEILING_FRACTION * 100)} percent of the fixed budget {budget_bytes}")
     if (record.get("swap_peak_bytes") or 0) > 0:
         reasons.append(f"swap used ({record['swap_peak_bytes']} bytes); no swap-dependent qualification")
-    if (record.get("major_fault_delta") or 0) > MAJOR_FAULT_DELTA_LIMIT:
+    if paging_rule == "v2":
+        # v2 judges file-page refaults in the TRAINING phase only (cold reads while loading are not paging pressure). The
+        # limit is explicit: nobody has ruled a number, so there is no default.
+        if paging_limit is None:
+            reasons.append("paging rule v2 needs an explicit --paging-max-train-refaults-per-s")
+        else:
+            train = ((record.get("paging") or {}).get("phases") or {}).get("train")
+            if not train:
+                reasons.append("paging evidence missing: no training-phase counters in the rung record")
+            else:
+                rate = train.get("max_refault_file_per_s")
+                if rate is None:
+                    reasons.append("paging evidence missing: no refault_file counter in the training phase")
+                elif rate > paging_limit:
+                    reasons.append(f"sustained paging (v2): {rate} file-page refaults per second in training, over {paging_limit}")
+                if (train.get("refault_anon_delta") or 0) > 0:
+                    reasons.append(f"sustained paging (v2): {train['refault_anon_delta']} anonymous-page refaults in training (swap-ins)")
+    elif (record.get("major_fault_delta") or 0) > MAJOR_FAULT_DELTA_LIMIT:
         reasons.append(f"sustained paging: {record['major_fault_delta']} major faults")
     if record.get("wall_seconds") is not None and record["wall_seconds"] > RUNG_TIMEOUT_SECONDS:
         reasons.append(f"rung took {record['wall_seconds']:.0f}s, over {RUNG_TIMEOUT_SECONDS}s")
@@ -173,7 +246,7 @@ def host_start_gate(host_available_bytes) -> list:
 
 # ---------------------------------------------------------------- parent runner
 def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, rung_timeout=RUNG_TIMEOUT_SECONDS,
-               host_available_start=None, host_available_end_of_rung=None, host_min_reader=None, host_clock_offset=0.0, ceiling_metric="original", container_cap="fixed", container_memory_bytes=None, child_command=None) -> dict:
+               host_available_start=None, host_available_end_of_rung=None, host_min_reader=None, host_clock_offset=0.0, ceiling_metric="original", container_cap="fixed", container_memory_bytes=None, paging_rule="v1", paging_limit=None, child_command=None) -> dict:
     """Runs rungs in order in separate processes. `child_command(rung, rung_dir)` -> argv list (tests inject a stub).
     `host_available_end_of_rung(rung)` -> bytes or None, supplied by the operator's host reader.
     `host_min_reader(start_epoch, end_epoch)` -> the lowest Windows-available reading taken during the rung, or None if there
@@ -185,6 +258,7 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
     summary = {"kind": "length_ladder", "model": model, "synthetic_only": True, "qualification": model == "pinned",
                "budget_bytes": budget_bytes, "ceiling_bytes": int(CEILING_FRACTION * budget_bytes), "steps": steps,
                "configuration": {"ceiling_metric": ceiling_metric, "container_cap": container_cap,
+                                 "paging_rule": paging_rule, "paging_max_train_refaults_per_s": paging_limit,
                                  "container_memory_bytes": container_memory_bytes,
                                  "label": CONFIG_LABELS[(ceiling_metric, container_cap)], "metric_label": CEILING_METRICS[ceiling_metric]},
                "rungs": [], "stopped_at": None, "host_clock_offset_seconds": host_clock_offset, "host_start_gate": host_start_gate(host_available_start),
@@ -229,7 +303,8 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
         record.setdefault("wall_seconds", wall)
         host_after = host_available_end_of_rung(rung) if host_available_end_of_rung else None
         host_min = host_min_reader(started_epoch + host_clock_offset, ended_epoch + host_clock_offset) if host_min_reader else None
-        verdict = judge_rung(record, budget_bytes=budget_bytes, host_after=host_after, host_min_seen=host_min)
+        verdict = judge_rung(record, budget_bytes=budget_bytes, host_after=host_after, host_min_seen=host_min,
+                             paging_rule=paging_rule, paging_limit=paging_limit)
         if host_min_reader and host_min is None:
             verdict["reasons"].append("no Windows-available reading was taken during the rung")
         verdict["reasons"] = reasons + verdict["reasons"]
@@ -238,7 +313,8 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
         entry.update(status=verdict["status"], reasons=verdict["reasons"], host_available_after=host_after, host_available_min_during=host_min,
                      actual_token_lengths=record.get("actual_token_lengths"), memory_peak_bytes=record.get("memory_peak_bytes"),
                      wall_seconds=round(record.get("wall_seconds", wall), 1),
-                     memory_trace=summarize_trace(rung_dir / "memory-trace.csv"))
+                     memory_trace=summarize_trace(rung_dir / "memory-trace.csv"),
+                     paging=record.get("paging") or paging_from_trace(rung_dir / "memory-trace.csv"))
         summary["rungs"].append(entry)
         if verdict["status"] != "PASS":
             summary["stopped_at"] = rung
@@ -286,6 +362,10 @@ def main(argv=None):
         p = sub.add_parser(name)
         p.add_argument("--budget-bytes", type=int, required=True, help="fixed pre-run usable training budget, bytes")
         p.add_argument("--rungs", default=",".join(str(r) for r in DEFAULT_RUNGS))
+        p.add_argument("--paging-rule", choices=PAGING_RULES, default="v1",
+                       help="v1 = whole-rung process major faults (as run 3); v2 = training-phase file-page refaults per second")
+        p.add_argument("--paging-max-train-refaults-per-s", type=float, default=None,
+                       help="the limit for paging rule v2; there is no default because none has been ruled")
         p.add_argument("--container-cap", choices=CONTAINER_CAPS, default="fixed",
                        help="how the container memory limit was set (informational: the launcher sets it); budget = from the fixed budget")
         p.add_argument("--container-memory-bytes", type=int, default=None, help="the container memory limit actually used, bytes")
@@ -304,6 +384,8 @@ def main(argv=None):
     run.add_argument("--host-available-file", type=Path, default=None,
                      help="file the operator appends Windows available bytes to after each rung (one integer per line)")
     args = parser.parse_args(argv)
+    if args.command == "run" and args.paging_rule == "v2" and args.paging_max_train_refaults_per_s is None:
+        parser.error("--paging-rule v2 needs --paging-max-train-refaults-per-s (no limit has been ruled, so there is no default)")
     rungs = [int(r) for r in args.rungs.split(",")]
     if args.command == "plan":
         print(json.dumps({"rungs": rungs, "budget_bytes": args.budget_bytes,
@@ -325,6 +407,7 @@ def main(argv=None):
         host_min_reader=(lambda a, b: read_host_min(args.host_csv, a, b)) if args.host_csv else None,
         host_clock_offset=clock_offset(args.host_epoch_at_start), ceiling_metric=args.ceiling_metric,
         container_cap=args.container_cap, container_memory_bytes=args.container_memory_bytes,
+        paging_rule=args.paging_rule, paging_limit=args.paging_max_train_refaults_per_s,
         child_command=lambda rung, d: default_child_command(rung, d, args.model, args.steps, args.budget_bytes, args.ceiling_metric))
     print(json.dumps({k: summary[k] for k in ("model", "qualification", "configuration", "stopped_at", "complete")}, indent=2))
     return 0 if summary["complete"] else 1

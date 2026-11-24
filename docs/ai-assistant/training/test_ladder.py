@@ -354,6 +354,118 @@ class ConfigCTests(unittest.TestCase):
         self.assertEqual(summary["rungs"][1]["status"], "NOT_RUN")
 
 
+HEADER12 = "epoch,current,rss,anon,file,shmem,metric,phase,majflt,pgmajfault,refault_file,refault_anon"
+
+
+def trace_text(rows):
+    """rows: (t, phase, majflt, pgmajfault, refault_file, refault_anon)"""
+    lines = [HEADER12]
+    for t, phase, mj, pg, rf, ra in rows:
+        lines.append(f"{t},100,50,60,40,0,60,{phase},{mj},{pg},{rf},{ra}")
+    return "\n".join(lines) + "\n"
+
+
+class PagingTimelineTests(unittest.TestCase):
+    """Run 3 failed only on whole-rung process major faults (28750 against a limit Code chose). The timeline separates the cold
+    read of the weights while loading from file pages that were evicted and read again while training."""
+
+    def write(self, rows, tmp):
+        path = Path(tmp) / "memory-trace.csv"
+        path.write_text(trace_text(rows), encoding="utf-8")
+        return path
+
+    def test_cold_load_faults_are_not_training_refaults(self):
+        rows = [(0, "load", 0, 0, 0, 0), (5, "load", 20000, 20000, 0, 0), (10, "load", 28000, 28000, 0, 0),
+                (11, "train", 28100, 28100, 0, 0), (60, "train", 28300, 28300, 0, 0), (110, "train", 28750, 28750, 2, 0),
+                (111, "save", 28760, 28760, 2, 0)]
+        with tempfile.TemporaryDirectory() as tmp:
+            p = ladder.paging_from_trace(self.write(rows, tmp))
+        self.assertEqual(p["phases"]["load"]["majflt_delta"], 28000)
+        self.assertEqual(p["phases"]["train"]["majflt_delta"], 650)
+        self.assertEqual(p["phases"]["train"]["refault_file_delta"], 2)
+        self.assertLess(p["phases"]["train"]["max_refault_file_per_s"], 0.1)
+        self.assertEqual(p["phases"]["train"]["refault_anon_delta"], 0)
+
+    def test_worst_window_is_found_not_the_average(self):
+        rows = [(0, "train", 0, 0, 0, 0), (10, "train", 0, 0, 0, 0), (15, "train", 0, 0, 5000, 0), (60, "train", 0, 0, 5000, 0)]
+        with tempfile.TemporaryDirectory() as tmp:
+            train = ladder.paging_from_trace(self.write(rows, tmp))["phases"]["train"]
+        self.assertAlmostEqual(train["max_refault_file_per_s"], 1000.0, delta=1)   # 5000 refaults inside 5 s
+        self.assertLess(train["refault_file_delta"] / train["seconds"], 100)        # the average would hide it
+
+    def test_old_seven_column_traces_have_no_paging_analysis_and_still_summarise(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "memory-trace.csv"
+            path.write_text("epoch,current,rss,anon,file,shmem,metric\n1.0,10,5,6,4,0,6\n2.0,30,9,20,10,0,20\n", encoding="utf-8")
+            self.assertIsNone(ladder.paging_from_trace(path))
+            self.assertEqual(ladder.summarize_trace(path)["current_peak_bytes"], 30)
+
+    def test_twelve_column_trace_still_gives_memory_peaks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write([(0, "load", 0, 0, 0, 0), (1, "train", 5, 5, 0, 0)], tmp)
+            s = ladder.summarize_trace(path)
+        self.assertEqual((s["rows"], s["current_peak_bytes"]), (2, 100))
+
+    def test_missing_trace_is_none(self):
+        self.assertIsNone(ladder.paging_from_trace(Path("nope.csv")))
+
+
+class PagingRuleTests(unittest.TestCase):
+    def judge(self, paging, rule="v1", limit=None, **over):
+        rec = good_record(paging=paging, **over)
+        return ladder.judge_rung(rec, budget_bytes=BUDGET, paging_rule=rule, paging_limit=limit)
+
+    def train(self, rate=0.0, anon=0):
+        return {"phases": {"train": {"max_refault_file_per_s": rate, "refault_anon_delta": anon, "refault_file_delta": 0}}}
+
+    def test_v1_is_unchanged_and_still_fails_run_3s_record(self):
+        self.assertEqual(self.judge(None, major_fault_delta=28750)["status"], "FAILURE")   # run 3 under the rule as run
+        self.assertEqual(self.judge(None, major_fault_delta=100)["status"], "PASS")
+
+    def test_v2_does_not_count_cold_load_faults(self):
+        verdict = self.judge(self.train(0.0), rule="v2", limit=50.0, major_fault_delta=28750)
+        self.assertEqual(verdict["status"], "PASS")
+
+    def test_v2_fails_on_training_refaults_over_the_limit_only(self):
+        self.assertEqual(self.judge(self.train(51.0), rule="v2", limit=50.0)["status"], "FAILURE")
+        self.assertEqual(self.judge(self.train(50.0), rule="v2", limit=50.0)["status"], "PASS")
+
+    def test_v2_fails_on_anonymous_refaults_in_training(self):
+        verdict = self.judge(self.train(0.0, anon=3), rule="v2", limit=50.0)
+        self.assertEqual(verdict["status"], "FAILURE")
+        self.assertTrue(any("anonymous-page refaults" in r for r in verdict["reasons"]))
+
+    def test_v2_missing_evidence_is_failure_not_pass(self):
+        for paging in (None, {"phases": {}}, {"phases": {"train": {"max_refault_file_per_s": None}}}):
+            with self.subTest(paging=paging):
+                verdict = self.judge(paging, rule="v2", limit=50.0)
+                self.assertEqual(verdict["status"], "FAILURE")
+                self.assertTrue(any("paging evidence missing" in r for r in verdict["reasons"]))
+
+    def test_v2_without_a_limit_is_refused_no_default(self):
+        verdict = self.judge(self.train(0.0), rule="v2", limit=None)
+        self.assertEqual(verdict["status"], "FAILURE")
+        self.assertTrue(any("explicit" in r for r in verdict["reasons"]))
+
+    def test_swap_use_still_fails_under_v2(self):
+        self.assertEqual(self.judge(self.train(0.0), rule="v2", limit=50.0, swap_peak_bytes=4096)["status"], "FAILURE")
+
+    def test_summary_records_the_rule_and_its_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = ladder.run_ladder(rungs=[128], budget_bytes=BUDGET, out_dir=Path(tmp), model="pinned",
+                                        host_available_start=8 * GIB, child_command=stub(good_record(paging=self.train(0.0))),
+                                        paging_rule="v2", paging_limit=50.0)
+        self.assertEqual(summary["configuration"]["paging_rule"], "v2")
+        self.assertEqual(summary["configuration"]["paging_max_train_refaults_per_s"], 50.0)
+        self.assertEqual(summary["rungs"][0]["status"], "PASS")
+
+    def test_cli_refuses_v2_without_a_limit(self):
+        proc = subprocess.run([sys.executable, str(HERE / "ladder.py"), "run", "--budget-bytes", "1000", "--out", "x",
+                               "--paging-rule", "v2"], cwd=str(HERE), capture_output=True, text=True, timeout=60)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("no limit has been ruled", proc.stderr)
+
+
 try:
     import torch  # noqa: F401
     import peft  # noqa: F401
@@ -533,7 +645,7 @@ class ChildTests(unittest.TestCase):
                 watcher.sample()
                 # read BEFORE finish(): a SIGKILL never reaches finish(), so the lines must already be on disk
                 lines = trace.read_text(encoding="utf-8").splitlines()
-                self.assertEqual(lines[0], "epoch,current,rss,anon,file,shmem,metric")
+                self.assertEqual(lines[0], "epoch,current,rss,anon,file,shmem,metric,phase,majflt,pgmajfault,refault_file,refault_anon")
                 self.assertEqual(len(lines), 3)
                 cells = lines[1].split(",")
                 self.assertEqual(cells[1], "500")
@@ -550,7 +662,25 @@ class ChildTests(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr[-2000:])
             trace = (Path(tmp) / "memory-trace.csv").read_text(encoding="utf-8").splitlines()
         self.assertGreaterEqual(len(trace), 3)
-        self.assertEqual(trace[0], "epoch,current,rss,anon,file,shmem,metric")
+        self.assertEqual(trace[0], "epoch,current,rss,anon,file,shmem,metric,phase,majflt,pgmajfault,refault_file,refault_anon")
+
+    def test_child_trace_has_phases_and_the_record_has_paging(self):
+        proc, record = self.run_child(48)
+        self.assertEqual(proc.returncode, 0, proc.stderr[-2000:])
+        phases = (record["paging"] or {}).get("phases", {})
+        # the synthetic child runs on Windows in CI-free runs: counters may be blank, but the phase boundaries must be there
+        self.assertIn("load", phases)
+        self.assertIn("train", phases)
+
+    def test_phase_callback_sets_train_then_save(self):
+        import ladder_rung
+        cb = ladder_rung.phase_callback()
+        self.assertEqual(ladder_rung.PHASE, "load")
+        cb.on_train_begin(None, None, None)
+        self.assertEqual(ladder_rung.PHASE, "train")
+        cb.on_train_end(None, None, None)
+        self.assertEqual(ladder_rung.PHASE, "save")
+        ladder_rung.PHASE = "load"
 
     def test_wrong_length_rows_are_refused(self):
         import ladder_rung

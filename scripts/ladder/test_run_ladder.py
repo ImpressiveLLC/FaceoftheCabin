@@ -134,6 +134,18 @@ class DryRunTests(unittest.TestCase):
     def test_invalid_container_cap_is_rejected(self):
         self.assertNotEqual(run("-Run", "-DryRun", "-FakeAvailableBytes", str(22 * GIB), "-ContainerCap", "nonsense").returncode, 0)
 
+    def test_paging_rule_defaults_to_v1_and_v2_needs_an_explicit_limit(self):
+        _, p = plan(22)
+        self.assertEqual(p["paging_rule"], "v1")
+        self.assertEqual(p["docker_argv"][p["docker_argv"].index("--paging-rule") + 1], "v1")
+        self.assertNotIn("--paging-max-train-refaults-per-s", p["docker_argv"])
+        _, v2 = plan(22, "-Run", "-PagingRule", "v2", "-PagingMaxTrainRefaultsPerSecond", "25")
+        self.assertEqual(v2["docker_argv"][v2["docker_argv"].index("--paging-rule") + 1], "v2")
+        self.assertEqual(v2["docker_argv"][v2["docker_argv"].index("--paging-max-train-refaults-per-s") + 1], "25")
+        refused = run("-Run", "-DryRun", "-FakeAvailableBytes", str(22 * GIB), "-PagingRule", "v2")
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn("no limit has been ruled", refused.stdout + refused.stderr)
+
     def test_six_gib_start_minimum_is_named_when_below_it(self):
         _, p = plan(5)
         self.assertTrue(any("start minimum" in r for r in p["gate_reasons"]))
