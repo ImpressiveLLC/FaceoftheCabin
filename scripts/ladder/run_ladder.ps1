@@ -50,7 +50,7 @@ $ModelCacheDir = 'models--unsloth--Llama-3.2-3B-Instruct'
 $modes = @($Preflight, $Run, $Stop, $Cleanup | Where-Object { $_ }).Count
 if ($modes -ne 1) { Write-Error 'Choose exactly one of -Preflight, -Run, -Stop, -Cleanup.'; exit 2 }
 if ($FakeAvailableBytes -gt 0 -and -not $DryRun) { Write-Error '-FakeAvailableBytes is only allowed with -DryRun.'; exit 2 }
-if (-not $RepoDir) { $RepoDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path }
+if (-not $RepoDir) { $RepoDir = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path }
 $TrainingDir = Join-Path (Join-Path (Join-Path $RepoDir 'docs') 'ai-assistant') 'training'
 
 function Get-AvailableBytes {
