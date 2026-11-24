@@ -269,6 +269,47 @@ class ClockOffsetTests(unittest.TestCase):
         self.assertEqual(with_offset["rungs"][0]["host_available_min_during"], 9 * GIB)
 
 
+class CeilingMetricJudgeTests(unittest.TestCase):
+    """Configuration B (ceiling on anon+shmem) is a NEW labelled configuration; configuration A (original) is unchanged."""
+
+    def judge(self, **over):
+        return ladder.judge_rung(good_record(**over), budget_bytes=BUDGET)
+
+    def test_cache_inflated_peak_fails_under_original_but_not_under_anon_shmem(self):
+        inflated = int(0.95 * BUDGET)   # memory.current with page cache
+        anon = int(0.50 * BUDGET)
+        original = self.judge(memory_peak_bytes=inflated, ceiling_metric="original", ceiling_metric_peak_bytes=inflated)
+        b = self.judge(memory_peak_bytes=inflated, ceiling_metric="anon_shmem", ceiling_metric_peak_bytes=anon)
+        self.assertEqual(original["status"], "FAILURE")
+        self.assertEqual(b["status"], "PASS")
+
+    def test_anon_shmem_over_the_ceiling_still_fails_and_names_the_metric(self):
+        verdict = self.judge(ceiling_metric="anon_shmem", ceiling_metric_peak_bytes=int(0.91 * BUDGET))
+        self.assertEqual(verdict["status"], "FAILURE")
+        self.assertTrue(any("anon_shmem" in r for r in verdict["reasons"]))
+
+    def test_old_records_without_a_metric_are_judged_as_original(self):
+        self.assertEqual(self.judge(memory_peak_bytes=int(0.95 * BUDGET))["status"], "FAILURE")
+        self.assertEqual(self.judge(memory_peak_bytes=int(0.5 * BUDGET))["status"], "PASS")
+
+    def test_summary_labels_the_configuration(self):
+        for metric in ("original", "anon_shmem"):
+            with tempfile.TemporaryDirectory() as tmp:
+                summary = ladder.run_ladder(rungs=[128], budget_bytes=BUDGET, out_dir=Path(tmp), model="pinned",
+                                            host_available_start=8 * GIB, child_command=stub(good_record()),
+                                            ceiling_metric=metric)
+            self.assertEqual(summary["configuration"]["ceiling_metric"], metric)
+            self.assertEqual(summary["configuration"]["label"], ladder.CEILING_METRICS[metric])
+        self.assertIn("NEW labelled configuration", ladder.CEILING_METRICS["anon_shmem"])
+        self.assertNotIn("NEW labelled", ladder.CEILING_METRICS["original"])
+
+    def test_child_command_carries_the_metric_and_defaults_to_original(self):
+        argv = ladder.default_child_command(128, Path("x"))
+        self.assertEqual(argv[argv.index("--ceiling-metric") + 1], "original")
+        argv = ladder.default_child_command(128, Path("x"), ceiling_metric="anon_shmem")
+        self.assertEqual(argv[argv.index("--ceiling-metric") + 1], "anon_shmem")
+
+
 try:
     import torch  # noqa: F401
     import peft  # noqa: F401
@@ -384,6 +425,53 @@ class ChildTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr[-2000:])
         self.assertIn("memory_breakdown", record)
         self.assertIn("peak_source", record["memory_breakdown"])
+
+    def _watcher_with(self, metric, current, stat_text, budget=10 ** 12):
+        import ladder_rung
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        cg = Path(tmp.name)
+        (cg / "memory.current").write_text(str(current) + "\n")
+        if stat_text is not None:
+            (cg / "memory.stat").write_text(stat_text)
+        old = ladder_rung.CGROUP
+        ladder_rung.CGROUP = cg
+        self.addCleanup(setattr, ladder_rung, "CGROUP", old)
+        breaches = []
+        watcher = ladder_rung.Watcher(budget, 0.9, breaches.append, metric)
+        watcher.sample()
+        return watcher, breaches
+
+    def test_anon_shmem_ignores_page_cache_but_original_does_not(self):
+        stat = "anon 300000000000\nshmem 1000000000\nfile 650000000000\n"
+        _, original_breaches = self._watcher_with("original", 950000000000, stat)
+        watcher, b_breaches = self._watcher_with("anon_shmem", 950000000000, stat)
+        self.assertEqual(len(original_breaches), 1)      # configuration A: memory.current 9.5e11 over 9e11
+        self.assertEqual(b_breaches, [])                 # configuration B: anon+shmem 3.01e11 is under
+        self.assertEqual(watcher.metric_peak, 301000000000)
+        self.assertFalse(watcher.metric_fallback)
+
+    def test_anon_shmem_still_stops_when_non_reclaimable_memory_is_over(self):
+        _, breaches = self._watcher_with("anon_shmem", 950000000000, "anon 905000000000\nshmem 0\nfile 1000\n")
+        self.assertEqual(breaches, [905000000000])
+
+    def test_anon_shmem_falls_back_to_the_stricter_original_figure_when_memory_stat_is_unreadable(self):
+        watcher, breaches = self._watcher_with("anon_shmem", 950000000000, None)
+        self.assertTrue(watcher.metric_fallback)
+        self.assertEqual(len(breaches), 1)
+        self.assertTrue(watcher.breakdown()["ceiling_metric_fallback_to_original"])
+
+    def test_record_names_the_metric_and_its_peak(self):
+        watcher, _ = self._watcher_with("anon_shmem", 5, "anon 3\nshmem 1\nfile 1\n", budget=10 ** 12)
+        b = watcher.breakdown()
+        self.assertEqual(b["ceiling_metric"], "anon_shmem")
+        self.assertEqual(b["ceiling_metric_peak_bytes"], 4)
+
+    def test_child_synthetic_rung_under_anon_shmem_is_labelled(self):
+        proc, record = self.run_child(48, extra=("--ceiling-metric", "anon_shmem"))
+        self.assertEqual(proc.returncode, 0, proc.stderr[-2000:])
+        self.assertEqual(record["ceiling_metric"], "anon_shmem")
+        self.assertIn("NEW labelled configuration", record["configuration_label"])
 
     def test_wrong_length_rows_are_refused(self):
         import ladder_rung

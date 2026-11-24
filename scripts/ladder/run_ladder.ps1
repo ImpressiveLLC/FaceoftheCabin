@@ -31,6 +31,7 @@ param(
     [switch]$DryRun,
     [string]$OutRoot = 'C:\ladder-run',
     [string]$Distro = 'Ubuntu-24.04',
+    [ValidateSet('original', 'anon_shmem')][string]$CeilingMetric = 'original',
     [string]$Image = 'fotc-dev-sft-r1:stage2',
     [string]$ModelVolume = 'fotc-hf-cache',
     [string]$RepoDir = '',
@@ -98,6 +99,7 @@ function Get-DockerArgv([string]$Name, [string]$OutDir, [int64]$Budget, [int64]$
         '-w', '/work', $Image,
         'python', 'ladder.py', 'run', '--model', 'pinned',
         '--budget-bytes', "$Budget", '--out', '/out/ladder',
+        '--ceiling-metric', $CeilingMetric,
         '--host-available-start', "$AvailableAtStart", '--host-csv', '/out/host.csv',
         '--host-epoch-at-start', "$HostEpoch"
     )
@@ -157,6 +159,7 @@ if ($DryRun) {
         gate_passes = ($reasons.Count -eq 0)
         gate_reasons = $reasons
         budget_bytes = $budget
+        ceiling_metric = $CeilingMetric
         ceiling_bytes = [int64][math]::Floor($budget * 0.9)
         out_dir = $outDir
         docker_argv = @(if ($reasons.Count -eq 0) { Get-DockerArgv "ladder-$id" '/out-dir' $budget $avail })
@@ -257,6 +260,7 @@ try {
     if ($LASTEXITCODE -ne 0) { Refuse @("pinned model revision is not in volume $ModelVolume; fetching it is a download that needs Nate's yes") }
 
     $budget = Get-Budget $avail2
+    Log "ceiling metric: $CeilingMetric (original = first-run gate; anon_shmem = new labelled configuration)"
     Log "fixed budget $budget bytes (min of 22 GiB and available minus 4 GiB); ceiling 90 percent"
     $csv = Join-Path $out 'host.csv'
     Set-Content $csv 'epoch,bytes'
