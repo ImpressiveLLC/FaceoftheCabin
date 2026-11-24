@@ -139,8 +139,10 @@ class DeviceCatalogServiceTest {
         assertNotNull(attrs.get("ontologyContentHash"));
         assertFalse(attrs.containsKey("catalogDisagreement"));
         Map<String, Object> rest = new java.util.LinkedHashMap<>(attrs);
-        List.of("ontologyTypeId", "matchedBy", "catalogSource", "catalogHash", "ontologyContentHash").forEach(rest::remove);
-        assertEquals(before.attributes(), rest, "only the five shadow keys are added");
+        assertEquals("NOT_EVALUATED", attrs.get("ruleEvaluation"), "S3b: no classifier input observed for this device");
+        List.of("ontologyTypeId", "matchedBy", "catalogSource", "catalogHash", "ontologyContentHash", "ruleEvaluation")
+            .forEach(rest::remove);
+        assertEquals(before.attributes(), rest, "only the shadow keys are added");
     }
 
     @Test

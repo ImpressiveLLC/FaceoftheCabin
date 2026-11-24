@@ -786,7 +786,9 @@ public class DeviceRegistry {
      * Observation only: the assigned type, capabilities, telemetry and every other field are untouched.
      */
     static final List<String> SHADOW_KEYS = List.of("catalogSource", "catalogHash", "matchedBy", "ontologyTypeId",
-        "ontologyContentHash", "catalogDisagreement");
+        "ontologyContentHash", "catalogDisagreement", "ruleEvaluation", "catalogRuleId", "catalogRuleType",
+        "ruleIndependence", "ruleWorkaround", "ruleInputSha256", "ruleInputCapturedAt", "ruleInferenceComparison",
+        "assignedTypeComparison");
 
     private void addCatalogShadow(DeviceStatus status, Map<String, Object> attrs) {
         // Owned keys are cleared first: a stored or incoming attribute map may carry a previous result, and a stale
@@ -801,6 +803,25 @@ public class DeviceRegistry {
         if (match.disagreement() != null) {
             attrs.put("catalogDisagreement", match.disagreement().name());
             catalogService.logDisagreement(status.deviceId(), status.type(), match.disagreement());
+        }
+        // S3b: the catalog's own rules on the classifier input, compared two ways and kept apart: with inferType on the
+        // identical input (inference parity) and with the persisted, deliberately sticky assigned type (drift).
+        java.util.Optional<DeviceCatalogService.RuleObservation> observed = catalogService.observation(status.deviceId());
+        if (observed.isEmpty()) {
+            attrs.put("ruleEvaluation", "NOT_EVALUATED");
+        } else if (!DeviceCatalogService.RuleObservation.EVALUATED.equals(observed.get().status())) {
+            attrs.put("ruleEvaluation", observed.get().status());
+        } else {
+            DeviceCatalogService.RuleObservation o = observed.get();
+            attrs.put("ruleEvaluation", o.status());
+            attrs.put("catalogRuleId", o.ruleId());
+            attrs.put("catalogRuleType", o.ruleType().name());
+            attrs.put("ruleIndependence", o.independent() ? "INDEPENDENT" : "NOT_INDEPENDENT");
+            if (o.workaround()) attrs.put("ruleWorkaround", true);
+            attrs.put("ruleInputSha256", o.inputSha256());
+            attrs.put("ruleInputCapturedAt", o.capturedAt().toString());
+            attrs.put("ruleInferenceComparison", o.ruleType() == o.inferredType() ? "MATCH" : "RULE_INFERENCE_DIFFERS");
+            attrs.put("assignedTypeComparison", o.ruleType() == status.type() ? "MATCH" : "ASSIGNED_TYPE_DIFFERS");
         }
     }
 

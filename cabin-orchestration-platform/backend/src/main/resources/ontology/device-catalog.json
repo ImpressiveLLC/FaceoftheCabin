@@ -1,6 +1,6 @@
 {
  "allowed_changes": [],
- "catalog_hash": "cd3f3190405ae084a1f63fd891a2ba23757bf1106e863c47d44f34cbc533c216",
+ "catalog_hash": "c0a4dbae105a96c5b768871ad3b7e050c4e83b7c22ded6b6800f90fe074cdf41",
  "entries": [
   {
    "category": "CLIMATE",
@@ -31,7 +31,7 @@
    ],
    "stamp": {
     "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-    "seed_hash": "ffa240cc8cb837f04cb569fe36db7b3c55525f6abf7495311dbf520bd2fe5fd1",
+    "seed_hash": "59eb504afa6ffda3c32bb065cc5ef25399c7cd796e4ed2321322066d22b4d6ae",
     "source_hash": "ae4df9b837162dacceb99b4eefb0ecb2ff8b3ebc762271abfa412f7567a3995b"
    },
    "status": "enum",
@@ -64,7 +64,7 @@
    "reported_fields": [],
    "stamp": {
     "ontology_content_hash": "b750ef0a8efd1d10a732b721d1c101b8f909b12d6b88a618b1f6a2e9aa04f920",
-    "seed_hash": "60079a16af02e42e93faf833d20075d267d670fa48d00a4d3d7d8e6c492a5cd9",
+    "seed_hash": "89d0ca5a76865017c62c5be23a49d5e45e92c93769be2be3bad8e536b7420eb0",
     "source_hash": "98f5e798e7b2f10b2b775f97877aa5773aa46b1423fc9fcb0dd964fa1c970179"
    },
    "status": "enum",
@@ -103,7 +103,7 @@
    ],
    "stamp": {
     "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-    "seed_hash": "505de6e78187a4ac0385787bd0082bd3baa216c99c2b407896d18fcaf2b639ba",
+    "seed_hash": "f4080cb475e49063d44dff003a975528048e594f541844eead4bd401c3b9f790",
     "source_hash": "1956397cf6178f15bb6c626a8bfe69950a5e031e51e3f26b9d17e16abd5d75d1"
    },
    "status": "enum",
@@ -139,7 +139,7 @@
    "reported_fields": [],
    "stamp": {
     "ontology_content_hash": "96f610cc23d12a0ed8b382f94e8c2b34aef58b2ca47abbae616c3ed15967a958",
-    "seed_hash": "f65d86c4256944f7a33616334da34e52a70ddf7f319cb4256ab9c33fcf520d53",
+    "seed_hash": "9813490d1fa0482a882a91a6446920f96b857660f9492bb67f0206047d0b26a9",
     "source_hash": "a29bf237ce1c200ae8457d451b4770f8b196499aaaa9500c908c06bf6de54c43"
    },
    "status": "enum",
@@ -176,7 +176,7 @@
    "reported_fields": [],
    "stamp": {
     "ontology_content_hash": "cdfc5c2fea112f695c8694b3119192598f044aa1e51d25c100a7ce1a97efedba",
-    "seed_hash": "f976a455dd66a9d23366c9f554f241acc9505b781ef4d8c2c9b62b2dfe528712",
+    "seed_hash": "a6018827d62fb49e17c79734bdc7868a1b71afb0569c462fe3d2e95b688687af",
     "source_hash": "29aad1412e10ff1553bb00af776f855d6cb6ad29d23ce0540e30a03be2391f7f"
    },
    "status": "enum",
@@ -215,7 +215,7 @@
    ],
    "stamp": {
     "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-    "seed_hash": "3f45e99904dfa228abc85dc187e0615f848ae98a1a1c1ed26e3c1618844e280f",
+    "seed_hash": "188e403975d46ed3afe532870dc6373aa4e502aff691e23f541eb800bd1ed491",
     "source_hash": "e667e1071605464ef22b3b26f5b768667bbf47a8d569664d95c04beeadcbd1f7"
    },
    "status": "enum",
@@ -369,7 +369,7 @@
    "reported_fields": [],
    "stamp": {
     "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-    "seed_hash": "e7529096731fda14344037e7cb560f97a22a31a10f76aa38acee35745df5a4f7",
+    "seed_hash": "c379c0a75cda8376de98d5692dffc475b995fac6f21faf55db121f99081feeb2",
     "source_hash": "2954ecd4a8169c5630796b22f64586fcacb0de395fe4e6b5a2ede92120826897"
    },
    "status": "enum",
@@ -406,7 +406,7 @@
    ],
    "stamp": {
     "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-    "seed_hash": "638629652aafbe749b0ffa3c5b5e16f9383d18ef26d2db8dc1e19227cb1ad0a0",
+    "seed_hash": "a573783a93d672b6f3fccb727b68a81fa9a15bff2abccb7669e0a56cce2fba28",
     "source_hash": "4980b7a4128182a2e20c61ef71e68ad4faf06beda0e2ec63ee557d65b8897015"
    },
    "status": "enum",
@@ -443,7 +443,7 @@
    "reported_fields": [],
    "stamp": {
     "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-    "seed_hash": "7fb8ee4dec6acd19c2fa0aad6a1d949e0fa2e3ea5221a587e80d739eaf48b78b",
+    "seed_hash": "938f6951d3050c48e2545dabe108bc46f209015e316045e6617e862611f5bece",
     "source_hash": "56ae1dc7dd6537e48bd91b675c5933851160ab1f78995776005b91d431c19520"
    },
    "status": "enum",
@@ -481,7 +481,7 @@
    "reported_fields": [],
    "stamp": {
     "ontology_content_hash": "84cb31af8fe409bd972f9841652ffc28d6f54297f1371139d5075641f8a38248",
-    "seed_hash": "f96ba5bc24cfe9e5726661e44da8759ad366dd3f2d4c9f32c4d106156ac6e1ea",
+    "seed_hash": "7911b767bbaa6465e2808deae5b5056980dadde9e5eaf3f055b9664cd30aed1c",
     "source_hash": "d8ff55aeec46d2337e2da18307c8860042a3aaca7a181ef37ace4f9647ab70dd"
    },
    "status": "enum",
@@ -525,7 +525,7 @@
    ],
    "stamp": {
     "ontology_content_hash": "4f609096275ec096bde508648b2a5a6f1087a9c82b8ffda57d376e461ce68bdc",
-    "seed_hash": "1cf66bddd6d179ab36684c795f450142acba401d47e35fa9607de7ceaa2a7831",
+    "seed_hash": "0d27eee0e607e662108ebb1b8b83d6be7a766049b90cecb8ab1ec961f0d9a4c2",
     "source_hash": "7f7ea9a37c29a471f4d5cf421931f24041d524edcebe5f82534f394b3fcdeaf5"
    },
    "status": "enum",
@@ -617,7 +617,7 @@
    "reported_fields": [],
    "stamp": {
     "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-    "seed_hash": "bc53101cb755c76873413fb67f5c6ef212a8b528ef3aadb0982c8d39a3ea4e48",
+    "seed_hash": "1cacb657ed57d0f7a5b2d8187df64b9d92b299506546785f00fe387bd03dec7d",
     "source_hash": "3734241c384fbd5bd30e13ef1bada27fee6a7bd4ee5de3d3c687b7cde7ca5c91"
    },
    "status": "enum",
@@ -658,7 +658,7 @@
    ],
    "stamp": {
     "ontology_content_hash": "aad870bc20e10591e122c3fabca29093e3967490d0aaed9aa5e69a547d3344ce",
-    "seed_hash": "b8a4fd8989f4d984015867e59afa3591126d441acfcdab23cf10be5a509c2455",
+    "seed_hash": "bcd2da75bd650dcedefeb2bc51e0bc7d571ff4d2540b67f37b456b3fadf8aee0",
     "source_hash": "d91167057786db82b0ac081ca266d828633a7be40b80bdef5abd402afcbb06a2"
    },
    "status": "enum",
@@ -696,7 +696,7 @@
    "reported_fields": [],
    "stamp": {
     "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-    "seed_hash": "9c187e0c40abacc522515edb11edd653bf4fc64a30a1d39fef96b3a26255f3fa",
+    "seed_hash": "585c88dcfde25e7b33177400b0e65aa3c1d34b135e39859d28eea60082a285d0",
     "source_hash": "b7fd806c42cbda9e5fc40baeba3ea2ffd89fb27ba7c86cde41be36055ab851a2"
    },
    "status": "enum",
@@ -790,7 +790,7 @@
    "reported_fields": [],
    "stamp": {
     "ontology_content_hash": "c86a4b89fe9e57072f3ced23c22d336bde11717fc499f3815394caf5ca9347db",
-    "seed_hash": "71aa8e3a5b73dd9d97952ce910d6a1d868d34549482f71137a76bcd4ef01d6fa",
+    "seed_hash": "06c2b84d899aa726ec35e5604a6d18717dd1f9dbe4ccaea2cd52fdbdee0bd68a",
     "source_hash": "40e4c2fd46a56985ce4e26ccf17d92b28923acbad99873c5880bbb299ab76b6f"
    },
    "status": "enum",
@@ -826,7 +826,7 @@
    "reported_fields": [],
    "stamp": {
     "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-    "seed_hash": "7a591a42f067f6f75bbc9e241e6c073a295086884c522ff4b640422dbc85c0e6",
+    "seed_hash": "6cb76c638502a8cfb1a5dc99b85aaabb695efc4e09e646d6ae732ac592bd2aee",
     "source_hash": "533a4f240ecbec9a13bc4c408b2fa7005306dde65f36a90c42ffb66937470ecd"
    },
    "status": "enum",
@@ -859,7 +859,7 @@
    "reported_fields": [],
    "stamp": {
     "ontology_content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-    "seed_hash": "7f02cf7cacf82cb8bd84129b07705b6293cc9ad3f3d4b33d0b5f88c7afec5931",
+    "seed_hash": "198858ca6fe9da846b20328e0c8e74f30a847dd65b347330ec76473bf3a284a3",
     "source_hash": "fbb62674c9a5e95bde828c2f2e217110df28aba013dce52694abe4e33b73c2e9"
    },
    "status": "enum",
@@ -871,7 +871,7 @@
   "generator_version": 1,
   "ontology_sha256": "0c756273ea0fcf4c5991d744c86ca0c3511c6d292d2c37ca45ebef3f3130b1e6",
   "ontology_version_label": "0.6.0",
-  "seed_sha256": "3263cabd79f5ff99022b117611c5801063340f8b2c44a6cfd1479ed8125d2a60"
+  "seed_sha256": "729bf19d11d6358ce1be06498a1e9a946276fa3d526dbc65f53bcd7c389c0104"
  },
  "match_rules": [
   {
@@ -883,7 +883,13 @@
    },
    "returns": "LOCK",
    "site": "home_assistant",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "equals": {
+     "field": "domain",
+     "value": "lock"
+    }
+   }
   },
   {
    "describes": "HA domain is climate",
@@ -894,7 +900,13 @@
    },
    "returns": "THERMOSTAT",
    "site": "home_assistant",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "equals": {
+     "field": "domain",
+     "value": "climate"
+    }
+   }
   },
   {
    "describes": "HA domain is camera",
@@ -905,7 +917,13 @@
    },
    "returns": "CAMERA",
    "site": "home_assistant",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "equals": {
+     "field": "domain",
+     "value": "camera"
+    }
+   }
   },
   {
    "describes": "device_class contains smoke",
@@ -918,7 +936,13 @@
    },
    "returns": "SMOKE_ALARM",
    "site": "home_assistant",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "contains": {
+     "field": "device_class",
+     "value": "smoke"
+    }
+   }
   },
   {
    "describes": "device_class contains carbon_monoxide or equals co (the binary alarm class)",
@@ -931,7 +955,23 @@
    },
    "returns": "CO_ALARM",
    "site": "home_assistant",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "any": [
+     {
+      "contains": {
+       "field": "device_class",
+       "value": "carbon_monoxide"
+      }
+     },
+     {
+      "equals": {
+       "field": "device_class",
+       "value": "co"
+      }
+     }
+    ]
+   }
   },
   {
    "describes": "device_class contains moisture",
@@ -944,7 +984,13 @@
    },
    "returns": "WATER_LEAK_SENSOR",
    "site": "home_assistant",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "contains": {
+     "field": "device_class",
+     "value": "moisture"
+    }
+   }
   },
   {
    "describes": "device_class contains motion or occupancy",
@@ -957,7 +1003,23 @@
    },
    "returns": "MOTION_SENSOR",
    "site": "home_assistant",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "any": [
+     {
+      "contains": {
+       "field": "device_class",
+       "value": "motion"
+      }
+     },
+     {
+      "contains": {
+       "field": "device_class",
+       "value": "occupancy"
+      }
+     }
+    ]
+   }
   },
   {
    "describes": "device_class contains door or opening",
@@ -970,7 +1032,23 @@
    },
    "returns": "CONTACT_SENSOR",
    "site": "home_assistant",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "any": [
+     {
+      "contains": {
+       "field": "device_class",
+       "value": "door"
+      }
+     },
+     {
+      "contains": {
+       "field": "device_class",
+       "value": "opening"
+      }
+     }
+    ]
+   }
   },
   {
    "describes": "device_class contains temperature",
@@ -983,7 +1061,13 @@
    },
    "returns": "TEMPERATURE_SENSOR",
    "site": "home_assistant",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "contains": {
+     "field": "device_class",
+     "value": "temperature"
+    }
+   }
   },
   {
    "describes": "device_class contains humidity",
@@ -996,7 +1080,13 @@
    },
    "returns": "HUMIDITY_SENSOR",
    "site": "home_assistant",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "contains": {
+     "field": "device_class",
+     "value": "humidity"
+    }
+   }
   },
   {
    "describes": "sensor domain and device_class is power, energy, voltage or current",
@@ -1009,7 +1099,45 @@
    },
    "returns": "POWER_METER",
    "site": "home_assistant",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "all": [
+     {
+      "equals": {
+       "field": "domain",
+       "value": "sensor"
+      }
+     },
+     {
+      "any": [
+       {
+        "equals": {
+         "field": "device_class",
+         "value": "power"
+        }
+       },
+       {
+        "equals": {
+         "field": "device_class",
+         "value": "energy"
+        }
+       },
+       {
+        "equals": {
+         "field": "device_class",
+         "value": "voltage"
+        }
+       },
+       {
+        "equals": {
+         "field": "device_class",
+         "value": "current"
+        }
+       }
+      ]
+     }
+    ]
+   }
   },
   {
    "describes": "device_class contains carbon_dioxide",
@@ -1022,7 +1150,13 @@
    },
    "returns": "CO2_SENSOR",
    "site": "home_assistant",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "contains": {
+     "field": "device_class",
+     "value": "carbon_dioxide"
+    }
+   }
   },
   {
    "describes": "device_class contains volatile_organic_compounds or equals aqi",
@@ -1035,7 +1169,23 @@
    },
    "returns": "AIR_QUALITY_SENSOR",
    "site": "home_assistant",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "any": [
+     {
+      "contains": {
+       "field": "device_class",
+       "value": "volatile_organic_compounds"
+      }
+     },
+     {
+      "equals": {
+       "field": "device_class",
+       "value": "aqi"
+      }
+     }
+    ]
+   }
   },
   {
    "describes": "sensor domain with no matched class and unit ppm (vendor workaround: Kidde sets no device_class)",
@@ -1048,7 +1198,23 @@
    },
    "returns": "CO_SENSOR",
    "site": "home_assistant",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "all": [
+     {
+      "equals": {
+       "field": "domain",
+       "value": "sensor"
+      }
+     },
+     {
+      "equals": {
+       "field": "unit_of_measurement",
+       "value": "ppm"
+      }
+     }
+    ]
+   }
   },
   {
    "describes": "sensor domain, no class, no unit, friendly name contains co level or co-level (vendor workaround, Bug #3)",
@@ -1061,7 +1227,37 @@
    },
    "returns": "CO_SENSOR",
    "site": "home_assistant",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "all": [
+     {
+      "equals": {
+       "field": "domain",
+       "value": "sensor"
+      }
+     },
+     {
+      "any": [
+       {
+        "contains": {
+         "field": "friendly_name",
+         "value": "co level"
+        }
+       },
+       {
+        "contains": {
+         "field": "friendly_name",
+         "value": "co-level"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "workaround": {
+    "provenance": "Bug #3, 2026-09-03: Kidde's CO-level entity has no device_class and no unit",
+    "retirement_gate": "a separately reviewed, evidence-based migration that keeps the existing CO reading (S3b design section 3)"
+   }
   },
   {
    "describes": "nothing matched: generic entity, no tile and no chart",
@@ -1072,7 +1268,10 @@
    },
    "returns": "HOME_ASSISTANT_ENTITY",
    "site": "home_assistant",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "always": true
+   }
   },
   {
    "describes": "model contains snzb-05 or description contains water leak",
@@ -1087,7 +1286,23 @@
    },
    "returns": "WATER_LEAK_SENSOR",
    "site": "zigbee2mqtt",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "any": [
+     {
+      "contains": {
+       "field": "model",
+       "value": "snzb-05"
+      }
+     },
+     {
+      "contains": {
+       "field": "description",
+       "value": "water leak"
+      }
+     }
+    ]
+   }
   },
   {
    "describes": "model contains snzb-03 or description contains motion",
@@ -1102,7 +1317,23 @@
    },
    "returns": "MOTION_SENSOR",
    "site": "zigbee2mqtt",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "any": [
+     {
+      "contains": {
+       "field": "model",
+       "value": "snzb-03"
+      }
+     },
+     {
+      "contains": {
+       "field": "description",
+       "value": "motion"
+      }
+     }
+    ]
+   }
   },
   {
    "describes": "model contains snzb-04 or description contains contact",
@@ -1117,7 +1348,23 @@
    },
    "returns": "CONTACT_SENSOR",
    "site": "zigbee2mqtt",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "any": [
+     {
+      "contains": {
+       "field": "model",
+       "value": "snzb-04"
+      }
+     },
+     {
+      "contains": {
+       "field": "description",
+       "value": "contact"
+      }
+     }
+    ]
+   }
   },
   {
    "describes": "model contains snzb-02 or description contains temperature",
@@ -1132,7 +1379,23 @@
    },
    "returns": "TEMPERATURE_SENSOR",
    "site": "zigbee2mqtt",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "any": [
+     {
+      "contains": {
+       "field": "model",
+       "value": "snzb-02"
+      }
+     },
+     {
+      "contains": {
+       "field": "description",
+       "value": "temperature"
+      }
+     }
+    ]
+   }
   },
   {
    "describes": "description, model or name says valve and the device exposes a writable relay state",
@@ -1155,7 +1418,36 @@
    },
    "returns": "WATER_VALVE",
    "site": "zigbee2mqtt",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "all": [
+     {
+      "any": [
+       {
+        "contains": {
+         "field": "description",
+         "value": "valve"
+        }
+       },
+       {
+        "contains": {
+         "field": "model",
+         "value": "valve"
+        }
+       },
+       {
+        "contains": {
+         "field": "friendly_name",
+         "value": "valve"
+        }
+       }
+      ]
+     },
+     {
+      "exposes_relay": true
+     }
+    ]
+   }
   },
   {
    "describes": "a relay that is not a valve, leak or smoke sensor, or a power-monitoring switch, plug, outlet or relay",
@@ -1178,7 +1470,87 @@
    },
    "returns": "POWER_METER",
    "site": "zigbee2mqtt",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "any": [
+     {
+      "all": [
+       {
+        "not": {
+         "any": [
+          {
+           "contains": {
+            "field": "description",
+            "value": "valve"
+           }
+          },
+          {
+           "contains": {
+            "field": "model",
+            "value": "valve"
+           }
+          },
+          {
+           "contains": {
+            "field": "friendly_name",
+            "value": "valve"
+           }
+          }
+         ]
+        }
+       },
+       {
+        "not": {
+         "exposes_property": "water_leak"
+        }
+       },
+       {
+        "not": {
+         "exposes_property": "smoke"
+        }
+       },
+       {
+        "exposes_relay": true
+       }
+      ]
+     },
+     {
+      "all": [
+       {
+        "capability": "POWER_MONITOR"
+       },
+       {
+        "any": [
+         {
+          "contains": {
+           "field": "description",
+           "value": "switch"
+          }
+         },
+         {
+          "contains": {
+           "field": "description",
+           "value": "plug"
+          }
+         },
+         {
+          "contains": {
+           "field": "description",
+           "value": "outlet"
+          }
+         },
+         {
+          "contains": {
+           "field": "description",
+           "value": "relay"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
   },
   {
    "describes": "model contains zbminir or description contains switch, with no relay exposed",
@@ -1194,7 +1566,23 @@
    },
    "returns": "HOME_ASSISTANT_ENTITY",
    "site": "zigbee2mqtt",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "any": [
+     {
+      "contains": {
+       "field": "model",
+       "value": "zbminir"
+      }
+     },
+     {
+      "contains": {
+       "field": "description",
+       "value": "switch"
+      }
+     }
+    ]
+   }
   },
   {
    "describes": "description contains smoke or co alarm",
@@ -1209,7 +1597,23 @@
    },
    "returns": "SMOKE_ALARM",
    "site": "zigbee2mqtt",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "any": [
+     {
+      "contains": {
+       "field": "description",
+       "value": "smoke"
+      }
+     },
+     {
+      "contains": {
+       "field": "description",
+       "value": "co alarm"
+      }
+     }
+    ]
+   }
   },
   {
    "describes": "description contains smart plug or outlet",
@@ -1224,7 +1628,23 @@
    },
    "returns": "POWER_METER",
    "site": "zigbee2mqtt",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "any": [
+     {
+      "contains": {
+       "field": "description",
+       "value": "smart plug"
+      }
+     },
+     {
+      "contains": {
+       "field": "description",
+       "value": "outlet"
+      }
+     }
+    ]
+   }
   },
   {
    "describes": "capability CLIMATE",
@@ -1241,7 +1661,10 @@
    },
    "returns": "THERMOSTAT",
    "site": "zigbee2mqtt",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "capability": "CLIMATE"
+   }
   },
   {
    "describes": "capability ACCESS_CONTROL",
@@ -1258,7 +1681,10 @@
    },
    "returns": "LOCK",
    "site": "zigbee2mqtt",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "capability": "ACCESS_CONTROL"
+   }
   },
   {
    "describes": "capability ALARM with no description rule matched",
@@ -1275,7 +1701,10 @@
    },
    "returns": "WATER_LEAK_SENSOR",
    "site": "zigbee2mqtt",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "capability": "ALARM"
+   }
   },
   {
    "describes": "no description rule matched and the device exposes occupancy",
@@ -1295,7 +1724,10 @@
    },
    "returns": "MOTION_SENSOR",
    "site": "zigbee2mqtt",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "exposes_property": "occupancy"
+   }
   },
   {
    "describes": "no description rule matched and the device exposes contact",
@@ -1315,7 +1747,10 @@
    },
    "returns": "CONTACT_SENSOR",
    "site": "zigbee2mqtt",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "exposes_property": "contact"
+   }
   },
   {
    "describes": "no description rule matched and the device exposes temperature",
@@ -1335,7 +1770,10 @@
    },
    "returns": "TEMPERATURE_SENSOR",
    "site": "zigbee2mqtt",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "exposes_property": "temperature"
+   }
   },
   {
    "describes": "no description rule matched and the device exposes humidity",
@@ -1355,7 +1793,10 @@
    },
    "returns": "HUMIDITY_SENSOR",
    "site": "zigbee2mqtt",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "exposes_property": "humidity"
+   }
   },
   {
    "describes": "nothing matched: left generic and a warning is logged",
@@ -1371,7 +1812,10 @@
    },
    "returns": "HOME_ASSISTANT_ENTITY",
    "site": "zigbee2mqtt",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "always": true
+   }
   },
   {
    "describes": "payload has psi",
@@ -1383,7 +1827,10 @@
    },
    "returns": "WATER_PRESSURE_SENSOR",
    "site": "mqtt_bridge",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "present": "psi"
+   }
   },
   {
    "describes": "payload has temp_f",
@@ -1395,7 +1842,10 @@
    },
    "returns": "TEMPERATURE_SENSOR",
    "site": "mqtt_bridge",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "present": "temp_f"
+   }
   },
   {
    "describes": "payload has alarm",
@@ -1407,7 +1857,10 @@
    },
    "returns": "SMOKE_ALARM",
    "site": "mqtt_bridge",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "present": "alarm"
+   }
   },
   {
    "describes": "payload has locked",
@@ -1419,7 +1872,10 @@
    },
    "returns": "LOCK",
    "site": "mqtt_bridge",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "present": "locked"
+   }
   },
   {
    "describes": "payload has motion",
@@ -1431,7 +1887,10 @@
    },
    "returns": "MOTION_SENSOR",
    "site": "mqtt_bridge",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "present": "motion"
+   }
   },
   {
    "describes": "nothing matched",
@@ -1441,7 +1900,10 @@
    },
    "returns": "HOME_ASSISTANT_ENTITY",
    "site": "mqtt_bridge",
-   "source": "inferType"
+   "source": "inferType",
+   "when": {
+    "always": true
+   }
   }
  ],
  "safety_types": [

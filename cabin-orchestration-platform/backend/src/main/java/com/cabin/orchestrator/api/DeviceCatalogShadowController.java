@@ -37,9 +37,29 @@ public class DeviceCatalogShadowController {
     public Map<String, Object> report() {
         Map<String, Integer> byEntry = new TreeMap<>();
         Map<String, List<String>> disagreements = new TreeMap<>();
+        Map<String, Integer> ruleCounts = new TreeMap<>(Map.of("evaluated", 0, "notEvaluated", 0, "unavailable", 0,
+            "independent", 0, "delegated", 0, "workaroundMatches", 0));
+        Map<String, List<String>> ruleDisagreements = new TreeMap<>();
         int devices = 0;
         for (DeviceStatus status : registry.all()) {
             devices++;
+            var observed = catalog.observation(status.deviceId());
+            if (observed.isEmpty()) {
+                ruleCounts.merge("notEvaluated", 1, Integer::sum);
+            } else if (!DeviceCatalogService.RuleObservation.EVALUATED.equals(observed.get().status())) {
+                ruleCounts.merge("unavailable", 1, Integer::sum);
+            } else {
+                var o = observed.get();
+                ruleCounts.merge("evaluated", 1, Integer::sum);
+                ruleCounts.merge(o.independent() ? "independent" : "delegated", 1, Integer::sum);
+                if (o.workaround()) ruleCounts.merge("workaroundMatches", 1, Integer::sum);
+                if (o.ruleType() != o.inferredType()) {
+                    ruleDisagreements.computeIfAbsent("RULE_INFERENCE_DIFFERS", k -> new ArrayList<>()).add(status.deviceId());
+                }
+                if (o.ruleType() != status.type()) {
+                    ruleDisagreements.computeIfAbsent("ASSIGNED_TYPE_DIFFERS", k -> new ArrayList<>()).add(status.deviceId());
+                }
+            }
             DeviceCatalogService.ShadowMatch match = catalog.shadow(status.type());
             if (match.disagreement() != null) {
                 disagreements.computeIfAbsent(match.disagreement().name(), k -> new ArrayList<>()).add(status.deviceId());
@@ -48,6 +68,7 @@ public class DeviceCatalogShadowController {
             }
         }
         disagreements.values().forEach(ids -> ids.sort(null));
+        ruleDisagreements.values().forEach(ids -> ids.sort(null));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("catalogSource", catalog.source());
         out.put("catalogHash", catalog.catalogHash().orElse(null));
@@ -57,8 +78,19 @@ public class DeviceCatalogShadowController {
         out.put("matched", devices - disagreements.values().stream().mapToInt(List::size).sum());
         out.put("matchedByEntry", byEntry);
         out.put("disagreements", disagreements);
-        out.put("scope", "Shadow read only: no assigned type, capability or telemetry changes. The catalog entry is found "
-            + "from the type inferType assigned; the catalog's match rules are not evaluated independently in this slice.");
+        Map<String, Object> rules = new LinkedHashMap<>();
+        rules.put("evaluator", catalog.evaluatorProblem() == null ? "available" : "unavailable: " + catalog.evaluatorProblem());
+        rules.put("counts", ruleCounts);
+        rules.put("ruleInferenceDiffers", ruleDisagreements.getOrDefault("RULE_INFERENCE_DIFFERS", List.of()).size());
+        rules.put("assignedTypeDiffers", ruleDisagreements.getOrDefault("ASSIGNED_TYPE_DIFFERS", List.of()).size());
+        rules.put("disagreements", ruleDisagreements);
+        rules.put("scope", "S3b rule shadow: the catalog's match rules evaluated on each device's last classifier input, "
+            + "compared with inferType on that identical input (inference parity) and, separately, with the persisted "
+            + "assigned type (drift, an observation only). A device whose source has not re-announced since startup is "
+            + "NOT_EVALUATED. This runtime observation does not close parity check 7 (W-170).");
+        out.put("ruleShadow", rules);
+        out.put("scope", "Shadow read only: no assigned type, capability or telemetry changes. matchedBy is the assigned "
+            + "type; ruleShadow is the independent evaluation of the catalog's own rules.");
         return out;
     }
 }

@@ -42,14 +42,19 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "site", "returns", "describes", "source", "input"],
+        "required": ["id", "site", "returns", "describes", "source", "input", "when"],
         "properties": {
           "id": {"type": "string", "pattern": "^[a-z]{2}-[0-9]{2}-[a-z0-9-]+$"},
           "site": {"enum": ["home_assistant", "zigbee2mqtt", "mqtt_bridge"]},
           "returns": {"$ref": "#/$defs/typeName"},
           "describes": {"type": "string", "minLength": 1},
           "source": {"const": "inferType"},
-          "input": {"type": "object"}
+          "input": {"type": "object"},
+          "when": {"type": "object", "minProperties": 1, "maxProperties": 1,
+                   "description": "S3b closed predicate; validated in full by CatalogRuleEvaluator and the parity test."},
+          "workaround": {"type": "object", "required": ["provenance", "retirement_gate"],
+                         "properties": {"provenance": {"type": "string", "minLength": 1},
+                                        "retirement_gate": {"type": "string", "minLength": 1}}}
         }
       }
     },
