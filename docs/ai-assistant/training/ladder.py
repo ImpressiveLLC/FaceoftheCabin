@@ -42,6 +42,43 @@ CEILING_METRICS = {
     "original": "A-original: ceiling on the larger of cgroup memory.current and process RSS (counts page cache)",
     "anon_shmem": "B-anon-shmem: ceiling on cgroup anon plus shmem (non-reclaimable). NEW labelled configuration, not a retry of A",
 }
+CONTAINER_CAPS = ("fixed", "budget")
+HOST_OVERHEAD_MARGIN_BYTES = 2 * 1024 ** 3   # VM and host overhead kept out of the container cap
+CONFIG_LABELS = {
+    ("original", "fixed"): "A: first-run gate (ceiling on memory.current or RSS, container 22g)",
+    ("anon_shmem", "fixed"): "B: ceiling on anon+shmem, container 22g (run 2 stopped by the host-floor watchdog)",
+    ("anon_shmem", "budget"): "C: B plus a container memory cap taken from the fixed budget (page cache is reclaimed inside the "
+                              "container, not left to starve Windows), a 1 s host watchdog and a per-second memory trace. NEW labelled configuration",
+    ("original", "budget"): "D: A plus the budget-derived container cap. NEW labelled configuration",
+}
+
+
+def summarize_trace(path):
+    """Peaks and last row of a rung's memory-trace.csv, so a rung killed before it could write its record still leaves
+    evidence. None if there is no trace."""
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    cols = ("current", "rss", "anon", "file", "shmem", "metric")
+    peaks = {c: None for c in cols}
+    rows, last = 0, None
+    for line in lines[1:]:
+        parts = line.split(",")
+        if len(parts) != 7:
+            continue   # header, or a partly written last line
+        rows += 1
+        last = parts[0]
+        for name, raw in zip(cols, parts[1:]):
+            try:
+                value = int(raw)
+            except ValueError:
+                continue
+            if peaks[name] is None or value > peaks[name]:
+                peaks[name] = value
+    return {"rows": rows, "last_epoch": last, **{f"{c}_peak_bytes": v for c, v in peaks.items()}} if rows else None
+
+
 FILLER = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel"]
 
 
@@ -136,7 +173,7 @@ def host_start_gate(host_available_bytes) -> list:
 
 # ---------------------------------------------------------------- parent runner
 def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, rung_timeout=RUNG_TIMEOUT_SECONDS,
-               host_available_start=None, host_available_end_of_rung=None, host_min_reader=None, host_clock_offset=0.0, ceiling_metric="original", child_command=None) -> dict:
+               host_available_start=None, host_available_end_of_rung=None, host_min_reader=None, host_clock_offset=0.0, ceiling_metric="original", container_cap="fixed", container_memory_bytes=None, child_command=None) -> dict:
     """Runs rungs in order in separate processes. `child_command(rung, rung_dir)` -> argv list (tests inject a stub).
     `host_available_end_of_rung(rung)` -> bytes or None, supplied by the operator's host reader.
     `host_min_reader(start_epoch, end_epoch)` -> the lowest Windows-available reading taken during the rung, or None if there
@@ -147,7 +184,9 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
     out_dir.mkdir(parents=True, exist_ok=True)
     summary = {"kind": "length_ladder", "model": model, "synthetic_only": True, "qualification": model == "pinned",
                "budget_bytes": budget_bytes, "ceiling_bytes": int(CEILING_FRACTION * budget_bytes), "steps": steps,
-               "configuration": {"ceiling_metric": ceiling_metric, "label": CEILING_METRICS[ceiling_metric]},
+               "configuration": {"ceiling_metric": ceiling_metric, "container_cap": container_cap,
+                                 "container_memory_bytes": container_memory_bytes,
+                                 "label": CONFIG_LABELS[(ceiling_metric, container_cap)], "metric_label": CEILING_METRICS[ceiling_metric]},
                "rungs": [], "stopped_at": None, "host_clock_offset_seconds": host_clock_offset, "host_start_gate": host_start_gate(host_available_start),
                "host_available_start": host_available_start}
     if model != "pinned":
@@ -198,7 +237,8 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
             verdict["status"] = "FAILURE"
         entry.update(status=verdict["status"], reasons=verdict["reasons"], host_available_after=host_after, host_available_min_during=host_min,
                      actual_token_lengths=record.get("actual_token_lengths"), memory_peak_bytes=record.get("memory_peak_bytes"),
-                     wall_seconds=round(record.get("wall_seconds", wall), 1))
+                     wall_seconds=round(record.get("wall_seconds", wall), 1),
+                     memory_trace=summarize_trace(rung_dir / "memory-trace.csv"))
         summary["rungs"].append(entry)
         if verdict["status"] != "PASS":
             summary["stopped_at"] = rung
@@ -246,6 +286,9 @@ def main(argv=None):
         p = sub.add_parser(name)
         p.add_argument("--budget-bytes", type=int, required=True, help="fixed pre-run usable training budget, bytes")
         p.add_argument("--rungs", default=",".join(str(r) for r in DEFAULT_RUNGS))
+        p.add_argument("--container-cap", choices=CONTAINER_CAPS, default="fixed",
+                       help="how the container memory limit was set (informational: the launcher sets it); budget = from the fixed budget")
+        p.add_argument("--container-memory-bytes", type=int, default=None, help="the container memory limit actually used, bytes")
         p.add_argument("--ceiling-metric", choices=sorted(CEILING_METRICS), default="original",
                        help="what the 90 percent ceiling is measured on; anon_shmem is a new labelled configuration")
     run = sub.choices["run"]
@@ -281,6 +324,7 @@ def main(argv=None):
         host_available_end_of_rung=host_reader,
         host_min_reader=(lambda a, b: read_host_min(args.host_csv, a, b)) if args.host_csv else None,
         host_clock_offset=clock_offset(args.host_epoch_at_start), ceiling_metric=args.ceiling_metric,
+        container_cap=args.container_cap, container_memory_bytes=args.container_memory_bytes,
         child_command=lambda rung, d: default_child_command(rung, d, args.model, args.steps, args.budget_bytes, args.ceiling_metric))
     print(json.dumps({k: summary[k] for k in ("model", "qualification", "configuration", "stopped_at", "complete")}, indent=2))
     return 0 if summary["complete"] else 1
