@@ -89,7 +89,7 @@ function Test-DistroRunning {
 
 function Get-DockerArgv([string]$Name, [string]$OutDir, [int64]$Budget, [int64]$AvailableAtStart) {
     return @(
-        'run', '--rm', '--name', $Name,
+        'run', '--rm', '--pull=never', '--name', $Name,
         '--memory=22g', '--memory-swap=22g', '--network', 'none',
         '-e', 'HF_HUB_OFFLINE=1', '-e', 'HF_HOME=/root/.cache/huggingface', '-e', 'PYTHONDONTWRITEBYTECODE=1',
         '-v', "${ModelVolume}:/root/.cache/huggingface",
@@ -252,7 +252,7 @@ try {
     Invoke-Docker image inspect $Image *> $null
     if ($LASTEXITCODE -ne 0) { Refuse @("image $Image is not present in $Distro; building it is a separate step") }
     $snapshot = "/c/hub/$ModelCacheDir/snapshots/$ModelRevision"
-    Invoke-Docker run --rm --network none -v "${ModelVolume}:/c:ro" alpine test -d $snapshot
+    Invoke-Docker run --rm --pull=never --network none -v "${ModelVolume}:/c:ro" alpine test -d $snapshot
     if ($LASTEXITCODE -ne 0) { Refuse @("pinned model revision is not in volume $ModelVolume; fetching it is a download that needs Nate's yes") }
 
     $budget = Get-Budget $avail2
