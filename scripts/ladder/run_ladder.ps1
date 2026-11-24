@@ -33,6 +33,7 @@ param(
     [string]$ModelVolume = 'training_model-cache',
     [string]$RepoDir = '',
     [string]$RunId = '',
+    [string]$DesktopDir = '',
     [int64]$FakeAvailableBytes = 0
 )
 
@@ -206,7 +207,7 @@ $reasons = @(Get-GateReasons $avail1)
 if ($reasons.Count -gt 0) { Refuse $reasons }
 
 Add-Type -Namespace Native -Name Power -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
-[void][Native.Power]::SetThreadExecutionState(0x80000001)   # ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+[void][Native.Power]::SetThreadExecutionState([uint32]2147483649)   # ES_CONTINUOUS | ES_SYSTEM_REQUIRED
 $job = $null
 $name = "ladder-$id"
 try {
@@ -264,7 +265,7 @@ finally {
     if ($job) { Wait-Job $job -Timeout 15 | Out-Null; Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue }
     $left = @(& docker ps -q --filter "name=$name" 2>$null)
     foreach ($c in $left) { & docker kill $c | Out-Null }
-    [void][Native.Power]::SetThreadExecutionState(0x80000000)
+    [void][Native.Power]::SetThreadExecutionState([uint32]2147483648)
 }
 
 $summaryPath = Join-Path $out 'ladder\summary.json'
@@ -279,7 +280,7 @@ Write-Manifest
 Log 'done; reopen Claude Code and read the records'
 $result = (Get-ChildItem $out -File | Where-Object { $_.Name -in 'DONE', 'STOPPED', 'NOT_RUN' } | Select-Object -First 1).Name
 $note = "LADDER FINISHED: $result`r`nRecords: $out`r`nNext: run  powershell -File scripts/ladder/run_ladder.ps1 -Cleanup  to return the machine to normal, then reopen Claude Code and tell it the ladder finished."
-$desktop = [Environment]::GetFolderPath('Desktop')
+$desktop = if ($DesktopDir) { $DesktopDir } else { [Environment]::GetFolderPath('Desktop') }
 if ($desktop -and (Test-Path $desktop)) { Set-Content (Join-Path $desktop 'LADDER-FINISHED.txt') $note }
 Write-Host ''
 Write-Host '==================================================' -ForegroundColor Green
