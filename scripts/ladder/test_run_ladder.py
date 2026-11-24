@@ -2,6 +2,7 @@
 writes), so these run anywhere pwsh is installed (the GitHub ubuntu runner has it) and are SKIPPED, not passed, otherwise.
 The real -Run and -Preflight paths are NOT covered here: they need Docker Desktop and the host, and have not run."""
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -55,12 +56,35 @@ class DryRunTests(unittest.TestCase):
                 self.assertTrue(p["gate_reasons"])
                 self.assertEqual(p["docker_argv"], [])
 
-    def test_boundary_is_exactly_stage2_peak_plus_floor(self):
-        need = round(14.21 * GIB) + 4 * GIB
+    def test_boundary_holds_the_stage2_peak_inside_the_90_percent_ceiling(self):
+        # budget = available - 4 GiB; ceiling = 0.9 * budget must be at least the 14.21 GiB Stage 2 peak
+        need = math.ceil(round(14.21 * GIB) / 0.9) + 4 * GIB
+        _, at_need = plan(need / GIB)
+        self.assertGreaterEqual(at_need["ceiling_bytes"], round(14.21 * GIB) - 2)
         ok = run("-Run", "-DryRun", "-FakeAvailableBytes", str(need), "-RunId", "t1")
         low = run("-Run", "-DryRun", "-FakeAvailableBytes", str(need - 1), "-RunId", "t1")
         self.assertEqual(ok.returncode, 0)
         self.assertEqual(low.returncode, 3)
+
+    def test_gate_arithmetic_at_the_boundary(self):
+        need = math.ceil(round(14.21 * GIB) / 0.9) + 4 * GIB
+        ok = run("-Run", "-DryRun", "-FakeAvailableBytes", str(need), "-RunId", "t1")
+        low = run("-Run", "-DryRun", "-FakeAvailableBytes", str(need - 1), "-RunId", "t1")
+        self.assertEqual(ok.returncode, 0)
+        self.assertEqual(low.returncode, 3)
+        # the earlier gate (14.21 + 4 = 18.25 GiB) was too low: it let a run start whose ceiling is under the peak
+        old_need = round(14.21 * GIB) + 4 * GIB
+        self.assertEqual(run("-Run", "-DryRun", "-FakeAvailableBytes", str(old_need), "-RunId", "t1").returncode, 3)
+
+    def test_docker_runs_inside_the_wsl_distro_image_and_volume(self):
+        _, p = plan(22)
+        argv = p["docker_argv"]
+        self.assertIn("fotc-dev-sft-r1:stage2", argv)
+        mounts = [argv[i + 1] for i, a in enumerate(argv) if a == "-v"]
+        self.assertIn("fotc-hf-cache:/root/.cache/huggingface", mounts)
+        text = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("function Invoke-Docker { & wsl -d $Distro --exec docker @args }", text)
+        self.assertNotIn("& docker ", text)  # never the Windows docker (Docker Desktop)
 
     def test_six_gib_start_minimum_is_named_when_below_it(self):
         _, p = plan(5)
@@ -116,9 +140,14 @@ class RunFlowWithStubsTests(unittest.TestCase):
     """Runs the real -Run flow with stub docker and wsl on PATH and the gate thresholds patched down, so the keep-awake
     call, sampler job, markers, manifest and banner execute for real. Docker and WSL are NOT touched."""
 
-    DOCKER_STUB = (
-        "if ($args[0] -eq 'run' -and ($args -contains '--name')) {\n"
-        "  for ($k = 0; $k -lt $args.Count; $k++) { if ($args[$k] -eq '-v' -and $args[$k+1] -match '^(.*):/out$') { $out = $Matches[1] } }\n"
+    # One stub stands in for wsl.exe: answers `wsl -l -v`, ignores `--shutdown`, and plays the part of `wsl -d X --exec docker ...`.
+    WSL_STUB = (
+        "if ($args -contains '-l') { 'Ubuntu-24.04 Running'; exit 0 }\n"
+        "if ($args -contains '--shutdown') { exit 0 }\n"
+        "$i = [array]::IndexOf($args, 'docker')\n"
+        "$d = if ($i -ge 0 -and $i + 1 -lt $args.Count) { @($args[($i + 1)..($args.Count - 1)]) } else { @() }\n"
+        "if ($d.Count -gt 0 -and $d[0] -eq 'run' -and ($d -contains '--name')) {\n"
+        "  for ($k = 0; $k -lt $d.Count; $k++) { if ($d[$k] -eq '-v' -and $d[$k + 1] -match '^/mnt/([a-z])/(.*):/out$') { $out = $Matches[1].ToUpper() + ':/' + $Matches[2] } }\n"
         "  New-Item -ItemType Directory -Force -Path (Join-Path $out 'ladder') | Out-Null\n"
         "  Start-Sleep 7\n"
         "  Set-Content (Join-Path $out 'ladder/summary.json') '{\"complete\": true, \"stopped_at\": null}'\n"
@@ -129,12 +158,12 @@ class RunFlowWithStubsTests(unittest.TestCase):
             tmp = Path(tmp)
             stubs = tmp / "stubs"
             stubs.mkdir()
-            (stubs / "wsl.cmd").write_text("@echo off\r\nexit /b 0\r\n")
-            (stubs / "docker.cmd").write_text('@echo off\r\npwsh -NoProfile -File "%~dp0docker_stub.ps1" %*\r\nexit /b %ERRORLEVEL%\r\n')
-            (stubs / "docker_stub.ps1").write_text(self.DOCKER_STUB)
+            (stubs / "wsl.cmd").write_text('@echo off\r\npwsh -NoProfile -File "%~dp0wsl_stub.ps1" %*\r\nexit /b %ERRORLEVEL%\r\n')
+            (stubs / "wsl_stub.ps1").write_text(self.WSL_STUB)
             text = SCRIPT.read_text(encoding="utf-8")
             patched = text.replace("$StartMinBytes = 6 * $GiB", "$StartMinBytes = 1 * $GiB").replace(
-                "$NeedAtStartBytes = $Stage2PeakBytes + $FloorBytes", "$NeedAtStartBytes = 1 * $GiB")
+                "$NeedAtStartBytes = [int64][math]::Ceiling($Stage2PeakBytes / 0.9) + $FloorBytes", "$NeedAtStartBytes = 1 * $GiB")
+            self.assertIn("$NeedAtStartBytes = 1 * $GiB", patched)
             self.assertNotEqual(patched, text)
             sim = tmp / "run_ladder_sim.ps1"
             sim.write_text(patched, encoding="utf-8")
