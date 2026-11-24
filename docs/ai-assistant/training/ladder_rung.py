@@ -50,6 +50,25 @@ def _read_events(path):
     return out
 
 
+STAT_KEYS = ("anon", "file", "file_mapped", "shmem", "kernel", "slab", "sock")
+
+
+def _read_stat(path):
+    """memory.stat as {key: int}; empty when the file is not readable (not Linux cgroup v2)."""
+    out = {}
+    try:
+        lines = Path(path).read_text().splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        key, _, value = line.partition(" ")
+        try:
+            out[key] = int(value)
+        except ValueError:
+            continue   # a malformed line must not hide the rest
+    return out
+
+
 def _rss_bytes():
     try:  # Linux
         pages = int(Path("/proc/self/statm").read_text().split()[1])
@@ -81,16 +100,43 @@ class Watcher(threading.Thread):
         self.swap_peak = 0
         self.stop = threading.Event()
         self.faults_start = _major_faults()
+        # Breakdown only. It never feeds the stop rule: the ceiling is still on `peak`, the larger of memory.current and RSS.
+        self.cur_peak = None
+        self.rss_peak = None
+        self.anon_peak = None
+        self.file_peak = None
+        self.at_cur_peak = None
 
     def sample(self):
-        values = [v for v in (_read_int(CGROUP / "memory.current"), _rss_bytes()) if v is not None]
+        cur, rss = _read_int(CGROUP / "memory.current"), _rss_bytes()
+        stat = _read_stat(CGROUP / "memory.stat")
+        values = [v for v in (cur, rss) if v is not None]
         if values:
             self.peak = max(self.peak, max(values))
+        if rss is not None and (self.rss_peak is None or rss > self.rss_peak):
+            self.rss_peak = rss
+        if cur is not None and (self.cur_peak is None or cur >= self.cur_peak):
+            self.cur_peak = cur
+            self.at_cur_peak = {k: stat.get(k) for k in STAT_KEYS} if stat else None
+        for key, attr in (("anon", "anon_peak"), ("file", "file_peak")):
+            if key in stat and (getattr(self, attr) is None or stat[key] > getattr(self, attr)):
+                setattr(self, attr, stat[key])
         swap = _read_int(CGROUP / "memory.swap.current")
         if swap:
             self.swap_peak = max(self.swap_peak, swap)
         if self.ceiling and self.peak > self.ceiling:
             self.on_breach(self.peak)
+
+    def breakdown(self):
+        """Where the memory figure came from, for the record. Evidence only: it decides nothing."""
+        source = None
+        if self.peak:
+            source = "cgroup_memory_current" if self.cur_peak == self.peak else "process_rss" if self.rss_peak == self.peak else "cgroup_memory_peak_file"
+        return {"memory_breakdown": {
+            "peak_source": source, "cgroup_current_peak_bytes": self.cur_peak, "rss_peak_bytes": self.rss_peak,
+            "anon_peak_bytes": self.anon_peak, "file_cache_peak_bytes": self.file_peak,
+            "memory_stat_at_current_peak": self.at_cur_peak,
+            "note": "anon is non-reclaimable; file is page cache and reclaimable. Not used by any stop rule."}}
 
     def run(self):
         while not self.stop.is_set():
@@ -104,7 +150,7 @@ class Watcher(threading.Thread):
         if cg_peak is not None:
             self.peak = max(self.peak, cg_peak)
         faults = _major_faults()
-        return {"memory_peak_bytes": self.peak or None,
+        return {**self.breakdown(), "memory_peak_bytes": self.peak or None,
                 "swap_peak_bytes": self.swap_peak,
                 "major_fault_delta": (faults - self.faults_start) if None not in (faults, self.faults_start) else None}
 
@@ -193,7 +239,8 @@ def main(argv=None):
 
     def breach(peak):
         record.update(failure=f"memory {peak} above {int(ladder.CEILING_FRACTION * 100)} percent of budget {args.budget_bytes}",
-                      memory_peak_bytes=peak, oom_events=0, wall_seconds=time.monotonic() - started)
+                      memory_peak_bytes=peak, oom_events=0, wall_seconds=time.monotonic() - started,
+                      **watcher.breakdown())
         write_record(args.out, record)
         os._exit(3)
 

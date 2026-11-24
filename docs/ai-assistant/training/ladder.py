@@ -130,16 +130,18 @@ def host_start_gate(host_available_bytes) -> list:
 
 # ---------------------------------------------------------------- parent runner
 def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, rung_timeout=RUNG_TIMEOUT_SECONDS,
-               host_available_start=None, host_available_end_of_rung=None, host_min_reader=None, child_command=None) -> dict:
+               host_available_start=None, host_available_end_of_rung=None, host_min_reader=None, host_clock_offset=0.0, child_command=None) -> dict:
     """Runs rungs in order in separate processes. `child_command(rung, rung_dir)` -> argv list (tests inject a stub).
     `host_available_end_of_rung(rung)` -> bytes or None, supplied by the operator's host reader.
     `host_min_reader(start_epoch, end_epoch)` -> the lowest Windows-available reading taken during the rung, or None if there
-    was none; when a reader is given, no reading during a rung is a failure (missing evidence), never a pass."""
+    was none; when a reader is given, no reading during a rung is a failure (missing evidence), never a pass.
+    `host_clock_offset` is Windows epoch minus this process's clock, in seconds: the WSL clock can run ahead of or behind
+    Windows (seen: 65 s ahead), so rung times are shifted onto the Windows clock before the sampler file is read."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     summary = {"kind": "length_ladder", "model": model, "synthetic_only": True, "qualification": model == "pinned",
                "budget_bytes": budget_bytes, "ceiling_bytes": int(CEILING_FRACTION * budget_bytes), "steps": steps,
-               "rungs": [], "stopped_at": None, "host_start_gate": host_start_gate(host_available_start),
+               "rungs": [], "stopped_at": None, "host_clock_offset_seconds": host_clock_offset, "host_start_gate": host_start_gate(host_available_start),
                "host_available_start": host_available_start}
     if model != "pinned":
         summary["qualification"] = False
@@ -180,7 +182,7 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
                 reasons.append("rung.json is not valid JSON")
         record.setdefault("wall_seconds", wall)
         host_after = host_available_end_of_rung(rung) if host_available_end_of_rung else None
-        host_min = host_min_reader(started_epoch, ended_epoch) if host_min_reader else None
+        host_min = host_min_reader(started_epoch + host_clock_offset, ended_epoch + host_clock_offset) if host_min_reader else None
         verdict = judge_rung(record, budget_bytes=budget_bytes, host_after=host_after, host_min_seen=host_min)
         if host_min_reader and host_min is None:
             verdict["reasons"].append("no Windows-available reading was taken during the rung")
@@ -199,7 +201,15 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
     return summary
 
 
-def read_host_min(csv_path, start_epoch, end_epoch, slack=5):
+def clock_offset(host_epoch, now=None):
+    """Windows epoch (seconds, taken by the launcher just before the container started) minus this clock now; 0 when none
+    was given. The few seconds the container takes to start make it read slightly low; read_host_min's slack covers that."""
+    if not host_epoch or host_epoch <= 0:
+        return 0.0
+    return float(host_epoch) - (time.time() if now is None else now)
+
+
+def read_host_min(csv_path, start_epoch, end_epoch, slack=10):
     """Lowest `bytes` among `epoch,bytes` lines of the launcher's sampler file taken within [start-slack, end+slack]."""
     try:
         lines = Path(csv_path).read_text(encoding="utf-8").splitlines()
@@ -235,6 +245,8 @@ def main(argv=None):
     run.add_argument("--steps", type=int, default=3)
     run.add_argument("--rung-timeout", type=int, default=RUNG_TIMEOUT_SECONDS)
     run.add_argument("--host-available-start", type=int, default=None, help="Windows available bytes, measured just before")
+    run.add_argument("--host-epoch-at-start", type=int, default=0,
+                     help="Windows epoch seconds taken by the launcher just before the container started (corrects WSL clock skew)")
     run.add_argument("--host-csv", type=Path, default=None,
                      help="sampler file of `epoch_seconds,windows_available_bytes` lines; each rung is judged on its lowest reading")
     run.add_argument("--host-available-file", type=Path, default=None,
@@ -259,6 +271,7 @@ def main(argv=None):
         rung_timeout=args.rung_timeout, host_available_start=args.host_available_start,
         host_available_end_of_rung=host_reader,
         host_min_reader=(lambda a, b: read_host_min(args.host_csv, a, b)) if args.host_csv else None,
+        host_clock_offset=clock_offset(args.host_epoch_at_start),
         child_command=lambda rung, d: default_child_command(rung, d, args.model, args.steps, args.budget_bytes))
     print(json.dumps({k: summary[k] for k in ("model", "qualification", "stopped_at", "complete")}, indent=2))
     return 0 if summary["complete"] else 1

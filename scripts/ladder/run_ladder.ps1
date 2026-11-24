@@ -87,7 +87,7 @@ function Test-DistroRunning {
     return [bool]($state -match "$Distro +Running")
 }
 
-function Get-DockerArgv([string]$Name, [string]$OutDir, [int64]$Budget, [int64]$AvailableAtStart) {
+function Get-DockerArgv([string]$Name, [string]$OutDir, [int64]$Budget, [int64]$AvailableAtStart, [int64]$HostEpoch = 0) {
     return @(
         'run', '--rm', '--name', $Name,
         '--memory=22g', '--memory-swap=22g', '--network', 'none',
@@ -98,7 +98,8 @@ function Get-DockerArgv([string]$Name, [string]$OutDir, [int64]$Budget, [int64]$
         '-w', '/work', $Image,
         'python', 'ladder.py', 'run', '--model', 'pinned',
         '--budget-bytes', "$Budget", '--out', '/out/ladder',
-        '--host-available-start', "$AvailableAtStart", '--host-csv', '/out/host.csv'
+        '--host-available-start', "$AvailableAtStart", '--host-csv', '/out/host.csv',
+        '--host-epoch-at-start', "$HostEpoch"
     )
 }
 
@@ -276,7 +277,7 @@ try {
         }
     }
     Start-Sleep ($PollSeconds + 1)   # at least one reading before the first rung
-    $argv = Get-DockerArgv $name $out $budget $avail2
+    $argv = Get-DockerArgv $name $out $budget $avail2 ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
     Log ("docker " + ($argv -join ' '))
     Invoke-Docker @argv *> (Join-Path $out 'container.log')
     $exit = $LASTEXITCODE
