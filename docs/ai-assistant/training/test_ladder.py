@@ -179,6 +179,49 @@ class RunLadderTests(unittest.TestCase):
         self.assertFalse(summary["qualification"])
 
 
+class HostMinTests(unittest.TestCase):
+    def csv(self, text):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        path = Path(d.name) / "host.csv"
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def test_min_inside_window_only(self):
+        path = self.csv("\n".join(["epoch,bytes", "100,9000", "200,5000", "210,3000", "400,1000"]) + "\n")
+        self.assertEqual(ladder.read_host_min(path, 190, 215, slack=5), 3000)
+        self.assertEqual(ladder.read_host_min(path, 90, 110, slack=5), 9000)
+
+    def test_no_samples_or_no_file_is_none(self):
+        path = self.csv("epoch,bytes\n100,9000\n")
+        self.assertIsNone(ladder.read_host_min(path, 500, 600))
+        self.assertIsNone(ladder.read_host_min(path.parent / "missing.csv", 0, 10 ** 12))
+
+    def test_partial_last_line_is_ignored(self):
+        path = self.csv("100,9000\n101,")
+        self.assertEqual(ladder.read_host_min(path, 90, 110), 9000)
+
+    def run_with(self, reader):
+        with tempfile.TemporaryDirectory() as tmp:
+            return ladder.run_ladder(rungs=[128, 256], budget_bytes=BUDGET, out_dir=Path(tmp), model="pinned",
+                                     host_available_start=8 * GIB, child_command=stub(good_record()),
+                                     host_min_reader=reader)
+
+    def test_low_reading_during_rung_fails_and_stops(self):
+        summary = self.run_with(lambda a, b: ladder.HOST_STOP_BELOW_BYTES - 1)
+        self.assertEqual([r["status"] for r in summary["rungs"]], ["FAILURE", "NOT_RUN"])
+
+    def test_no_reading_during_rung_is_missing_evidence(self):
+        summary = self.run_with(lambda a, b: None)
+        self.assertEqual(summary["rungs"][0]["status"], "FAILURE")
+        self.assertTrue(any("no Windows-available reading" in r for r in summary["rungs"][0]["reasons"]))
+
+    def test_healthy_readings_pass_and_are_recorded(self):
+        summary = self.run_with(lambda a, b: 9 * GIB)
+        self.assertTrue(summary["complete"])
+        self.assertEqual(summary["rungs"][0]["host_available_min_during"], 9 * GIB)
+
+
 try:
     import torch  # noqa: F401
     import peft  # noqa: F401

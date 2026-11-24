@@ -130,9 +130,11 @@ def host_start_gate(host_available_bytes) -> list:
 
 # ---------------------------------------------------------------- parent runner
 def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, rung_timeout=RUNG_TIMEOUT_SECONDS,
-               host_available_start=None, host_available_end_of_rung=None, child_command=None) -> dict:
+               host_available_start=None, host_available_end_of_rung=None, host_min_reader=None, child_command=None) -> dict:
     """Runs rungs in order in separate processes. `child_command(rung, rung_dir)` -> argv list (tests inject a stub).
-    `host_available_end_of_rung(rung)` -> bytes or None, supplied by the operator's host reader."""
+    `host_available_end_of_rung(rung)` -> bytes or None, supplied by the operator's host reader.
+    `host_min_reader(start_epoch, end_epoch)` -> the lowest Windows-available reading taken during the rung, or None if there
+    was none; when a reader is given, no reading during a rung is a failure (missing evidence), never a pass."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     summary = {"kind": "length_ladder", "model": model, "synthetic_only": True, "qualification": model == "pinned",
@@ -155,6 +157,7 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
         rung_dir.mkdir(parents=True, exist_ok=True)
         argv = (child_command or default_child_command)(rung, rung_dir)
         started = time.monotonic()
+        started_epoch = time.time()
         reasons = []
         try:
             proc = subprocess.run(argv, cwd=str(HERE), timeout=rung_timeout, capture_output=True, text=True)
@@ -167,6 +170,7 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
         except subprocess.TimeoutExpired:
             reasons.append(f"rung exceeded {rung_timeout}s and was killed")
         wall = time.monotonic() - started
+        ended_epoch = time.time()
         record = {}
         record_path = rung_dir / "rung.json"
         if record_path.exists():
@@ -176,11 +180,14 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
                 reasons.append("rung.json is not valid JSON")
         record.setdefault("wall_seconds", wall)
         host_after = host_available_end_of_rung(rung) if host_available_end_of_rung else None
-        verdict = judge_rung(record, budget_bytes=budget_bytes, host_after=host_after)
+        host_min = host_min_reader(started_epoch, ended_epoch) if host_min_reader else None
+        verdict = judge_rung(record, budget_bytes=budget_bytes, host_after=host_after, host_min_seen=host_min)
+        if host_min_reader and host_min is None:
+            verdict["reasons"].append("no Windows-available reading was taken during the rung")
         verdict["reasons"] = reasons + verdict["reasons"]
-        if reasons:
+        if verdict["reasons"]:
             verdict["status"] = "FAILURE"
-        entry.update(status=verdict["status"], reasons=verdict["reasons"], host_available_after=host_after,
+        entry.update(status=verdict["status"], reasons=verdict["reasons"], host_available_after=host_after, host_available_min_during=host_min,
                      actual_token_lengths=record.get("actual_token_lengths"), memory_peak_bytes=record.get("memory_peak_bytes"),
                      wall_seconds=round(record.get("wall_seconds", wall), 1))
         summary["rungs"].append(entry)
@@ -190,6 +197,24 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
     summary["complete"] = all(r["status"] == "PASS" for r in summary["rungs"])
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return summary
+
+
+def read_host_min(csv_path, start_epoch, end_epoch, slack=5):
+    """Lowest `bytes` among `epoch,bytes` lines of the launcher's sampler file taken within [start-slack, end+slack]."""
+    try:
+        lines = Path(csv_path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    best = None
+    for line in lines:
+        try:
+            epoch, value = line.split(",")[:2]
+            epoch, value = float(epoch), int(value)
+        except ValueError:
+            continue  # header or a partly written last line
+        if start_epoch - slack <= epoch <= end_epoch + slack and (best is None or value < best):
+            best = value
+    return best
 
 
 def default_child_command(rung, rung_dir, model="pinned", steps=3, budget_bytes=0):
@@ -210,6 +235,8 @@ def main(argv=None):
     run.add_argument("--steps", type=int, default=3)
     run.add_argument("--rung-timeout", type=int, default=RUNG_TIMEOUT_SECONDS)
     run.add_argument("--host-available-start", type=int, default=None, help="Windows available bytes, measured just before")
+    run.add_argument("--host-csv", type=Path, default=None,
+                     help="sampler file of `epoch_seconds,windows_available_bytes` lines; each rung is judged on its lowest reading")
     run.add_argument("--host-available-file", type=Path, default=None,
                      help="file the operator appends Windows available bytes to after each rung (one integer per line)")
     args = parser.parse_args(argv)
@@ -231,6 +258,7 @@ def main(argv=None):
         rungs=rungs, budget_bytes=args.budget_bytes, out_dir=args.out, model=args.model, steps=args.steps,
         rung_timeout=args.rung_timeout, host_available_start=args.host_available_start,
         host_available_end_of_rung=host_reader,
+        host_min_reader=(lambda a, b: read_host_min(args.host_csv, a, b)) if args.host_csv else None,
         child_command=lambda rung, d: default_child_command(rung, d, args.model, args.steps, args.budget_bytes))
     print(json.dumps({k: summary[k] for k in ("model", "qualification", "stopped_at", "complete")}, indent=2))
     return 0 if summary["complete"] else 1

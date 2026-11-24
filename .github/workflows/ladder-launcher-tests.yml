@@ -1,0 +1,30 @@
+name: Ladder launcher dry-run tests
+# Runs scripts/ladder/test_run_ladder.py: run_ladder.ps1 in -DryRun mode under pwsh (gate arithmetic, fixed docker settings,
+# no real-data mount, writes nothing). Test and docs only: no deploy, no host action. The real -Run and -Preflight paths need
+# Docker Desktop on the host and are NOT covered here.
+on:
+  pull_request:
+    paths:
+      - 'scripts/ladder/**'
+      - '.github/workflows/ladder-launcher-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/ladder/**'
+      - '.github/workflows/ladder-launcher-tests.yml'
+permissions:
+  contents: read
+jobs:
+  launcher-dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run the dry-run tests
+        run: |
+          set -o pipefail
+          pwsh -Version
+          python -m unittest -v scripts/ladder/test_run_ladder.py 2>&1 | tee "$RUNNER_TEMP/launcher.txt"
+          { echo "### Ladder launcher dry-run tests"; tail -n 4 "$RUNNER_TEMP/launcher.txt"; } >> "$GITHUB_STEP_SUMMARY"
