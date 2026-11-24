@@ -50,6 +50,10 @@ def _read_events(path):
     return out
 
 
+PHASE = "load"   # load -> train -> save; read by the watcher, set by PhaseCallback
+WATCHER = None   # the running Watcher, so a phase change takes one sample right at the boundary
+
+
 STAT_KEYS = ("anon", "file", "file_mapped", "shmem", "kernel", "slab", "sock")
 
 
@@ -98,7 +102,7 @@ class Watcher(threading.Thread):
         if trace_path:
             Path(trace_path).parent.mkdir(parents=True, exist_ok=True)
             self.trace = open(trace_path, "w", encoding="utf-8", buffering=1)   # line-buffered: survives a SIGKILL
-            self.trace.write("epoch,current,rss,anon,file,shmem,metric\n")
+            self.trace.write("epoch,current,rss,anon,file,shmem,metric,phase,majflt,pgmajfault,refault_file,refault_anon\n")
         self.ceiling_metric = ceiling_metric
         self.metric_peak = 0
         self.metric_fallback = False   # anon_shmem asked for but memory.stat unreadable: judged on the original, stricter figure
@@ -135,7 +139,9 @@ class Watcher(threading.Thread):
         metric_value = self.peak_now(cur, rss, stat)
         self.metric_peak = max(self.metric_peak, metric_value)
         if self.trace is not None:
-            cells = [f"{time.time():.1f}"] + ["" if v is None else str(v) for v in (cur, rss, stat.get("anon"), stat.get("file"), stat.get("shmem"))] + [str(metric_value)]
+            cells = ([f"{time.time():.1f}"] + ["" if v is None else str(v) for v in (cur, rss, stat.get("anon"), stat.get("file"), stat.get("shmem"))]
+                     + [str(metric_value), PHASE]
+                     + ["" if v is None else str(v) for v in (_major_faults(), stat.get("pgmajfault"), stat.get("workingset_refault_file"), stat.get("workingset_refault_anon"))])
             self.trace.write(",".join(cells) + "\n")
         if self.ceiling and metric_value > self.ceiling:
             self.on_breach(metric_value)
@@ -250,6 +256,25 @@ def adapter_tensors_equal(model, saved_name, reloaded_name):
     return True, len(originals)
 
 
+def phase_callback():
+    """Marks the load/train/save boundary in the trace so paging can be judged on the training window only."""
+    from transformers import TrainerCallback
+
+    class PhaseCallback(TrainerCallback):
+        def on_train_begin(self, args, state, control, **kwargs):
+            global PHASE
+            PHASE = "train"
+            if WATCHER is not None:
+                WATCHER.sample()
+
+        def on_train_end(self, args, state, control, **kwargs):
+            global PHASE
+            PHASE = "save"
+            if WATCHER is not None:
+                WATCHER.sample()
+    return PhaseCallback()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--rung", type=int, required=True)
@@ -277,6 +302,7 @@ def main(argv=None):
 
     watcher = Watcher(args.budget_bytes, ladder.CEILING_FRACTION, breach, args.ceiling_metric, args.out / "memory-trace.csv")
     watcher.start()
+    globals()["WATCHER"] = watcher
     try:
         import torch
         from transformers import Trainer, TrainingArguments, set_seed
@@ -302,7 +328,8 @@ def main(argv=None):
 
         kwargs = train_sft.training_args_kwargs(args.out / "trainer", SEED, False, args.steps)
         kwargs["num_train_epochs"] = 1
-        trainer = Trainer(model=model, train_dataset=data, data_collator=collate, args=TrainingArguments(**kwargs))
+        trainer = Trainer(model=model, train_dataset=data, data_collator=collate, args=TrainingArguments(**kwargs),
+                          callbacks=[phase_callback()])
         trainer.train()
         history = trainer.state.log_history
         record["losses"] = [e["loss"] for e in history if "loss" in e]
@@ -324,6 +351,7 @@ def main(argv=None):
             record["failure"] = "MemoryError (allocation failed)"
     finally:
         record.update(watcher.finish())
+        record["paging"] = ladder.paging_from_trace(args.out / "memory-trace.csv")
         events = _read_events(CGROUP / "memory.events")
         start = record["oom_events_start"]
         if events:
