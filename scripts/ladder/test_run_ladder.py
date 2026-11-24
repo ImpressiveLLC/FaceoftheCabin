@@ -24,7 +24,14 @@ def run(*args, expect=None):
 
 def plan(avail_gib, mode="-Run", *extra):
     proc = run(mode, "-DryRun", "-FakeAvailableBytes", str(int(avail_gib * GIB)), "-RunId", "t1", *extra)
-    return proc, json.loads(proc.stdout)
+    try:
+        return proc, json.loads(proc.stdout)
+    except ValueError:
+        raise AssertionError(f"no JSON plan; exit {proc.returncode}
+STDOUT:
+{proc.stdout}
+STDERR:
+{proc.stderr}")
 
 
 @unittest.skipUnless(PWSH, "pwsh is not installed")
