@@ -2,8 +2,10 @@
 writes), so these run anywhere pwsh is installed (the GitHub ubuntu runner has it) and are SKIPPED, not passed, otherwise.
 The real -Run and -Preflight paths are NOT covered here: they need Docker Desktop and the host, and have not run."""
 import json
+import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -107,6 +109,50 @@ class DryRunTests(unittest.TestCase):
     def test_exactly_one_mode_is_required(self):
         self.assertNotEqual(run("-DryRun").returncode, 0)
         self.assertNotEqual(run("-Run", "-Stop", "-DryRun").returncode, 0)
+
+
+@unittest.skipUnless(PWSH and sys.platform == "win32", "needs pwsh on Windows (Win32 keep-awake call, cmd stubs)")
+class RunFlowWithStubsTests(unittest.TestCase):
+    """Runs the real -Run flow with stub docker and wsl on PATH and the gate thresholds patched down, so the keep-awake
+    call, sampler job, markers, manifest and banner execute for real. Docker and WSL are NOT touched."""
+
+    DOCKER_STUB = (
+        "if ($args[0] -eq 'run' -and ($args -contains '--name')) {\n"
+        "  for ($k = 0; $k -lt $args.Count; $k++) { if ($args[$k] -eq '-v' -and $args[$k+1] -match '^(.*):/out$') { $out = $Matches[1] } }\n"
+        "  New-Item -ItemType Directory -Force -Path (Join-Path $out 'ladder') | Out-Null\n"
+        "  Start-Sleep 7\n"
+        "  Set-Content (Join-Path $out 'ladder/summary.json') '{\"complete\": true, \"stopped_at\": null}'\n"
+        "}\nexit 0\n")
+
+    def test_run_flow_reaches_done_with_stubs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            stubs = tmp / "stubs"
+            stubs.mkdir()
+            (stubs / "wsl.cmd").write_text("@echo off\r\nexit /b 0\r\n")
+            (stubs / "docker.cmd").write_text('@echo off\r\npwsh -NoProfile -File "%~dp0docker_stub.ps1" %*\r\nexit /b %ERRORLEVEL%\r\n')
+            (stubs / "docker_stub.ps1").write_text(self.DOCKER_STUB)
+            text = SCRIPT.read_text(encoding="utf-8")
+            patched = text.replace("$StartMinBytes = 6 * $GiB", "$StartMinBytes = 1 * $GiB").replace(
+                "$NeedAtStartBytes = $Stage2PeakBytes + $FloorBytes", "$NeedAtStartBytes = 1 * $GiB")
+            self.assertNotEqual(patched, text)
+            sim = tmp / "run_ladder_sim.ps1"
+            sim.write_text(patched, encoding="utf-8")
+            env = dict(os.environ, PATH=str(stubs) + os.pathsep + os.environ["PATH"])
+            proc = subprocess.run([PWSH, "-NoProfile", "-File", str(sim), "-Run", "-OutRoot", str(tmp / "out"),
+                                   "-RepoDir", str(HERE.parent.parent), "-DesktopDir", str(tmp)],
+                                  capture_output=True, text=True, timeout=180, env=env)
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            run_dir = next((tmp / "out").iterdir())
+            self.assertTrue((run_dir / "DONE").exists(), proc.stdout + proc.stderr)
+            self.assertTrue((run_dir / "manifest.sha256").exists())
+            self.assertGreaterEqual(len((run_dir / "host.csv").read_text().splitlines()), 2)
+            self.assertIn("LADDER FINISHED: DONE", (tmp / "LADDER-FINISHED.txt").read_text())
+
+    def test_keep_awake_flags_are_unsigned_casts(self):
+        text = SCRIPT.read_text(encoding="utf-8")
+        self.assertNotIn("SetThreadExecutionState(0x", text)  # a bare 0x80000001 is Int32 in PowerShell and throws
+        self.assertIn("SetThreadExecutionState([uint32]", text)
 
 
 if __name__ == "__main__":
