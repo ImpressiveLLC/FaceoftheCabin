@@ -7,7 +7,8 @@
   Invented rows only. No real data, no weights export, no network inside the container.
 
   -Preflight   Read-only. Prints and saves host facts and the start gate. Starts nothing.
-  -Run         Checks the gate, shuts WSL down, starts Docker Desktop, re-checks the gate, checks the model cache is
+  -Run         Checks the gate, quits Docker Desktop if running, shuts WSL down, waits for the Docker daemon inside the
+               Ubuntu WSL distro (where the Stage 2 image and model cache live), re-checks the gate, checks the model cache is
                already present (no download), then runs the ladder in a no-swap container while a sampler logs Windows
                available memory and a watchdog kills the container if it stays under the 4 GiB floor.
   -Stop        Kills a running ladder container and tells the sampler to stop.
@@ -17,7 +18,7 @@
                -FakeAvailableBytes supplies the Windows-available figure for tests; it is refused without -DryRun.
 
   Policy (Codex 7096272556, Cowork 7091727691, 7123997237): at least 6 GiB Windows available to start; the pinned 3B run
-  needs 14.21 GiB (Stage 2 peak) plus the 4 GiB floor, so 18.25 GiB at the start; stop below 4 GiB; container 22 GiB with
+  needs 14.21 GiB (Stage 2 peak) / 0.9 plus the 4 GiB floor, so about 19.8 GiB at the start; stop below 4 GiB; container 22 GiB with
   no swap; budget fixed once before the run as min(container limit, available at start minus the floor); never recomputed.
   A refused or failed start writes a NOT_RUN or STOPPED marker with the reason and never counts as a pass.
 #>
@@ -29,8 +30,9 @@ param(
     [switch]$Cleanup,
     [switch]$DryRun,
     [string]$OutRoot = 'C:\ladder-run',
-    [string]$Image = 'training-trainer',
-    [string]$ModelVolume = 'training_model-cache',
+    [string]$Distro = 'Ubuntu-24.04',
+    [string]$Image = 'fotc-dev-sft-r1:stage2',
+    [string]$ModelVolume = 'fotc-hf-cache',
     [string]$RepoDir = '',
     [string]$RunId = '',
     [string]$DesktopDir = '',
@@ -42,7 +44,8 @@ $GiB = [int64]1073741824
 $StartMinBytes = 6 * $GiB
 $FloorBytes = 4 * $GiB
 $Stage2PeakBytes = [int64][math]::Round(14.21 * $GiB)
-$NeedAtStartBytes = $Stage2PeakBytes + $FloorBytes
+# The 90 percent ceiling is on the budget (available minus the floor), so the budget itself must hold the Stage 2 peak / 0.9.
+$NeedAtStartBytes = [int64][math]::Ceiling($Stage2PeakBytes / 0.9) + $FloorBytes
 $ContainerLimitBytes = 22 * $GiB
 $PollSeconds = 5
 $ModelRevision = '006f5dcd1393c3add266de40994ba96225e9689d'
@@ -62,12 +65,26 @@ function Get-AvailableBytes {
 function Get-GateReasons([int64]$Available) {
     $reasons = @()
     if ($Available -lt $StartMinBytes) { $reasons += "Windows available $Available bytes is below the $StartMinBytes start minimum (6 GiB)" }
-    if ($Available -lt $NeedAtStartBytes) { $reasons += "Windows available $Available bytes is below the $NeedAtStartBytes needed to start the pinned 3B (Stage 2 peak 14.21 GiB plus the 4 GiB floor)" }
+    if ($Available -lt $NeedAtStartBytes) { $reasons += "Windows available $Available bytes is below the $NeedAtStartBytes needed to start the pinned 3B (Stage 2 peak 14.21 GiB / 0.9 for the 90 percent ceiling, plus the 4 GiB floor)" }
     return $reasons
 }
 
 function Get-Budget([int64]$Available) {
     return [int64][math]::Min($ContainerLimitBytes, $Available - $FloorBytes)
+}
+
+function ConvertTo-WslPath([string]$Path) {
+    $p = $Path.Replace([string][char]92, '/')
+    if ($p -match '^([A-Za-z]):(.*)$') { return '/mnt/' + $Matches[1].ToLower() + $Matches[2] }
+    return $p
+}
+
+# Docker runs INSIDE the Ubuntu WSL distro (where the Stage 2 image and the model cache live), not Docker Desktop.
+function Invoke-Docker { & wsl -d $Distro --exec docker @args }
+
+function Test-DistroRunning {
+    $state = (& wsl -l -v 2>&1 | Out-String) -replace [string][char]0, ''
+    return [bool]($state -match "$Distro +Running")
 }
 
 function Get-DockerArgv([string]$Name, [string]$OutDir, [int64]$Budget, [int64]$AvailableAtStart) {
@@ -76,8 +93,8 @@ function Get-DockerArgv([string]$Name, [string]$OutDir, [int64]$Budget, [int64]$
         '--memory=22g', '--memory-swap=22g', '--network', 'none',
         '-e', 'HF_HUB_OFFLINE=1', '-e', 'HF_HOME=/root/.cache/huggingface', '-e', 'PYTHONDONTWRITEBYTECODE=1',
         '-v', "${ModelVolume}:/root/.cache/huggingface",
-        '-v', "${TrainingDir}:/work:ro",
-        '-v', "${OutDir}:/out",
+        '-v', ((ConvertTo-WslPath $TrainingDir) + ':/work:ro'),
+        '-v', ((ConvertTo-WslPath $OutDir) + ':/out'),
         '-w', '/work', $Image,
         'python', 'ladder.py', 'run', '--model', 'pinned',
         '--budget-bytes', "$Budget", '--out', '/out/ladder',
@@ -98,12 +115,16 @@ function Get-HostFacts {
     $facts.wslconfig = if (Test-Path $wslconfig) { @(Get-Content $wslconfig | Where-Object { $_ -match '^\s*[a-z]' }) } else { @() }
     $facts.wsl_state = (& wsl -l -v 2>&1 | Out-String) -replace "`0", ''
     $facts.docker_daemon = $false; $facts.image_present = $false; $facts.model_volume_present = $false
-    & docker info --format '{{.ServerVersion}}' *> $null
-    if ($LASTEXITCODE -eq 0) {
-        $facts.docker_daemon = $true
-        & docker image inspect $Image *> $null; $facts.image_present = ($LASTEXITCODE -eq 0)
-        & docker volume inspect $ModelVolume *> $null; $facts.model_volume_present = ($LASTEXITCODE -eq 0)
+    $facts.distro_running = Test-DistroRunning
+    if ($facts.distro_running) {   # read-only: never start the distro just to look
+        Invoke-Docker info --format '{{.ServerVersion}}' *> $null
+        if ($LASTEXITCODE -eq 0) {
+            $facts.docker_daemon = $true
+            Invoke-Docker image inspect $Image *> $null; $facts.image_present = ($LASTEXITCODE -eq 0)
+            Invoke-Docker volume inspect $ModelVolume *> $null; $facts.model_volume_present = ($LASTEXITCODE -eq 0)
+        }
     }
+    $facts.docker_desktop_running = [bool](Get-Process -Name 'Docker Desktop' -ErrorAction SilentlyContinue)
     $drive = (Split-Path -Qualifier $OutRoot).TrimEnd(':')
     $facts.out_drive_free_bytes = [int64](Get-PSDrive $drive).Free
     $facts.top_processes_by_working_set = @(Get-Process | Group-Object Name | ForEach-Object {
@@ -138,8 +159,8 @@ if ($DryRun) {
         ceiling_bytes = [int64][math]::Floor($budget * 0.9)
         out_dir = $outDir
         docker_argv = @(if ($reasons.Count -eq 0) { Get-DockerArgv "ladder-$id" '/out-dir' $budget $avail })
-        steps = @('preflight gate', 'keep awake', 'wsl --shutdown', 'start Docker Desktop and wait for the daemon',
-            'second gate read', 'check model cache is present offline', 'start sampler and watchdog', 'docker run', 'summary, marker, manifest')
+        steps = @('preflight gate', 'keep awake', 'quit Docker Desktop if running', 'wsl --shutdown', 'wait for the Docker daemon inside the WSL distro',
+            'second gate read', 'check the image and the model cache are present offline', 'start sampler and watchdog', 'docker run', 'summary, marker, manifest')
     }
     Out-Json $plan $null
     exit $(if ($reasons.Count -eq 0) { 0 } else { 3 })
@@ -160,8 +181,10 @@ if ($Preflight) {
 # ------------------------------------------------------------------ cleanup: back to normal operation
 if ($Cleanup) {
     Write-Output 'Cleanup: killing any ladder container, wsl --shutdown, quitting Docker Desktop. Records are kept.'
-    $ids = @(& docker ps -q --filter 'name=ladder-' 2>$null)
-    foreach ($c in $ids) { & docker kill $c | Out-Null }
+    if (Test-DistroRunning) {
+        $ids = @(Invoke-Docker ps -q --filter 'name=ladder-' 2>$null)
+        foreach ($c in $ids) { Invoke-Docker kill $c | Out-Null }
+    }
     & wsl --shutdown
     foreach ($n in 'Docker Desktop', 'com.docker.backend', 'com.docker.build') { Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }
     Start-Sleep 5
@@ -174,8 +197,9 @@ if ($Cleanup) {
 if ($Stop) {
     $latest = Get-ChildItem $OutRoot -Directory -ErrorAction SilentlyContinue | Sort-Object Name | Select-Object -Last 1
     if ($latest) { Set-Content (Join-Path $latest.FullName 'STOP') 'operator stop' }
-    $ids = @(& docker ps -q --filter 'name=ladder-')
-    foreach ($id in $ids) { & docker kill $id | Out-Null }
+    $ids = @()
+    if (Test-DistroRunning) { $ids = @(Invoke-Docker ps -q --filter 'name=ladder-') }
+    foreach ($id in $ids) { Invoke-Docker kill $id | Out-Null }
     if ($latest) { Set-Content (Join-Path $latest.FullName 'STOPPED-by-operator') ((Get-Date).ToUniversalTime().ToString('o')) }
     Write-Output "stopped $($ids.Count) container(s)"
     exit 0
@@ -211,34 +235,32 @@ Add-Type -Namespace Native -Name Power -MemberDefinition '[DllImport("kernel32.d
 $job = $null
 $name = "ladder-$id"
 try {
+    foreach ($n in 'Docker Desktop', 'com.docker.backend', 'com.docker.build') {
+        if (Get-Process -Name $n -ErrorAction SilentlyContinue) { Log "quitting $n (not used; it competes for memory)"; Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }
+    }
     Log 'wsl --shutdown (all WSL distros stop; Nate approved this)'
     & wsl --shutdown
-    & docker info --format '{{.ServerVersion}}' *> $null
-    if ($LASTEXITCODE -ne 0) {
-        $dd = 'C:\Program Files\Docker\Docker\Docker Desktop.exe'
-        if (-not (Test-Path $dd)) { Refuse @("Docker Desktop not found at $dd") }
-        Log 'starting Docker Desktop'
-        Start-Process $dd
-        $deadline = (Get-Date).AddSeconds(240)
-        do { Start-Sleep 5; & docker info --format '{{.ServerVersion}}' *> $null } while ($LASTEXITCODE -ne 0 -and (Get-Date) -lt $deadline)
-        if ($LASTEXITCODE -ne 0) { Refuse @('Docker daemon did not come up within 240 s') }
-    }
+    Start-Sleep 3
+    Log "starting the Docker daemon inside $Distro (systemd starts it when the distro boots)"
+    $deadline = (Get-Date).AddSeconds(180)
+    do { Invoke-Docker info --format '{{.ServerVersion}}' *> $null; if ($LASTEXITCODE -ne 0) { Start-Sleep 5 } } while ($LASTEXITCODE -ne 0 -and (Get-Date) -lt $deadline)
+    if ($LASTEXITCODE -ne 0) { Refuse @("Docker daemon in $Distro did not come up within 180 s") }
     $avail2 = Get-AvailableBytes
-    Log "second read after Docker is up: Windows available $avail2 bytes"
+    Log "second read after the daemon is up: Windows available $avail2 bytes"
     $reasons = @(Get-GateReasons $avail2)
     if ($reasons.Count -gt 0) { Refuse $reasons }
-    & docker image inspect $Image *> $null
-    if ($LASTEXITCODE -ne 0) { Refuse @("image $Image is not present; building it is a separate step") }
-    $check = "import pathlib,sys; p=pathlib.Path('/root/.cache/huggingface/hub/$ModelCacheDir/snapshots/$ModelRevision'); sys.exit(0 if p.is_dir() and any(p.iterdir()) else 1)"
-    & docker run --rm --network none -e HF_HUB_OFFLINE=1 -v "${ModelVolume}:/root/.cache/huggingface" $Image python -c $check
+    Invoke-Docker image inspect $Image *> $null
+    if ($LASTEXITCODE -ne 0) { Refuse @("image $Image is not present in $Distro; building it is a separate step") }
+    $snapshot = "/c/hub/$ModelCacheDir/snapshots/$ModelRevision"
+    Invoke-Docker run --rm --network none -v "${ModelVolume}:/c:ro" alpine test -d $snapshot
     if ($LASTEXITCODE -ne 0) { Refuse @("pinned model revision is not in volume $ModelVolume; fetching it is a download that needs Nate's yes") }
 
     $budget = Get-Budget $avail2
     Log "fixed budget $budget bytes (min of 22 GiB and available minus 4 GiB); ceiling 90 percent"
     $csv = Join-Path $out 'host.csv'
     Set-Content $csv 'epoch,bytes'
-    $job = Start-Job -ArgumentList $csv, $name, $FloorBytes, $PollSeconds, (Join-Path $out 'STOP'), (Join-Path $out 'host-floor-breach.json') -ScriptBlock {
-        param($csv, $name, $floor, $poll, $stopFile, $breachFile)
+    $job = Start-Job -ArgumentList $csv, $name, $FloorBytes, $PollSeconds, (Join-Path $out 'STOP'), (Join-Path $out 'host-floor-breach.json'), $Distro -ScriptBlock {
+        param($csv, $name, $floor, $poll, $stopFile, $breachFile, $distro)
         $low = 0
         while (-not (Test-Path $stopFile)) {
             $b = [int64](Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory * 1024
@@ -246,7 +268,7 @@ try {
             Add-Content -Path $csv -Value "$e,$b"
             if ($b -lt $floor) { $low++ } else { $low = 0 }
             if ($low -ge 2) {
-                & docker kill $name | Out-Null
+                & wsl -d $distro --exec docker kill $name | Out-Null
                 Set-Content $breachFile "{`"epoch`":$e,`"available_bytes`":$b,`"floor_bytes`":$floor}"
                 break
             }
@@ -256,15 +278,17 @@ try {
     Start-Sleep ($PollSeconds + 1)   # at least one reading before the first rung
     $argv = Get-DockerArgv $name $out $budget $avail2
     Log ("docker " + ($argv -join ' '))
-    & docker @argv *> (Join-Path $out 'container.log')
+    Invoke-Docker @argv *> (Join-Path $out 'container.log')
     $exit = $LASTEXITCODE
     Log "container exited $exit"
 }
 finally {
     Set-Content (Join-Path $out 'STOP') 'run finished'
     if ($job) { Wait-Job $job -Timeout 15 | Out-Null; Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue }
-    $left = @(& docker ps -q --filter "name=$name" 2>$null)
-    foreach ($c in $left) { & docker kill $c | Out-Null }
+    if (Test-DistroRunning) {
+        $left = @(Invoke-Docker ps -q --filter "name=$name" 2>$null)
+        foreach ($c in $left) { Invoke-Docker kill $c | Out-Null }
+    }
     [void][Native.Power]::SetThreadExecutionState([uint32]2147483648)
 }
 
