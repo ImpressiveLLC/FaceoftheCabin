@@ -1,7 +1,7 @@
 name: Ladder launcher dry-run tests
-# Runs scripts/ladder/test_run_ladder.py: run_ladder.ps1 in -DryRun mode under pwsh (gate arithmetic, fixed docker settings,
-# no real-data mount, writes nothing). Test and docs only: no deploy, no host action. The real -Run and -Preflight paths need
-# Docker Desktop on the host and are NOT covered here.
+# Runs scripts/ladder/test_run_ladder.py under pwsh: -DryRun checks (gate arithmetic, fixed docker settings, no real-data
+# mount, writes nothing) and the -Run, -Stop, -Verify, -Cleanup and -Preflight flows against a stub host_ops.ps1. Test and
+# docs only: no deploy, no host action. The real host operations (WSL, Docker, process stop, power state) are NOT covered.
 on:
   pull_request:
     paths:

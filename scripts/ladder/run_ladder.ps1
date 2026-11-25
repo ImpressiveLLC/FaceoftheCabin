@@ -14,6 +14,7 @@
   -Stop        Kills a running ladder container and tells the sampler to stop.
   -Cleanup     Return the machine to normal: kills any ladder container, runs wsl --shutdown, quits Docker Desktop. Touches
                nothing else and deletes nothing (the records stay). Safe to run any time, also after a failed run.
+  -Verify      With -RunId: read-only check of that run's manifest.sha256 against the files in its folder (exit 0 or 5).
   -DryRun      With -Run or -Preflight: prints the plan as JSON (gate, budget, the exact docker argv) and executes nothing.
                -FakeAvailableBytes supplies the Windows-available figure for tests; it is refused without -DryRun.
 
@@ -23,6 +24,8 @@
   The 90 percent ceiling is on the effective budget: the lower of that budget and the container memory limit. With
   -ContainerCap budget the limit is the budget less 2 GiB, so the start needs 2 GiB more (about 21.8 GiB).
   A refused or failed start writes a NOT_RUN or STOPPED marker with the reason and never counts as a pass.
+  The manifest is written after the last write into the run folder and verified at once; a bundle that does not verify
+  exits 5. Everything that touches the machine is in host_ops.ps1 beside this script.
 #>
 [CmdletBinding()]
 param(
@@ -30,6 +33,7 @@ param(
     [switch]$Run,
     [switch]$Stop,
     [switch]$Cleanup,
+    [switch]$Verify,
     [switch]$DryRun,
     [string]$OutRoot = 'C:\ladder-run',
     [string]$Distro = 'Ubuntu-24.04',
@@ -60,16 +64,18 @@ if ($ContainerCap -eq 'budget') { $NeedAtStartBytes += $OverheadMarginBytes }
 $ModelRevision = '006f5dcd1393c3add266de40994ba96225e9689d'
 $ModelCacheDir = 'models--unsloth--Llama-3.2-3B-Instruct'
 
-$modes = @($Preflight, $Run, $Stop, $Cleanup | Where-Object { $_ }).Count
-if ($modes -ne 1) { Write-Error 'Choose exactly one of -Preflight, -Run, -Stop, -Cleanup.'; exit 2 }
+$modes = @($Preflight, $Run, $Stop, $Cleanup, $Verify | Where-Object { $_ }).Count
+if ($modes -ne 1) { Write-Error 'Choose exactly one of -Preflight, -Run, -Stop, -Cleanup, -Verify.'; exit 2 }
 if ($PagingRule -eq 'v2' -and ([double]::IsNaN($PagingMaxTrainRefaultsPerSecond) -or [double]::IsInfinity($PagingMaxTrainRefaultsPerSecond) -or $PagingMaxTrainRefaultsPerSecond -lt 0)) { [Console]::Error.WriteLine('-PagingRule v2 needs -PagingMaxTrainRefaultsPerSecond (no limit has been ruled, so there is no default).'); exit 2 }
 if ($FakeAvailableBytes -gt 0 -and -not $DryRun) { Write-Error '-FakeAvailableBytes is only allowed with -DryRun.'; exit 2 }
 if (-not $RepoDir) { $RepoDir = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path }
 $TrainingDir = Join-Path (Join-Path (Join-Path $RepoDir 'docs') 'ai-assistant') 'training'
+$HostOps = Join-Path $PSScriptRoot 'host_ops.ps1'
+. $HostOps
 
 function Get-AvailableBytes {
     if ($DryRun -and $FakeAvailableBytes -gt 0) { return $FakeAvailableBytes }
-    return [int64](Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory * 1024
+    return (Get-HostAvailableBytes)
 }
 
 function Get-GateReasons([int64]$Available) {
@@ -94,10 +100,10 @@ function Get-EffectiveBudget([int64]$Budget) { return [int64][math]::Min($Budget
 function Get-CeilingBytes([int64]$Budget) { $e = Get-EffectiveBudget $Budget; return [int64](($e * 9 - (($e * 9) % 10)) / 10) }
 
 # Docker runs INSIDE the Ubuntu WSL distro (where the Stage 2 image and the model cache live), not Docker Desktop.
-function Invoke-Docker { & wsl -d $Distro --exec docker @args }
+function Invoke-Docker { Invoke-Wsl -d $Distro --exec docker @args }
 
 function Test-DistroRunning {
-    $state = (& wsl -l -v 2>&1 | Out-String) -replace [string][char]0, ''
+    $state = (Invoke-Wsl -l -v 2>&1 | Out-String) -replace [string][char]0, ''
     return [bool]($state -match "$Distro +Running")
 }
 
@@ -132,15 +138,8 @@ function Get-DockerArgv([string]$Name, [string]$OutDir, [int64]$Budget, [int64]$
 function New-RunId { if ($RunId) { return $RunId } else { return (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ') } }
 
 function Get-HostFacts {
-    $facts = [ordered]@{}
-    $cs = Get-CimInstance Win32_ComputerSystem
-    $os = Get-CimInstance Win32_OperatingSystem
-    $facts.physical_bytes = [int64]$cs.TotalPhysicalMemory
-    $facts.windows_available_bytes = [int64]$os.FreePhysicalMemory * 1024
-    $facts.pagefile_used_mb = @(Get-CimInstance Win32_PageFileUsage | ForEach-Object { $_.CurrentUsage })
-    $wslconfig = Join-Path $env:USERPROFILE '.wslconfig'
-    $facts.wslconfig = if (Test-Path $wslconfig) { @(Get-Content $wslconfig | Where-Object { $_ -match '^\s*[a-z]' }) } else { @() }
-    $facts.wsl_state = (& wsl -l -v 2>&1 | Out-String) -replace "`0", ''
+    $facts = Get-HostMachineFacts $OutRoot
+    $facts.wsl_state = (Invoke-Wsl -l -v 2>&1 | Out-String) -replace "`0", ''
     $facts.docker_daemon = $false; $facts.image_present = $false; $facts.model_volume_present = $false
     $facts.distro_running = Test-DistroRunning
     if ($facts.distro_running) {   # read-only: never start the distro just to look
@@ -151,13 +150,37 @@ function Get-HostFacts {
             Invoke-Docker volume inspect $ModelVolume *> $null; $facts.model_volume_present = ($LASTEXITCODE -eq 0)
         }
     }
-    $facts.docker_desktop_running = [bool](Get-Process -Name 'Docker Desktop' -ErrorAction SilentlyContinue)
-    $drive = (Split-Path -Qualifier $OutRoot).TrimEnd(':')
-    $facts.out_drive_free_bytes = [int64](Get-PSDrive $drive).Free
-    $facts.top_processes_by_working_set = @(Get-Process | Group-Object Name | ForEach-Object {
-            [pscustomobject]@{ name = $_.Name; n = $_.Count; ws_mb = [int](($_.Group | Measure-Object WorkingSet64 -Sum).Sum / 1MB) }
-        } | Sort-Object ws_mb -Descending | Select-Object -First 15)
+    $facts.docker_desktop_running = Test-DockerDesktopRunning
     return $facts
+}
+
+# The bundle's manifest: one "sha256  relative path" line per file except the manifest itself.
+function Write-Manifest([string]$Dir) {
+    $root = (Resolve-Path -LiteralPath $Dir).Path
+    $lines = Get-ChildItem -LiteralPath $root -Recurse -File -Force | Where-Object { $_.Name -ne 'manifest.sha256' } | ForEach-Object {
+        "{0}  {1}" -f (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.FullName.Substring($root.Length + 1) }
+    Set-Content -LiteralPath (Join-Path $root 'manifest.sha256') $lines
+}
+
+# Read-only. Returns every difference between the manifest and the folder; nothing returned means it verifies.
+function Test-Manifest([string]$Dir) {
+    $manifest = Join-Path $Dir 'manifest.sha256'
+    if (-not (Test-Path -LiteralPath $manifest)) { return 'no manifest.sha256' }
+    $root = (Resolve-Path -LiteralPath $Dir).Path
+    $listed = @{}
+    foreach ($line in @(Get-Content -LiteralPath $manifest)) {
+        if ($line -notmatch '^([0-9a-f]{64})  (.+)$') { "unreadable manifest line: $line"; continue }
+        $hash, $name = $Matches[1], $Matches[2]
+        $listed[$name] = $true
+        $file = Join-Path $root $name
+        if (-not (Test-Path -LiteralPath $file)) { "missing: $name" }
+        elseif ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLower() -ne $hash) { "changed: $name" }
+    }
+    if ($listed.Count -eq 0) { 'manifest lists no files' }
+    Get-ChildItem -LiteralPath $root -Recurse -File -Force | Where-Object { $_.Name -ne 'manifest.sha256' } | ForEach-Object {
+        $name = $_.FullName.Substring($root.Length + 1)
+        if (-not $listed.ContainsKey($name)) { "not listed: $name" }
+    }
 }
 
 function Out-Json($Object, [string]$Path) {
@@ -174,7 +197,7 @@ if ($DryRun) {
     $id = New-RunId
     $outDir = ($OutRoot.TrimEnd([char]92, [char]47)) + [IO.Path]::DirectorySeparatorChar + $id   # plain string: Join-Path rejects C: paths on Linux
     $plan = [ordered]@{
-        mode = if ($Run) { 'run' } elseif ($Preflight) { 'preflight' } elseif ($Cleanup) { 'cleanup' } else { 'stop' }
+        mode = if ($Run) { 'run' } elseif ($Preflight) { 'preflight' } elseif ($Cleanup) { 'cleanup' } elseif ($Verify) { 'verify' } else { 'stop' }
         executed = $false
         windows_available_bytes = $avail
         start_min_bytes = $StartMinBytes
@@ -198,6 +221,15 @@ if ($DryRun) {
     exit $(if ($reasons.Count -eq 0) { 0 } else { 3 })
 }
 
+# ------------------------------------------------------------------ verify: read-only manifest check of one run folder
+if ($Verify) {
+    if (-not $RunId) { [Console]::Error.WriteLine('-Verify needs -RunId.'); exit 2 }
+    $problems = @(Test-Manifest (Join-Path $OutRoot $RunId))
+    if ($problems.Count -gt 0) { $problems | ForEach-Object { Write-Output $_ }; exit 5 }
+    Write-Output 'manifest verified'
+    exit 0
+}
+
 # ------------------------------------------------------------------ preflight
 if ($Preflight) {
     New-Item -ItemType Directory -Force -Path $OutRoot | Out-Null
@@ -217,10 +249,10 @@ if ($Cleanup) {
         $ids = @(Invoke-Docker ps -q --filter 'name=ladder-' 2>$null)
         foreach ($c in $ids) { Invoke-Docker kill $c | Out-Null }
     }
-    & wsl --shutdown
-    foreach ($n in 'Docker Desktop', 'com.docker.backend', 'com.docker.build') { Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }
+    Invoke-Wsl --shutdown
+    $null = @(Stop-DockerDesktop)
     Start-Sleep 5
-    $avail = [int64](Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory * 1024
+    $avail = Get-HostAvailableBytes
     Write-Output ("Cleanup done. Windows available now {0:N2} GiB. Your machine is back to normal operation; nothing else was changed." -f ($avail / $GiB))
     exit 0
 }
@@ -228,6 +260,7 @@ if ($Cleanup) {
 # ------------------------------------------------------------------ stop
 if ($Stop) {
     $latest = Get-ChildItem $OutRoot -Directory -ErrorAction SilentlyContinue | Sort-Object Name | Select-Object -Last 1
+    if ($latest -and (Test-Path (Join-Path $latest.FullName 'manifest.sha256'))) { $latest = $null }   # finished: never change a sealed bundle
     if ($latest) { Set-Content (Join-Path $latest.FullName 'STOP') 'operator stop' }
     $ids = @()
     if (Test-DistroRunning) { $ids = @(Invoke-Docker ps -q --filter 'name=ladder-') }
@@ -244,34 +277,35 @@ New-Item -ItemType Directory -Force -Path (Join-Path $out 'ladder') | Out-Null
 $log = Join-Path $out 'launcher.log'
 function Log([string]$Message) { Add-Content -Path $log -Value ("{0} {1}" -f (Get-Date).ToUniversalTime().ToString('o'), $Message); Write-Host $Message }
 function Mark([string]$Name, [string]$Reason) { Set-Content (Join-Path $out $Name) ("{0}`n{1}" -f (Get-Date).ToUniversalTime().ToString('o'), $Reason) }
-function Write-Manifest {
-    $lines = Get-ChildItem $out -Recurse -File | Where-Object { $_.Name -ne 'manifest.sha256' } | ForEach-Object {
-        "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.FullName.Substring($out.Length + 1) }
-    Set-Content (Join-Path $out 'manifest.sha256') $lines
-}
+# A refusal records why and exits; the bundle is sealed after the last write (in the finally block below).
 function Refuse([string[]]$Reasons) {
     Log ("NOT_RUN: " + ($Reasons -join '; '))
     Mark 'NOT_RUN' ($Reasons -join "`n")
-    Write-Manifest
+    $script:Refused = $true
     exit 3
+}
+# Seals the bundle: nothing may be written into $out after this. Returns the differences found on verification.
+function Complete-Bundle {
+    Write-Manifest $out
+    @(Test-Manifest $out)
 }
 
 Log "ladder launcher start, run id $id, out $out"
-$avail1 = Get-AvailableBytes
-Log "first read: Windows available $avail1 bytes"
-$reasons = @(Get-GateReasons $avail1)
-if ($reasons.Count -gt 0) { Refuse $reasons }
-
-Add-Type -Namespace Native -Name Power -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
-[void][Native.Power]::SetThreadExecutionState([uint32]2147483649)   # ES_CONTINUOUS | ES_SYSTEM_REQUIRED
 $job = $null
 $name = "ladder-$id"
+$script:Refused = $false
+$engaged = $false   # true once anything on the machine has been changed and so must be put back
 try {
-    foreach ($n in 'Docker Desktop', 'com.docker.backend', 'com.docker.build') {
-        if (Get-Process -Name $n -ErrorAction SilentlyContinue) { Log "quitting $n (not used; it competes for memory)"; Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }
-    }
+    $avail1 = Get-AvailableBytes
+    Log "first read: Windows available $avail1 bytes"
+    $reasons = @(Get-GateReasons $avail1)
+    if ($reasons.Count -gt 0) { Refuse $reasons }
+
+    $engaged = $true
+    Set-KeepAwake $true
+    foreach ($n in @(Stop-DockerDesktop)) { Log "quit $n (not used; it competes for memory)" }
     Log 'wsl --shutdown (all WSL distros stop; Nate approved this)'
-    & wsl --shutdown
+    Invoke-Wsl --shutdown
     Start-Sleep 3
     Log "starting the Docker daemon inside $Distro (systemd starts it when the distro boots)"
     $deadline = (Get-Date).AddSeconds(180)
@@ -294,16 +328,17 @@ try {
     Log ("effective budget {0} bytes (lower of budget and container limit); ceiling {1} bytes (90 percent)" -f (Get-EffectiveBudget $budget), (Get-CeilingBytes $budget))
     $csv = Join-Path $out 'host.csv'
     Set-Content $csv 'epoch,bytes'
-    $job = Start-Job -ArgumentList $csv, $name, $FloorBytes, $PollSeconds, (Join-Path $out 'STOP'), (Join-Path $out 'host-floor-breach.json'), $Distro -ScriptBlock {
-        param($csv, $name, $floor, $poll, $stopFile, $breachFile, $distro)
+    $job = Start-Job -ArgumentList $csv, $name, $FloorBytes, $PollSeconds, (Join-Path $out 'STOP'), (Join-Path $out 'host-floor-breach.json'), $Distro, $HostOps -ScriptBlock {
+        param($csv, $name, $floor, $poll, $stopFile, $breachFile, $distro, $hostOps)
+        . $hostOps
         $low = 0
         while (-not (Test-Path $stopFile)) {
-            $b = [int64](Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory * 1024
+            $b = Get-HostAvailableBytes
             $e = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
             Add-Content -Path $csv -Value "$e,$b"
             if ($b -lt $floor) { $low++ } else { $low = 0 }
             if ($low -ge 1) {
-                & wsl -d $distro --exec docker kill $name | Out-Null
+                Invoke-Wsl -d $distro --exec docker kill $name | Out-Null
                 Set-Content $breachFile "{`"epoch`":$e,`"available_bytes`":$b,`"floor_bytes`":$floor}"
                 break
             }
@@ -318,16 +353,22 @@ try {
     Log "container exited $exit"
 }
 finally {
-    Set-Content (Join-Path $out 'STOP') 'run finished'
-    if ($job) { Wait-Job $job -Timeout 15 | Out-Null; Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue }
-    if (Test-DistroRunning) {
-        $left = @(Invoke-Docker ps -q --filter "name=$name" 2>$null)
-        foreach ($c in $left) { Invoke-Docker kill $c | Out-Null }
+    if ($engaged) {
+        Set-Content (Join-Path $out 'STOP') 'run finished'
+        if ($job) { Wait-Job $job -Timeout 15 | Out-Null; Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue }
+        if (Test-DistroRunning) {
+            $left = @(Invoke-Docker ps -q --filter "name=$name" 2>$null)
+            foreach ($c in $left) { Invoke-Docker kill $c | Out-Null }
+        }
+        Set-KeepAwake $false
     }
-    [void][Native.Power]::SetThreadExecutionState([uint32]2147483648)
+    if ($script:Refused) {
+        $problems = @(Complete-Bundle)
+        if ($problems.Count -gt 0) { Write-Host ('MANIFEST DOES NOT VERIFY: ' + ($problems -join '; ')) -ForegroundColor Red; exit 5 }
+    }
 }
 
-$summaryPath = Join-Path $out 'ladder\summary.json'
+$summaryPath = Join-Path (Join-Path $out 'ladder') 'summary.json'
 if (Test-Path $summaryPath) {
     $summary = Get-Content $summaryPath -Raw | ConvertFrom-Json
     if ($summary.complete -eq $true) { Mark 'DONE' 'all rungs PASS' } else { Mark 'STOPPED' ("stopped_at " + $summary.stopped_at) }
@@ -335,16 +376,19 @@ if (Test-Path $summaryPath) {
     Mark 'STOPPED' "no ladder summary was written (container exit $exit)"
 }
 if (Test-Path (Join-Path $out 'host-floor-breach.json')) { Log 'host floor breach recorded' }
-Write-Manifest
 Log 'done; reopen Claude Code and read the records'
+$problems = @(Complete-Bundle)   # the last writes into $out are above this line
+$sealed = if ($problems.Count -eq 0) { 'manifest verified' } else { 'MANIFEST DOES NOT VERIFY: ' + ($problems -join '; ') }
 $result = (Get-ChildItem $out -File | Where-Object { $_.Name -in 'DONE', 'STOPPED', 'NOT_RUN' } | Select-Object -First 1).Name
-$note = "LADDER FINISHED: $result`r`nRecords: $out`r`nNext: run  powershell -File scripts/ladder/run_ladder.ps1 -Cleanup  to return the machine to normal, then reopen Claude Code and tell it the ladder finished."
-$desktop = if ($DesktopDir) { $DesktopDir } else { [Environment]::GetFolderPath('Desktop') }
+$note = "LADDER FINISHED: $result`r`nRecords: $out ($sealed)`r`nNext: run  powershell -File scripts/ladder/run_ladder.ps1 -Cleanup  to return the machine to normal, then reopen Claude Code and tell it the ladder finished."
+$desktop = if ($DesktopDir) { $DesktopDir } else { Get-DesktopPath }
 if ($desktop -and (Test-Path $desktop)) { Set-Content (Join-Path $desktop 'LADDER-FINISHED.txt') $note }
 Write-Host ''
 Write-Host '==================================================' -ForegroundColor Green
 Write-Host "  LADDER FINISHED: $result" -ForegroundColor Green
 Write-Host "  Records: $out" -ForegroundColor Green
+Write-Host "  $sealed" -ForegroundColor $(if ($problems.Count -eq 0) { 'Green' } else { 'Red' })
 Write-Host '  Next: run -Cleanup, then reopen Claude Code.' -ForegroundColor Green
 Write-Host '==================================================' -ForegroundColor Green
-1..3 | ForEach-Object { [console]::Beep(880, 300); Start-Sleep -Milliseconds 200 }
+Send-FinishSignal
+if ($problems.Count -gt 0) { exit 5 }
