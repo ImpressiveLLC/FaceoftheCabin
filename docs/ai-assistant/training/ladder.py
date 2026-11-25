@@ -110,11 +110,14 @@ def paging_from_trace(path):
     were evicted and read again, which is real cache pressure; cold reads of the weights on a fresh VM show up in `majflt`
     and `pgmajfault` but not in `refault_*`.
 
+    `seconds` is the measured span including borrowed boundary samples; `own_seconds` is the span of the phase's own
+    samples, which must itself reach one window.
+
     `train` is the phase a gate may judge, so it is measured from the last sample before it to the first sample after it:
     the intervals across its two boundaries count against training rather than being dropped. `load` and `save` cover their
     own samples; `boundaries` lists each interval between phases. `coverage_ok` is true only when the phases appear once
-    each in order, training has a sample on both sides, the measured span is at least one window, sample times never go
-    backwards and no gap is longer than the window. None if the trace has no 12-column rows."""
+    each in order, training has a sample on both sides and at least two samples of its own spanning at least one window,
+    sample times never go backwards and no gap is longer than the window. None if the trace has no 12-column rows.
     try:
         lines = Path(path).read_text(encoding="utf-8").splitlines()
     except OSError:
@@ -171,13 +174,16 @@ def paging_from_trace(path):
         rows = [(t, v) for _, t, v in trace[first:last + 1]]
         gaps = [b[0] - a[0] for a, b in zip(rows, rows[1:])]
         seconds = rows[-1][0] - rows[0][0]
-        entry = {"rows": len(own), "seconds": seconds, "reset": sorted(resets.get(phase, ())),
+        # the phase's own samples only: time borrowed from a neighbouring phase never counts toward the minimum window
+        own_seconds = trace[own[-1]][1] - trace[own[0]][1]
+        entry = {"rows": len(own), "seconds": seconds, "own_seconds": own_seconds, "reset": sorted(resets.get(phase, ())),
                  "invalid_samples": sum(any(v[name] is None for name in PAGING_COUNTERS) for _, v in rows) + malformed,
                  "max_gap_s": max(gaps) if gaps else None}
         entry.update(deltas(rows))
         entry["max_refault_file_per_s"] = worst_window_rate(rows)
         bounded = phase != "train" or (first < own[0] and last > own[-1])
-        entry["coverage_ok"] = bool(in_order and bounded and gaps and seconds >= PAGING_WINDOW_SECONDS
+        entry["coverage_ok"] = bool(in_order and bounded and gaps and len(own) >= 2
+                                    and own_seconds >= PAGING_WINDOW_SECONDS
                                     and min(gaps) >= 0 and max(gaps) <= PAGING_WINDOW_SECONDS)
         out[phase] = entry
     boundaries = []
@@ -343,7 +349,7 @@ def judge_rung(record: dict, *, budget_bytes: int, host_before=None, host_after=
                     reasons.append("paging evidence incomplete: unreadable or reset counter samples in the training phase")
                 if train.get("coverage_ok") is not True:
                     reasons.append("paging evidence incomplete: the samples do not cover the training phase (both boundaries, "
-                                   f"at least {PAGING_WINDOW_SECONDS} s, no gap longer than that)")
+                                   f"two training samples spanning at least {PAGING_WINDOW_SECONDS} s, no gap longer than that)")
                 rate = train.get("max_refault_file_per_s")
                 if not is_count(rate):
                     reasons.append("paging evidence missing: no valid refault_file rate in the training phase")

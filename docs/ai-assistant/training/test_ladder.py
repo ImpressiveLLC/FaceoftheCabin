@@ -844,6 +844,25 @@ class PhaseCoverageTests(unittest.TestCase):
     def test_training_shorter_than_one_window_is_incomplete(self):
         self.assertIncomplete([(0, "load", 0, 0), (1, "train", 0, 0), (3, "train", 0, 0), (4, "save", 0, 0)])
 
+    def test_one_training_sample_cannot_borrow_a_window_from_its_neighbours(self):
+        # Codex's first reproduction: boundary samples stretched one training sample to 6 s
+        self.assertIncomplete([(0, "load", 0, 0), (4, "train", 0, 0), (6, "save", 0, 0)])
+
+    def test_a_tenth_of_a_second_of_training_cannot_borrow_a_window(self):
+        # Codex's second reproduction: 0.1 s between the training samples
+        rows = [(0, "load", 0, 0), (4, "train", 0, 0), (4.1, "train", 400, 0), (8, "save", 400, 0)]
+        self.assertIncomplete(rows)
+        train = self.analyse(rows)["phases"]["train"]
+        self.assertEqual((train["rows"], train["seconds"]), (2, 8))
+        self.assertAlmostEqual(train["own_seconds"], 0.1)
+        self.assertEqual(train["refault_file_delta"], 400)   # boundary counters are still attributed
+
+    def test_the_training_samples_themselves_must_span_one_window(self):
+        def rows(end):
+            return [(0, "load", 0, 0), (1, "train", 0, 0), (end, "train", 0, 0), (end + 1, "save", 0, 0)]
+        self.assertTrue(self.analyse(rows(6))["phases"]["train"]["coverage_ok"])
+        self.assertIncomplete(rows(5.999))
+
     def test_a_gap_longer_than_the_window_is_incomplete(self):
         self.assertIncomplete([(0, "load", 0, 0), (1, "train", 0, 0), (7, "train", 0, 0), (8, "save", 0, 0)])
         self.assertIncomplete(self.good()[:-1] + [(30, "save", 0, 0)])             # across the exit boundary
