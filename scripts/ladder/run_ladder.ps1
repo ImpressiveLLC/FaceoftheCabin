@@ -24,6 +24,13 @@
   The 90 percent ceiling is on the effective budget: the lower of that budget and the container memory limit. With
   -ContainerCap budget the limit is the budget less 2 GiB, so the start needs 2 GiB more (about 21.8 GiB).
   A refused or failed start writes a NOT_RUN or STOPPED marker with the reason and never counts as a pass.
+  The container is not launched until the host sampler has two readings, the latest fresh and none under the floor
+  (30 s to get there, else NOT_RUN). During the run a floor breach, a stopped sampler, a reading older than 10 s or an
+  operator stop kills the container. DONE needs every rung PASS and none of: breach, abnormal or unknown container exit,
+  gap in the host readings, operator stop, launcher or cleanup error. Otherwise the run is STOPPED with every reason.
+  Every abort and cleanup WSL/Docker command is limited to 20 s and its native exit code is checked; a failed or timed-out
+  one leaves the container state unknown, which is recorded, and the other cleanup steps still run.
+  The 10 s, 30 s and 20 s limits were chosen by Code with finding 3's repair; they are not measured values.
   The manifest is written after the last write into the run folder and verified at once; a bundle that does not verify
   exits 5. Everything that touches the machine is in host_ops.ps1 beside this script.
 #>
@@ -58,6 +65,11 @@ $Stage2PeakBytes = [int64][math]::Round(14.21 * $GiB)
 $NeedAtStartBytes = [int64][math]::Ceiling($Stage2PeakBytes / 0.9) + $FloorBytes
 $ContainerLimitBytes = 22 * $GiB
 $PollSeconds = 1   # the host fell 14 GiB in 5 s in run 2; a 5 s poll with two samples was too slow
+$MaxSampleGapSeconds = 10   # an older or wider gap than this is no coverage (chosen by Code, not measured)
+$SamplerReadySeconds = 30   # time the sampler has to produce two good readings before launch
+$AbortWaitSeconds = 60      # after an abort, how long to keep killing before giving up on the container client
+$CommandTimeoutSeconds = 20 # longest any abort or cleanup WSL/Docker command may take
+$JobStopSeconds = 10        # longest to wait for an abandoned background job to stop
 $OverheadMarginBytes = 2 * $GiB
 # In budget cap mode the container limit (budget less the margin) is the ceiling denominator, so the start needs the margin too.
 if ($ContainerCap -eq 'budget') { $NeedAtStartBytes += $OverheadMarginBytes }
@@ -158,7 +170,10 @@ function Get-HostFacts {
 function Write-Manifest([string]$Dir) {
     $root = (Resolve-Path -LiteralPath $Dir).Path
     $lines = Get-ChildItem -LiteralPath $root -Recurse -File -Force | Where-Object { $_.Name -ne 'manifest.sha256' } | ForEach-Object {
-        "{0}  {1}" -f (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.FullName.Substring($root.Length + 1) }
+        # a file still held open cannot be hashed: it is left out, and verification then reports it as not listed
+        try { "{0}  {1}" -f (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256 -ErrorAction Stop).Hash.ToLower(), $_.FullName.Substring($root.Length + 1) }
+        catch { Write-Host "cannot hash a file in the run folder: $_" }
+    }
     Set-Content -LiteralPath (Join-Path $root 'manifest.sha256') $lines
 }
 
@@ -181,6 +196,110 @@ function Test-Manifest([string]$Dir) {
         $name = $_.FullName.Substring($root.Length + 1)
         if (-not $listed.ContainsKey($name)) { "not listed: $name" }
     }
+}
+
+function Get-EpochNow { return [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() }
+
+# The sampler's `epoch,bytes` lines. Reads while the sampler writes. -Complete drops a last line still being written.
+function Read-Samples([string]$Csv, [switch]$Complete) {
+    $samples = @(); $invalid = 0
+    if (Test-Path -LiteralPath $Csv) {
+        $stream = [IO.File]::Open($Csv, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+        try { $text = [IO.StreamReader]::new($stream).ReadToEnd() } finally { $stream.Dispose() }
+        if ($Complete -and -not $text.EndsWith("`n")) { $text = $text.Substring(0, $text.LastIndexOf("`n") + 1) }
+        foreach ($line in @($text -split "`r?`n" | Select-Object -Skip 1)) {
+            if (-not $line) { continue }
+            if ($line -match '^(\d+),(\d+)$') { $samples += [pscustomobject]@{ epoch = [int64]$Matches[1]; bytes = [int64]$Matches[2] } }
+            else { $invalid++ }
+        }
+    }
+    return [pscustomobject]@{ samples = $samples; invalid = $invalid }
+}
+
+# Why the sampler cannot be relied on right now, or nothing.
+function Get-SamplerProblem($Job, [string]$Csv, [string]$BreachFile, [int64]$Floor, [int]$MaxGap) {
+    if (Test-Path -LiteralPath $BreachFile) { return 'host floor breach recorded by the watchdog' }
+    if ($Job.State -notin 'NotStarted', 'Running') { return "the host sampler stopped (job $($Job.State))" }
+    $read = Read-Samples $Csv -Complete
+    if ($read.invalid -gt 0) { return 'unreadable host reading line' }
+    if ($read.samples.Count -eq 0) { return 'no host reading yet' }
+    $low = @($read.samples | Where-Object { $_.bytes -lt $Floor })
+    if ($low.Count -gt 0) { return "Windows available fell to $($low[0].bytes) bytes, below the $Floor floor" }
+    $age = (Get-EpochNow) - $read.samples[-1].epoch
+    if ($age -gt $MaxGap) { return "no host reading for $age s (limit $MaxGap)" }
+}
+
+# Waits until the sampler has two good readings. Returns nothing when ready, else the reason not to launch.
+function Wait-SamplerReady($Job, [string]$Csv, [string]$BreachFile, [int64]$Floor, [int]$MaxGap, [int]$TimeoutSeconds) {
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        $problem = Get-SamplerProblem $Job $Csv $BreachFile $Floor $MaxGap
+        if (-not $problem) {
+            if ((Read-Samples $Csv -Complete).samples.Count -ge 2) { return }
+            $problem = 'fewer than two host readings'
+        }
+        elseif ($problem -ne 'no host reading yet' -and $problem -notlike 'no host reading for*') { return $problem }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+    return "the host sampler was not ready within $TimeoutSeconds s: $problem"
+}
+
+# After the run: did the readings cover launch to end without a gap, and did any fall under the floor?
+function Get-CoverageProblems([string]$Csv, [int64]$From, [int64]$To, [int64]$Floor, [int]$MaxGap) {
+    $read = Read-Samples $Csv
+    if ($read.invalid -gt 0) { "host readings: $($read.invalid) unreadable line(s)" }
+    $before = @($read.samples | Where-Object { $_.epoch -le $From })
+    if ($before.Count -eq 0) { 'host readings: none at or before launch'; return }
+    $window = @($before[-1]) + @($read.samples | Where-Object { $_.epoch -gt $From })
+    for ($i = 1; $i -lt $window.Count; $i++) {
+        if ($window[$i - 1].epoch -ge $To) { break }
+        $gap = $window[$i].epoch - $window[$i - 1].epoch
+        if ($gap -gt $MaxGap -or $gap -lt 0) { "host readings: gap of $gap s during the run (limit $MaxGap)"; break }
+    }
+    $tail = $To - $window[-1].epoch
+    if ($tail -gt $MaxGap) { "host readings: none in the last $tail s of the run (limit $MaxGap)" }
+    $low = @($window | Where-Object { $_.bytes -lt $Floor } | Sort-Object bytes)
+    if ($low.Count -gt 0) { "Windows available fell to $($low[0].bytes) bytes, below the $Floor floor" }
+}
+
+# One WSL command with a time limit. Runs in its own job so a command that never returns cannot hold the launcher.
+# ok only when it finished in time and the native exit code was 0.
+function Invoke-WslBounded([string[]]$WslArgs, [int]$TimeoutSeconds) {
+    $call = Start-Job -ArgumentList $HostOps, $WslArgs -ScriptBlock {
+        param($hostOps, $wslArgs)
+        . $hostOps
+        $global:LASTEXITCODE = $null
+        $text = @(Invoke-Wsl @wslArgs 2>&1 | ForEach-Object { "$_" -replace [string][char]0, '' })
+        [pscustomobject]@{ exit = $global:LASTEXITCODE; output = $text }
+    }
+    if (-not (Wait-Job $call -Timeout $TimeoutSeconds)) {
+        $null = Stop-JobBounded $call
+        return [pscustomobject]@{ ok = $false; why = "timed out after $TimeoutSeconds s"; output = @() }
+    }
+    $result = @(Receive-Job $call -ErrorAction SilentlyContinue) | Select-Object -Last 1
+    $state = $call.State
+    Remove-Job $call -Force -ErrorAction SilentlyContinue
+    $why = if ($state -ne 'Completed' -or $null -eq $result -or $null -eq $result.exit) { "no exit code (job $state)" }
+    elseif ($result.exit -ne 0) { "exit $($result.exit)" }
+    return [pscustomobject]@{ ok = -not $why; why = $why; output = @(if ($result) { $result.output }) }
+}
+
+# Ends a background job without ever blocking for longer than $JobStopSeconds. Returns $true when it has ended.
+function Stop-JobBounded($Job) {
+    if ($Job.State -in 'NotStarted', 'Running') {
+        # Stop-Job blocks until the job ends, so it runs in its own runspace and is waited on with a limit
+        $stopper = [powershell]::Create()
+        $null = $stopper.AddScript('param($j) Stop-Job -Job $j').AddArgument($Job)
+        $wait = $stopper.BeginInvoke()
+        if ($wait.AsyncWaitHandle.WaitOne($JobStopSeconds * 1000)) { $stopper.Dispose() }
+    }
+    if ($Job.State -in 'NotStarted', 'Running', 'Stopping') { return $false }
+    Remove-Job $Job -Force -ErrorAction SilentlyContinue
+    return $true
+}
+
+function Invoke-DockerBounded([string[]]$DockerArgs) {
+    return Invoke-WslBounded (@('-d', $Distro, '--exec', 'docker') + $DockerArgs) $CommandTimeoutSeconds
 }
 
 function Out-Json($Object, [string]$Path) {
@@ -292,7 +411,15 @@ function Complete-Bundle {
 
 Log "ladder launcher start, run id $id, out $out"
 $job = $null
+$runJob = $null
 $name = "ladder-$id"
+$csv = Join-Path $out 'host.csv'
+$stopFile = Join-Path $out 'STOP'
+$breachFile = Join-Path $out 'host-floor-breach.json'
+$failures = [Collections.Generic.List[string]]::new()   # anything here means the run cannot be DONE
+function Fail([string]$Reason) { if (-not $failures.Contains($Reason)) { $failures.Add($Reason); Log "failure: $Reason" } }
+$launcherError = $false
+$exit = $null
 $script:Refused = $false
 $engaged = $false   # true once anything on the machine has been changed and so must be put back
 try {
@@ -326,41 +453,112 @@ try {
     Log "ceiling metric: $CeilingMetric (original = first-run gate; anon_shmem = new labelled configuration)"
     Log "fixed budget $budget bytes (min of 22 GiB and available minus 4 GiB)"
     Log ("effective budget {0} bytes (lower of budget and container limit); ceiling {1} bytes (90 percent)" -f (Get-EffectiveBudget $budget), (Get-CeilingBytes $budget))
-    $csv = Join-Path $out 'host.csv'
     Set-Content $csv 'epoch,bytes'
-    $job = Start-Job -ArgumentList $csv, $name, $FloorBytes, $PollSeconds, (Join-Path $out 'STOP'), (Join-Path $out 'host-floor-breach.json'), $Distro, $HostOps -ScriptBlock {
+    $job = Start-Job -ArgumentList $csv, $name, $FloorBytes, $PollSeconds, $stopFile, $breachFile, $Distro, $HostOps -ScriptBlock {
         param($csv, $name, $floor, $poll, $stopFile, $breachFile, $distro, $hostOps)
+        $ErrorActionPreference = 'Stop'   # a failed reading ends the job; the launcher sees that and aborts
         . $hostOps
         $low = 0
         while (-not (Test-Path $stopFile)) {
-            $b = Get-HostAvailableBytes
+            $b = [int64](Get-HostAvailableBytes)
+            if ($b -le 0) { throw "unusable host reading $b" }
             $e = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-            Add-Content -Path $csv -Value "$e,$b"
+            for ($try = 1; ; $try++) {
+                try { Add-Content -Path $csv -Value "$e,$b"; break } catch { if ($try -ge 5) { throw }; Start-Sleep -Milliseconds 100 }
+            }
             if ($b -lt $floor) { $low++ } else { $low = 0 }
             if ($low -ge 1) {
-                Invoke-Wsl -d $distro --exec docker kill $name | Out-Null
                 Set-Content $breachFile "{`"epoch`":$e,`"available_bytes`":$b,`"floor_bytes`":$floor}"
+                Invoke-Wsl -d $distro --exec docker kill $name | Out-Null
                 break
             }
             Start-Sleep $poll
         }
     }
-    Start-Sleep ($PollSeconds + 1)   # at least one reading before the first rung
-    $argv = Get-DockerArgv $name $out $budget $avail2 ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
+    $notReady = Wait-SamplerReady $job $csv $breachFile $FloorBytes $MaxSampleGapSeconds $SamplerReadySeconds
+    $argv = Get-DockerArgv $name $out $budget $avail2 (Get-EpochNow)
     Log ("docker " + ($argv -join ' '))
-    Invoke-Docker @argv *> (Join-Path $out 'container.log')
-    $exit = $LASTEXITCODE
-    Log "container exited $exit"
+    if (-not $notReady) { $notReady = Get-SamplerProblem $job $csv $breachFile $FloorBytes $MaxSampleGapSeconds }   # last look
+    if ($notReady) { Refuse @("not launched: $notReady") }
+    if (Test-Path $stopFile) { Refuse @('not launched: operator stop') }
+    $launched = Get-EpochNow
+    $runJob = Start-Job -ArgumentList $HostOps, $Distro, $argv, (Join-Path $out 'container.log') -ScriptBlock {
+        param($hostOps, $distro, $argv, $containerLog)
+        . $hostOps
+        Invoke-Wsl -d $distro --exec docker @argv *> $containerLog
+        $LASTEXITCODE
+    }
+    $abort = $null
+    while ($runJob.State -in 'NotStarted', 'Running') {
+        if (-not $abort) {
+            $abort = if (Test-Path $stopFile) { 'operator stop' } else { Get-SamplerProblem $job $csv $breachFile $FloorBytes $MaxSampleGapSeconds }
+            if ($abort) { Fail "run aborted: $abort"; $giveUp = (Get-Date).AddSeconds($AbortWaitSeconds) }
+        }
+        if ($abort) {
+            # repeated: the first kill can arrive before the container exists
+            $kill = Invoke-DockerBounded @('kill', $name)   # a nonzero exit is expected before the container exists
+            if ($kill.why -like 'timed out*') { Fail "the abort kill $($kill.why)" }
+            if ((Get-Date) -gt $giveUp) { Fail "the container client did not end within $AbortWaitSeconds s of the abort"; break }
+        }
+        Start-Sleep 1
+    }
+    $ended = Get-EpochNow
+    if ($runJob.State -eq 'Completed') { $exit = @(Receive-Job $runJob) | Where-Object { $_ -is [int] } | Select-Object -Last 1 }
+    if ($null -eq $exit) { Fail 'container exit code unknown' }
+    else { Log "container exited $exit"; if ($exit -ne 0) { Fail "container exited $exit" } }
+    foreach ($problem in @(Get-CoverageProblems $csv $launched $ended $FloorBytes $MaxSampleGapSeconds)) { Fail $problem }
+}
+catch {
+    $launcherError = $true
+    Fail "launcher error: $_"
 }
 finally {
     if ($engaged) {
-        Set-Content (Join-Path $out 'STOP') 'run finished'
-        if ($job) { Wait-Job $job -Timeout 15 | Out-Null; Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue }
-        if (Test-DistroRunning) {
-            $left = @(Invoke-Docker ps -q --filter "name=$name" 2>$null)
-            foreach ($c in $left) { Invoke-Docker kill $c | Out-Null }
+        # every step is tried even if an earlier one fails, and a failure to put the machine back is itself recorded
+        $steps = [ordered]@{
+            'stop the sampler' = {
+                if (-not (Test-Path $stopFile)) { Set-Content $stopFile 'run finished' }
+                if ($job) {
+                    $null = Wait-Job $job -Timeout 15
+                    # A sampler told to stop ends as Completed. Anything else, including a failure after the run loop's last
+                    # look (the container finishing in between), is recorded here, before the job is removed.
+                    if ($job.State -ne 'Completed') {
+                        Fail "the host sampler did not end cleanly (job $($job.State)) $($job.ChildJobs[0].JobStateInfo.Reason.Message)".Trim()
+                    }
+                    if (-not (Stop-JobBounded $job)) { Fail 'the host sampler could not be stopped' }
+                }
+            }
+            'kill leftover containers' = {
+                $wsl = Invoke-WslBounded @('-l', '-v') $CommandTimeoutSeconds
+                if (-not $wsl.ok) { Fail "cleanup: could not query WSL ($($wsl.why)); container state unknown" }
+                elseif (-not (($wsl.output -join "`n") -match "$Distro +Running")) { return }   # no VM, so no container
+                $list = Invoke-DockerBounded @('ps', '-q', '--filter', "name=$name")
+                if (-not $list.ok) {
+                    Fail "cleanup: could not list containers ($($list.why)); container state unknown"
+                    $kill = Invoke-DockerBounded @('kill', $name)   # try anyway; its result cannot be confirmed
+                    return
+                }
+                $left = @($list.output | Where-Object { $_ })
+                foreach ($c in $left) {
+                    $kill = Invoke-DockerBounded @('kill', $c)
+                    if (-not $kill.ok) { Fail "cleanup: docker kill $($kill.why)" }
+                }
+                if ($left.Count -gt 0) {
+                    $again = Invoke-DockerBounded @('ps', '-q', '--filter', "name=$name")
+                    if (-not $again.ok -or @($again.output | Where-Object { $_ }).Count -gt 0) { Fail 'cleanup: could not confirm that the container stopped' }
+                }
+            }
+            'end the container client' = {
+                if ($runJob) {
+                    if ($runJob.State -in 'NotStarted', 'Running') { Fail 'the container client was still running at cleanup' }
+                    if (-not (Stop-JobBounded $runJob)) { Fail 'the container client could not be stopped' }
+                }
+            }
+            'release keep-awake' = { Set-KeepAwake $false }
         }
-        Set-KeepAwake $false
+        foreach ($step in $steps.Keys) {
+            try { . $steps[$step] } catch { $launcherError = $true; Fail "cleanup failed ($step): $_" }
+        }
     }
     if ($script:Refused) {
         $problems = @(Complete-Bundle)
@@ -368,14 +566,18 @@ finally {
     }
 }
 
+# Terminal status. A child's own success never outranks anything the launcher saw go wrong.
+if (Test-Path $breachFile) { Fail 'host floor breach recorded' }
+if (Test-Path (Join-Path $out 'STOPPED-by-operator')) { Fail 'operator stop' }
+$summary = $null
 $summaryPath = Join-Path (Join-Path $out 'ladder') 'summary.json'
 if (Test-Path $summaryPath) {
-    $summary = Get-Content $summaryPath -Raw | ConvertFrom-Json
-    if ($summary.complete -eq $true) { Mark 'DONE' 'all rungs PASS' } else { Mark 'STOPPED' ("stopped_at " + $summary.stopped_at) }
+    try { $summary = Get-Content $summaryPath -Raw | ConvertFrom-Json } catch { Fail 'the ladder summary is not valid JSON' }
+    if ($summary.complete -ne $true) { Fail "ladder not complete: stopped_at $($summary.stopped_at)" }
 } else {
-    Mark 'STOPPED' "no ladder summary was written (container exit $exit)"
+    Fail "no ladder summary was written (container exit $exit)"
 }
-if (Test-Path (Join-Path $out 'host-floor-breach.json')) { Log 'host floor breach recorded' }
+if ($failures.Count -eq 0) { Mark 'DONE' 'all rungs PASS' } else { Mark 'STOPPED' ($failures -join "`n") }
 Log 'done; reopen Claude Code and read the records'
 $problems = @(Complete-Bundle)   # the last writes into $out are above this line
 $sealed = if ($problems.Count -eq 0) { 'manifest verified' } else { 'MANIFEST DOES NOT VERIFY: ' + ($problems -join '; ') }
@@ -392,3 +594,4 @@ Write-Host '  Next: run -Cleanup, then reopen Claude Code.' -ForegroundColor Gre
 Write-Host '==================================================' -ForegroundColor Green
 Send-FinishSignal
 if ($problems.Count -gt 0) { exit 5 }
+if ($launcherError) { exit 4 }
