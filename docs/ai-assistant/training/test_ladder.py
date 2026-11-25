@@ -181,94 +181,97 @@ class RunLadderTests(unittest.TestCase):
         self.assertFalse(summary["qualification"])
 
 
-class HostMinTests(unittest.TestCase):
+class HostWindowTests(unittest.TestCase):
+    """A rung's Windows readings are the lines the sampler added while it ran. The WSL wall clock steps, so no clock."""
+
+    LOW = ladder.HOST_STOP_BELOW_BYTES - 1
+    OK = 9 * GIB
+
     def csv(self, text):
         d = tempfile.TemporaryDirectory()
         self.addCleanup(d.cleanup)
         path = Path(d.name) / "host.csv"
-        path.write_text(text, encoding="utf-8")
+        path.write_bytes(text.encode("utf-8"))
         return path
 
-    def test_min_inside_window_only(self):
-        path = self.csv("\n".join(["epoch,bytes", "100,9000", "200,5000", "210,3000", "400,1000"]) + "\n")
-        self.assertEqual(ladder.read_host_min(path, 190, 215, slack=5), 3000)
-        self.assertEqual(ladder.read_host_min(path, 90, 110, slack=5), 9000)
+    def test_reads_in_order_with_header_bom_and_crlf(self):
+        path = self.csv("\ufeffepoch,bytes\r\n100,9000\r\n101,5000\r\n")
+        self.assertEqual(ladder.read_host_log(path), [9000, 5000])
 
-    def test_no_samples_or_no_file_is_none(self):
-        path = self.csv("epoch,bytes\n100,9000\n")
-        self.assertIsNone(ladder.read_host_min(path, 500, 600))
-        self.assertIsNone(ladder.read_host_min(path.parent / "missing.csv", 0, 10 ** 12))
+    def test_unfinished_last_line_is_left_out_and_a_bad_line_is_none(self):
+        self.assertEqual(ladder.read_host_log(self.csv("epoch,bytes\n100,9000\n101,50")), [9000])
+        bad = self.csv("epoch,bytes\n100,9000\n101,\ngarbage\n102,-5\n103,7,7\n104,8000\n")
+        self.assertEqual(ladder.read_host_log(bad), [9000, None, None, None, None, 8000])
 
-    def test_partial_last_line_is_ignored(self):
-        path = self.csv("100,9000\n101,")
-        self.assertEqual(ladder.read_host_min(path, 90, 110), 9000)
+    def test_missing_file_is_empty(self):
+        self.assertEqual(ladder.read_host_log(Path("nope") / "host.csv"), [])
 
-    def run_with(self, reader):
-        with tempfile.TemporaryDirectory() as tmp:
-            return ladder.run_ladder(rungs=[128, 256], budget_bytes=BUDGET, out_dir=Path(tmp), model="pinned",
-                                     host_available_start=8 * GIB, child_command=stub(good_record()),
-                                     host_min_reader=reader)
+    def test_window_is_the_new_lines_plus_the_one_before(self):
+        rows = [1, 50, 70, 60]
+        self.assertEqual(ladder.host_window(2, rows), (50, []))      # index 1 is the last one before the rung
+        self.assertEqual(ladder.host_window(3, rows), (60, []))
+        self.assertEqual(ladder.host_window(0, rows), (1, []))
 
-    def test_low_reading_during_rung_fails_and_stops(self):
-        summary = self.run_with(lambda a, b: ladder.HOST_STOP_BELOW_BYTES - 1)
-        self.assertEqual([r["status"] for r in summary["rungs"]], ["FAILURE", "NOT_RUN"])
+    def test_no_new_line_is_missing_evidence_even_with_an_older_one(self):
+        low, problems = ladder.host_window(2, [50, 60])
+        self.assertEqual(low, 60)
+        self.assertTrue(any("no Windows-available reading" in p for p in problems))
+        self.assertTrue(ladder.host_window(0, [])[1])
 
-    def test_no_reading_during_rung_is_missing_evidence(self):
-        summary = self.run_with(lambda a, b: None)
-        self.assertEqual(summary["rungs"][0]["status"], "FAILURE")
-        self.assertTrue(any("no Windows-available reading" in r for r in summary["rungs"][0]["reasons"]))
+    def test_a_shrunk_file_or_unreadable_line_is_a_problem(self):
+        self.assertTrue(any("shrank" in p for p in ladder.host_window(3, [50])[1]))
+        for rows, before in (([50, None, 60], 1), ([None, 60], 1)):
+            self.assertTrue(any("unreadable" in p for p in ladder.host_window(before, rows)[1]), rows)
 
-    def test_healthy_readings_pass_and_are_recorded(self):
-        summary = self.run_with(lambda a, b: 9 * GIB)
-        self.assertTrue(summary["complete"])
-        self.assertEqual(summary["rungs"][0]["host_available_min_during"], 9 * GIB)
-
-
-class ClockOffsetTests(unittest.TestCase):
-    """The WSL clock was seen 65 s ahead of Windows, so a rung's time window missed every sampler line."""
-
-    def test_offset_is_windows_epoch_minus_local_clock(self):
-        self.assertEqual(ladder.clock_offset(1000, now=1065), -65.0)
-        self.assertEqual(ladder.clock_offset(1065, now=1000), 65.0)
-
-    def test_no_epoch_means_no_correction(self):
-        self.assertEqual(ladder.clock_offset(0), 0.0)
-        self.assertEqual(ladder.clock_offset(None), 0.0)
-        self.assertEqual(ladder.clock_offset(-5), 0.0)
-
-    def test_rung_window_is_shifted_onto_the_windows_clock(self):
-        seen = []
-
-        def reader(a, b):
-            seen.append((a, b))
-            return 9 * GIB
-        with tempfile.TemporaryDirectory() as tmp:
-            summary = ladder.run_ladder(rungs=[128], budget_bytes=BUDGET, out_dir=Path(tmp), model="pinned",
-                                        host_available_start=8 * GIB, child_command=stub(good_record()),
-                                        host_min_reader=reader, host_clock_offset=-65.0)
-        self.assertEqual(summary["host_clock_offset_seconds"], -65.0)
-        start, end = seen[0]
-        self.assertGreater(end, start)
-        import time
-        self.assertLess(abs(start - (time.time() - 65.0)), 120)  # near local-now minus 65 s, not near local-now
-
-    def test_skewed_samples_are_found_only_with_the_offset(self):
-        import time
-        local_now = time.time()
-        windows_now = local_now - 65.0   # Windows behind the container clock, as seen
+    def run_rungs(self, per_rung, rungs=(128, 256)):
+        """The sampler file gains per_rung[i] lines while rung i runs (the stub child appends them)."""
         with tempfile.TemporaryDirectory() as tmp:
             csv = Path(tmp) / "host.csv"
-            csv.write_text("epoch,bytes\n" + "".join(f"{int(windows_now) + k},{9 * GIB}\n" for k in range(-3, 4)), encoding="utf-8")
-            reader = lambda a, b: ladder.read_host_min(csv, a, b)  # noqa: E731
-            without = ladder.run_ladder(rungs=[128], budget_bytes=BUDGET, out_dir=Path(tmp) / "a", model="pinned",
-                                        host_available_start=8 * GIB, child_command=stub(good_record()), host_min_reader=reader)
-            with_offset = ladder.run_ladder(rungs=[128], budget_bytes=BUDGET, out_dir=Path(tmp) / "b", model="pinned",
-                                            host_available_start=8 * GIB, child_command=stub(good_record()), host_min_reader=reader,
-                                            host_clock_offset=-65.0)
-        self.assertEqual(without["rungs"][0]["status"], "FAILURE")   # the bug that hid the readings
-        self.assertTrue(any("no Windows-available reading" in r for r in without["rungs"][0]["reasons"]))
-        self.assertEqual(with_offset["rungs"][0]["status"], "PASS")
-        self.assertEqual(with_offset["rungs"][0]["host_available_min_during"], 9 * GIB)
+            csv.write_text("epoch,bytes\n1,%d\n" % self.OK, encoding="utf-8")
+            added = iter(per_rung)
+
+            def command(rung, rung_dir):
+                text = "".join(f"{e},{b}\n" for e, b in next(added))
+                script = ("import json,sys,pathlib\n"
+                          f"open({str(csv)!r}, 'a').write({text!r})\n"
+                          f"(pathlib.Path(sys.argv[1])/'rung.json').write_text({json.dumps(good_record())!r})\n")
+                return [sys.executable, "-c", script, str(rung_dir)]
+            return ladder.run_ladder(rungs=list(rungs), budget_bytes=BUDGET, out_dir=Path(tmp) / "out", model="pinned",
+                                     host_available_start=8 * GIB, child_command=command,
+                                     host_log=lambda: ladder.read_host_log(csv))
+
+    def test_sample_times_play_no_part(self):
+        # epochs far in the past, far in the future and going backwards: all still belong to their rung
+        summary = self.run_rungs([[(10 ** 12, self.OK), (5, self.OK)], [(1, self.OK)]])
+        self.assertTrue(summary["complete"], summary["rungs"])
+        self.assertIn("not by clock", summary["host_window"])
+        self.assertNotIn("host_clock_offset_seconds", summary)
+
+    def test_a_low_reading_during_a_rung_fails_that_rung_and_stops(self):
+        summary = self.run_rungs([[(2, self.OK), (3, self.LOW), (4, self.OK)], [(5, self.OK)]])
+        self.assertEqual([r["status"] for r in summary["rungs"]], ["FAILURE", "NOT_RUN"])
+        self.assertEqual(summary["rungs"][0]["host_available_min_during"], self.LOW)
+
+    def test_a_low_reading_is_charged_to_the_rung_that_added_it(self):
+        summary = self.run_rungs([[(2, self.OK)], [(3, self.LOW)]])
+        self.assertEqual([r["status"] for r in summary["rungs"]], ["PASS", "FAILURE"])
+
+    def test_a_rung_that_added_no_reading_is_missing_evidence(self):
+        summary = self.run_rungs([[(2, self.OK)], []])
+        self.assertEqual([r["status"] for r in summary["rungs"]], ["PASS", "FAILURE"])
+        self.assertTrue(any("no Windows-available reading" in r for r in summary["rungs"][1]["reasons"]))
+
+    def test_cli_has_no_clock_argument(self):
+        proc = subprocess.run([sys.executable, str(HERE / "ladder.py"), "run", "--help"], capture_output=True, text=True, timeout=60)
+        self.assertIn("--host-csv", proc.stdout)
+        self.assertNotIn("--host-epoch-at-start", proc.stdout)
+
+    def test_cli_passes_the_sampler_file_through(self):
+        path = self.csv("epoch,bytes\n100,9000\n")
+        result = {"model": "synthetic", "qualification": False, "configuration": {}, "stopped_at": None, "complete": True}
+        with mock.patch.object(ladder, "run_ladder", return_value=result) as runner, mock.patch("builtins.print"):
+            ladder.main(["run", "--budget-bytes", "1000", "--out", "x", "--model", "synthetic", "--host-csv", str(path)])
+        self.assertEqual(runner.call_args.kwargs["host_log"](), [9000])
 
 
 class CeilingMetricJudgeTests(unittest.TestCase):

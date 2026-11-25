@@ -18,7 +18,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SCRIPT = HERE / "run_ladder.ps1"
 HOST_OPS = HERE / "host_ops.ps1"
-PWSH = shutil.which("pwsh")
+# LADDER_TEST_PWSH runs the same tests under another host, e.g. Windows PowerShell 5.1 (powershell.exe)
+PWSH = shutil.which(os.environ.get("LADDER_TEST_PWSH") or "pwsh")
 GIB = 1024 ** 3
 
 
@@ -188,7 +189,7 @@ class DryRunTests(unittest.TestCase):
         self.assertEqual(argv[argv.index("--budget-bytes") + 1], str(18 * GIB))
         self.assertEqual(argv[argv.index("--host-available-start") + 1], str(22 * GIB))
         self.assertEqual(argv[argv.index("--host-csv") + 1], "/out/host.csv")
-        self.assertIn("--host-epoch-at-start", argv)
+        self.assertNotIn("--host-epoch-at-start", argv)   # rung readings are chosen by file position, not by clock
         mounts = [argv[i + 1] for i, a in enumerate(argv) if a == "-v"]
         self.assertTrue(any(m.endswith(":/work:ro") for m in mounts), "training dir must be read-only")
         self.assertFalse(any("/data" in m or "eval-results" in m for m in mounts), "no real-data mount")

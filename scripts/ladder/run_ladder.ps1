@@ -126,7 +126,7 @@ function Get-ContainerLimitBytes([int64]$Budget) {
     return $ContainerLimitBytes
 }
 
-function Get-DockerArgv([string]$Name, [string]$OutDir, [int64]$Budget, [int64]$AvailableAtStart, [int64]$HostEpoch = 0) {
+function Get-DockerArgv([string]$Name, [string]$OutDir, [int64]$Budget, [int64]$AvailableAtStart) {
     $limit = Get-ContainerLimitBytes $Budget
     $mem = if ($ContainerCap -eq 'budget') { "$limit" } else { '22g' }
     return @(
@@ -142,8 +142,7 @@ function Get-DockerArgv([string]$Name, [string]$OutDir, [int64]$Budget, [int64]$
         '--ceiling-metric', $CeilingMetric,
         '--container-cap', $ContainerCap, '--container-memory-bytes', "$limit",
         '--paging-rule', $PagingRule,
-        '--host-available-start', "$AvailableAtStart", '--host-csv', '/out/host.csv',
-        '--host-epoch-at-start', "$HostEpoch"
+        '--host-available-start', "$AvailableAtStart", '--host-csv', '/out/host.csv'
     ) + $(if ($PagingRule -eq 'v2') { @('--paging-max-train-refaults-per-s', "$PagingMaxTrainRefaultsPerSecond") } else { @() })
 }
 
@@ -476,7 +475,7 @@ try {
         }
     }
     $notReady = Wait-SamplerReady $job $csv $breachFile $FloorBytes $MaxSampleGapSeconds $SamplerReadySeconds
-    $argv = Get-DockerArgv $name $out $budget $avail2 (Get-EpochNow)
+    $argv = Get-DockerArgv $name $out $budget $avail2
     Log ("docker " + ($argv -join ' '))
     if (-not $notReady) { $notReady = Get-SamplerProblem $job $csv $breachFile $FloorBytes $MaxSampleGapSeconds }   # last look
     if ($notReady) { Refuse @("not launched: $notReady") }

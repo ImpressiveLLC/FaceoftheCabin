@@ -37,6 +37,7 @@ CEILING_FRACTION = 0.90
 STAGE2_PEAK_BYTES = round(14.21 * 1024 ** 3)   # measured Stage 2 peak; a real run must fit it under the ceiling
 CEILING_POLICY = "90 percent of the lower of the fixed usable budget and the container memory limit (Codex 7096272556)"
 CGROUP_MEMORY_MAX = Path("/sys/fs/cgroup/memory.max")
+HOST_WINDOW = "sampler lines added while the rung ran, plus the last one before it; chosen by position, not by clock"
 CGROUP_PAGE_SLACK_BYTES = 64 * 1024   # the kernel rounds a memory limit down to a whole page
 RUNG_TIMEOUT_SECONDS = 20 * 60
 HOST_START_MIN_BYTES = 6 * 1024 ** 3     # Windows available before the first rung
@@ -384,14 +385,14 @@ def host_start_gate(host_available_bytes) -> list:
 
 # ---------------------------------------------------------------- parent runner
 def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, rung_timeout=RUNG_TIMEOUT_SECONDS,
-               host_available_start=None, host_available_end_of_rung=None, host_min_reader=None, host_clock_offset=0.0, ceiling_metric="original", container_cap="fixed", container_memory_bytes=None, paging_rule="v1", paging_limit=None, cgroup_memory_max=None, require_cgroup_evidence=False,
+               host_available_start=None, host_available_end_of_rung=None, host_log=None, ceiling_metric="original", container_cap="fixed", container_memory_bytes=None, paging_rule="v1", paging_limit=None, cgroup_memory_max=None, require_cgroup_evidence=False,
                child_command=None) -> dict:
     """Runs rungs in order in separate processes. `child_command(rung, rung_dir)` -> argv list (tests inject a stub).
     `host_available_end_of_rung(rung)` -> bytes or None, supplied by the operator's host reader.
-    `host_min_reader(start_epoch, end_epoch)` -> the lowest Windows-available reading taken during the rung, or None if there
-    was none; when a reader is given, no reading during a rung is a failure (missing evidence), never a pass.
-    `host_clock_offset` is Windows epoch minus this process's clock, in seconds: the WSL clock can run ahead of or behind
-    Windows (seen: 65 s ahead), so rung times are shifted onto the Windows clock before the sampler file is read."""
+    `host_log()` -> the Windows-available readings the launcher's sampler has written so far (see read_host_log). A rung is
+    judged on the readings appended while it ran, plus the last one before it, chosen by their position in the file. No
+    clock is used: the WSL wall clock is ahead of Windows and steps (seen: 65 s ahead; one sample 61 s early). With a
+    `host_log`, no new reading during a rung, an unreadable one or a file that shrank is a failure, never a pass."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     effective = effective_budget(budget_bytes, container_memory_bytes, cgroup_memory_max)
@@ -402,7 +403,7 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
                                  "paging_rule": paging_rule, "paging_max_train_refaults_per_s": paging_limit,
                                  "container_memory_bytes": container_memory_bytes,
                                  "label": CONFIG_LABELS[(ceiling_metric, container_cap)], "metric_label": CEILING_METRICS[ceiling_metric]},
-               "rungs": [], "stopped_at": None, "host_clock_offset_seconds": host_clock_offset, "host_start_gate": host_start_gate(host_available_start),
+               "rungs": [], "stopped_at": None, "host_window": HOST_WINDOW if host_log else None, "host_start_gate": host_start_gate(host_available_start),
                "host_available_start": host_available_start}
     if require_cgroup_evidence:
         summary["host_start_gate"] += cap_gate(budget_bytes, container_memory_bytes, cgroup_memory_max)
@@ -422,7 +423,7 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
         rung_dir.mkdir(parents=True, exist_ok=True)
         argv = (child_command or (lambda r, d: default_child_command(r, d, model, steps, budget_bytes, ceiling_metric, effective)))(rung, rung_dir)
         started = time.monotonic()
-        started_epoch = time.time()
+        host_rows_before = len(host_log()) if host_log else 0
         reasons = []
         try:
             proc = subprocess.run(argv, cwd=str(HERE), timeout=rung_timeout, capture_output=True, text=True)
@@ -435,7 +436,6 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
         except subprocess.TimeoutExpired:
             reasons.append(f"rung exceeded {rung_timeout}s and was killed")
         wall = time.monotonic() - started
-        ended_epoch = time.time()
         record = {}
         record_path = rung_dir / "rung.json"
         if record_path.exists():
@@ -445,14 +445,13 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
                 reasons.append("rung.json is not valid JSON")
         record.setdefault("wall_seconds", wall)
         host_after = host_available_end_of_rung(rung) if host_available_end_of_rung else None
-        host_min = host_min_reader(started_epoch + host_clock_offset, ended_epoch + host_clock_offset) if host_min_reader else None
+        host_min, host_problems = host_window(host_rows_before, host_log()) if host_log else (None, [])
         verdict = judge_rung(record, budget_bytes=budget_bytes, host_after=host_after, host_min_seen=host_min,
                              paging_rule=paging_rule, paging_limit=paging_limit,
                              container_memory_bytes=effective_budget(container_memory_bytes, cgroup_memory_max) or None)
         if require_cgroup_evidence and record.get("cgroup_memory_max") is None:
             verdict["reasons"].append("the rung record has no cgroup memory.max reading")
-        if host_min_reader and host_min is None:
-            verdict["reasons"].append("no Windows-available reading was taken during the rung")
+        verdict["reasons"] += host_problems
         verdict["reasons"] = reasons + verdict["reasons"]
         if verdict["reasons"]:
             verdict["status"] = "FAILURE"
@@ -470,30 +469,37 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
     return summary
 
 
-def clock_offset(host_epoch, now=None):
-    """Windows epoch (seconds, taken by the launcher just before the container started) minus this clock now; 0 when none
-    was given. The few seconds the container takes to start make it read slightly low; read_host_min's slack covers that."""
-    if not host_epoch or host_epoch <= 0:
-        return 0.0
-    return float(host_epoch) - (time.time() if now is None else now)
-
-
-def read_host_min(csv_path, start_epoch, end_epoch, slack=10):
-    """Lowest `bytes` among `epoch,bytes` lines of the launcher's sampler file taken within [start-slack, end+slack]."""
+def read_host_log(csv_path) -> list:
+    """The sampler file's readings in order: one entry per complete `epoch_seconds,windows_available_bytes` line after the
+    header, the bytes as an int or None for a line that cannot be read. A last line still being written is left out. Empty
+    when there is no file."""
     try:
-        lines = Path(csv_path).read_text(encoding="utf-8").splitlines()
+        text = Path(csv_path).read_text(encoding="utf-8-sig", errors="replace")
     except OSError:
-        return None
-    best = None
+        return []
+    lines = text.split("\n")[:-1]   # what follows the last newline is unfinished (or empty)
+    if lines and lines[0].startswith("epoch"):
+        lines = lines[1:]
+    readings = []
     for line in lines:
-        try:
-            epoch, value = line.split(",")[:2]
-            epoch, value = float(epoch), int(value)
-        except ValueError:
-            continue  # header or a partly written last line
-        if start_epoch - slack <= epoch <= end_epoch + slack and (best is None or value < best):
-            best = value
-    return best
+        parts = line.strip().split(",")
+        complete = len(parts) == 2 and all(part.isascii() and part.isdigit() for part in parts)
+        readings.append(int(parts[1]) if complete else None)
+    return readings
+
+
+def host_window(rows_before: int, readings: list):
+    """(lowest reading, problems) for a rung that began when the file held `rows_before` readings."""
+    if len(readings) < rows_before:
+        return None, ["host reading file shrank during the rung"]
+    window = readings[max(rows_before - 1, 0):]
+    values = [v for v in window if v is not None]
+    problems = []
+    if all(v is None for v in readings[rows_before:]):
+        problems.append("no Windows-available reading was taken during the rung")
+    if len(values) < len(window):
+        problems.append("unreadable Windows-available reading during the rung")
+    return (min(values) if values else None), problems
 
 
 def default_child_command(rung, rung_dir, model="pinned", steps=3, budget_bytes=0, ceiling_metric="original",
@@ -532,10 +538,8 @@ def main(argv=None):
     run.add_argument("--steps", type=int, default=3)
     run.add_argument("--rung-timeout", type=int, default=RUNG_TIMEOUT_SECONDS)
     run.add_argument("--host-available-start", type=int, default=None, help="Windows available bytes, measured just before")
-    run.add_argument("--host-epoch-at-start", type=int, default=0,
-                     help="Windows epoch seconds taken by the launcher just before the container started (corrects WSL clock skew)")
     run.add_argument("--host-csv", type=Path, default=None,
-                     help="sampler file of `epoch_seconds,windows_available_bytes` lines; each rung is judged on its lowest reading")
+                     help="sampler file of `epoch_seconds,windows_available_bytes` lines; each rung is judged on the lines added while it ran")
     run.add_argument("--host-available-file", type=Path, default=None,
                      help="file the operator appends Windows available bytes to after each rung (one integer per line)")
     args = parser.parse_args(argv)
@@ -560,8 +564,7 @@ def main(argv=None):
         rungs=rungs, budget_bytes=args.budget_bytes, out_dir=args.out, model=args.model, steps=args.steps,
         rung_timeout=args.rung_timeout, host_available_start=args.host_available_start,
         host_available_end_of_rung=host_reader,
-        host_min_reader=(lambda a, b: read_host_min(args.host_csv, a, b)) if args.host_csv else None,
-        host_clock_offset=clock_offset(args.host_epoch_at_start), ceiling_metric=args.ceiling_metric,
+        host_log=(lambda: read_host_log(args.host_csv)) if args.host_csv else None, ceiling_metric=args.ceiling_metric,
         container_cap=args.container_cap, container_memory_bytes=args.container_memory_bytes,
         paging_rule=args.paging_rule, paging_limit=args.paging_max_train_refaults_per_s,
         cgroup_memory_max=read_cgroup_max(), require_cgroup_evidence=args.model == "pinned")
