@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import ladder
 
@@ -475,6 +476,127 @@ except ImportError:
     HAVE_TORCH = False
 
 
+class EffectiveBudgetTests(unittest.TestCase):
+    """The ceiling is 90 percent of the LOWER of the usable budget and the container limit (Codex finding 1)."""
+
+    # figures from runs 3 and 4 as Codex computed them
+    RUN4 = dict(budget=18572292096, cap=16424808448, ceiling=14782327603, current=16424808448, anon=15021985792)
+    RUN3_CEILING = 13887988531
+
+    def test_cap_below_budget_lowers_the_ceiling(self):
+        r = self.RUN4
+        self.assertEqual(ladder.effective_budget(r["budget"], r["cap"]), r["cap"])
+        self.assertEqual(ladder.ceiling_bytes(r["cap"]), r["ceiling"])
+        self.assertEqual(ladder.ceiling_bytes(15431098368), self.RUN3_CEILING)
+        self.assertEqual(ladder.effective_budget(r["budget"], None, 0), r["budget"])
+        self.assertEqual(ladder.effective_budget(r["cap"], r["budget"]), r["cap"])
+
+    def test_judge_fails_run_4_on_both_metrics_and_budget_alone_did_not(self):
+        r = self.RUN4
+        for metric, peak in (("original", r["current"]), ("anon_shmem", r["anon"])):
+            with self.subTest(metric=metric):
+                rec = good_record(ceiling_metric=metric, ceiling_metric_peak_bytes=peak, memory_peak_bytes=r["current"])
+                self.assertEqual(ladder.judge_rung(rec, budget_bytes=r["budget"])["status"], "PASS")
+                verdict = ladder.judge_rung(rec, budget_bytes=r["budget"], container_memory_bytes=r["cap"])
+                self.assertEqual(verdict["status"], "FAILURE")
+                self.assertTrue(any("effective budget %d" % r["cap"] in x for x in verdict["reasons"]))
+
+    def test_judge_boundary_is_the_effective_ceiling(self):
+        cap = 8 * GIB
+        at = ladder.ceiling_bytes(cap)
+        for peak, status in ((at, "PASS"), (at + 1, "FAILURE")):
+            verdict = ladder.judge_rung(good_record(memory_peak_bytes=peak), budget_bytes=BUDGET, container_memory_bytes=cap)
+            self.assertEqual(verdict["status"], status, peak)
+
+    def test_the_recorded_cgroup_limit_also_lowers_the_ceiling(self):
+        rec = good_record(memory_peak_bytes=5 * GIB, cgroup_memory_max=5 * GIB)
+        self.assertEqual(ladder.judge_rung(rec, budget_bytes=BUDGET)["status"], "FAILURE")
+
+    def test_child_that_used_another_denominator_fails(self):
+        rec = good_record(effective_budget_bytes=BUDGET)
+        verdict = ladder.judge_rung(rec, budget_bytes=BUDGET, container_memory_bytes=8 * GIB)
+        self.assertEqual(verdict["status"], "FAILURE")
+        self.assertTrue(any("the verdict uses" in x for x in verdict["reasons"]))
+
+    def run_real(self, rec, **kw):
+        kw.setdefault("container_memory_bytes", 18 * GIB)
+        kw.setdefault("cgroup_memory_max", 18 * GIB)
+        seen = []
+
+        def command(rung, rung_dir):
+            seen.append(rung)
+            return stub(rec)(rung, rung_dir)
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = ladder.run_ladder(rungs=[128], budget_bytes=20 * GIB, out_dir=Path(tmp), model="pinned",
+                                        host_available_start=26 * GIB, require_cgroup_evidence=True,
+                                        child_command=command, **kw)
+        return summary, seen
+
+    def test_run_records_budget_cap_and_effective_separately(self):
+        summary, _ = self.run_real(good_record(cgroup_memory_max=18 * GIB))
+        self.assertEqual(summary["budget_bytes"], 20 * GIB)
+        self.assertEqual(summary["configuration"]["container_memory_bytes"], 18 * GIB)
+        self.assertEqual(summary["cgroup_memory_max_bytes"], 18 * GIB)
+        self.assertEqual(summary["effective_budget_bytes"], 18 * GIB)
+        self.assertEqual(summary["ceiling_bytes"], ladder.ceiling_bytes(18 * GIB))
+        self.assertEqual(summary["rungs"][0]["status"], "PASS", summary["rungs"][0]["reasons"])
+
+    def test_admission_refuses_before_any_rung(self):
+        cases = {"not declared": dict(container_memory_bytes=None),
+                 "not readable": dict(cgroup_memory_max=None),
+                 "does not match": dict(cgroup_memory_max=22 * GIB),
+                 "below the Stage 2 peak": dict(container_memory_bytes=15 * GIB, cgroup_memory_max=15 * GIB)}
+        for needle, kw in cases.items():
+            with self.subTest(needle=needle):
+                summary, seen = self.run_real(good_record(), **kw)
+                self.assertEqual(seen, [])
+                self.assertEqual(summary["stopped_at"], "start gate")
+                self.assertTrue(any(needle in x for x in summary["host_start_gate"]), summary["host_start_gate"])
+
+    def test_page_rounding_of_the_kernel_limit_is_accepted(self):
+        declared = 18 * GIB + 1024
+        self.assertEqual(ladder.cap_gate(20 * GIB, declared, 18 * GIB), [])
+        self.assertTrue(ladder.cap_gate(20 * GIB, 18 * GIB, 18 * GIB + 4096))
+
+    def test_a_rung_record_without_the_cgroup_limit_fails_a_real_run(self):
+        summary, _ = self.run_real(good_record())
+        self.assertEqual(summary["rungs"][0]["status"], "FAILURE")
+        self.assertTrue(any("no cgroup memory.max reading" in x for x in summary["rungs"][0]["reasons"]))
+
+    def test_cgroup_max_reader(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "memory.max"
+            path.write_text("16424808448\n")
+            self.assertEqual(ladder.read_cgroup_max(path), 16424808448)
+            path.write_text("max\n")
+            self.assertIsNone(ladder.read_cgroup_max(path))
+            self.assertIsNone(ladder.read_cgroup_max(Path(tmp) / "absent"))
+
+    def test_the_runner_hands_the_effective_budget_to_the_default_child(self):
+        seen = []
+
+        def fake(rung, rung_dir, *args):
+            seen.append(args)
+            return stub(good_record(cgroup_memory_max=18 * GIB))(rung, rung_dir)
+        with mock.patch.object(ladder, "default_child_command", fake), tempfile.TemporaryDirectory() as tmp:
+            ladder.run_ladder(rungs=[128], budget_bytes=20 * GIB, out_dir=Path(tmp), model="pinned",
+                              host_available_start=26 * GIB, container_memory_bytes=18 * GIB, cgroup_memory_max=18 * GIB)
+        self.assertEqual(seen[0], ("pinned", 3, 20 * GIB, "original", 18 * GIB))
+
+    def test_cli_requires_cgroup_evidence_for_the_pinned_model_only(self):
+        for model, required in (("pinned", True), ("synthetic", False)):
+            result = {"model": model, "qualification": False, "configuration": {}, "stopped_at": None, "complete": True}
+            with mock.patch.object(ladder, "run_ladder", return_value=result) as runner,                     mock.patch.object(ladder, "read_cgroup_max", return_value=123), mock.patch("builtins.print"):
+                ladder.main(["run", "--budget-bytes", "1000", "--out", "x", "--model", model])
+            self.assertEqual(runner.call_args.kwargs["require_cgroup_evidence"], required, model)
+            self.assertEqual(runner.call_args.kwargs["cgroup_memory_max"], 123)
+
+    def test_child_gets_the_effective_budget(self):
+        argv = ladder.default_child_command(128, "d", budget_bytes=20, effective_budget_bytes=18)
+        self.assertEqual(argv[argv.index("--budget-bytes") + 1], "20")
+        self.assertEqual(argv[argv.index("--effective-budget-bytes") + 1], "18")
+
+
 @unittest.skipUnless(HAVE_TORCH, "torch, peft and transformers are not installed")
 class ChildTests(unittest.TestCase):
     def run_child(self, rung, extra=()):
@@ -509,6 +631,13 @@ class ChildTests(unittest.TestCase):
         self.assertNotEqual(proc.returncode, 0)
         self.assertFalse(record["completed"])
         self.assertIn("percent of budget", record["failure"])
+
+    def test_child_watcher_stops_on_the_lower_effective_budget(self):
+        proc, record = self.run_child(48, extra=("--effective-budget-bytes", "1000000"))   # --budget-bytes is 8 GiB
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertEqual(record["effective_budget_bytes"], 1000000)
+        self.assertEqual(record["budget_bytes"], 8 * GIB)
+        self.assertIn("percent of budget 1000000", record["failure"])
 
     def test_reload_comparison_detects_a_difference(self):
         import torch
