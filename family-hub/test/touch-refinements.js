@@ -25,6 +25,10 @@ module.exports = async function ({ browser, check, base }) {
   const geometry = await page.locator('#chores-card').evaluate(el => ({ height: el.clientHeight, content: el.scrollHeight, overflow: getComputedStyle(el).overflowY, thumb: getComputedStyle(el, '::-webkit-scrollbar').width }));
   check('many assignees have a real scroll region', geometry.content > geometry.height && geometry.overflow === 'auto', true);
   check('scrollbar is visible at rest', parseInt(geometry.thumb) >= 16, true);
+  check('kiosk touch display uses the wide scrollbar before any interaction', geometry.thumb, '32px');
+  await page.evaluate(() => document.documentElement.classList.remove('kiosk-mode'));
+  check('outside kiosk the scrollbar is not widened', await page.locator('#chores-card').evaluate(el => getComputedStyle(el, '::-webkit-scrollbar').width) !== '32px', true);
+  await page.evaluate(() => document.documentElement.classList.add('kiosk-mode'));
   // Chromium touch gesture: real panning, not setting scrollTop directly.
   const cdp = await page.context().newCDPSession(page);
   const box = await page.locator('#chores-card').boundingBox();
@@ -35,7 +39,7 @@ module.exports = async function ({ browser, check, base }) {
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await page.waitForTimeout(250);
   check('finger swipe scrolls chores without mouse or keyboard', await page.locator('#chores-card').evaluate(el => el.scrollTop > 0), true);
-  check('touch doubles scrollbar prominence', await page.locator('#chores-card').evaluate(el => getComputedStyle(el, '::-webkit-scrollbar').width), '32px');
+  check('touch scrolling does not resize the scrollbar', await page.locator('#chores-card').evaluate(el => getComputedStyle(el, '::-webkit-scrollbar').width), geometry.thumb);
   await page.locator('[data-landing-kid-compact="p8"]').tap();
   check('grandparent can expand assigned chores', await page.locator('[data-landing-kid-expanded="p8"] .chore-row').count(), 20);
   await page.locator('[data-landing-kid-compact="p1"]').tap();
