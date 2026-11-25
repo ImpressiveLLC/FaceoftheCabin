@@ -1,11 +1,13 @@
 /* Same touch controls as Family Hub, mapped to cabin theme tokens. */
-:root { --scroll-size:16px; --scroll-thumb:var(--accent); --scroll-track:var(--bg); --display-bg:var(--bg); --display-text:var(--text); --display-edge:var(--layer-1-edge, var(--border)); --display-muted:var(--text-muted); --display-accent:var(--accent); }
-:root.scroll-active { --scroll-size:32px; }
-* { scrollbar-width:auto !important; scrollbar-color:var(--scroll-thumb) var(--scroll-track) !important; }
-*::-webkit-scrollbar { display:block !important; width:var(--scroll-size) !important; height:var(--scroll-size) !important; }
-*::-webkit-scrollbar-track { background:var(--scroll-track) !important; }
-*::-webkit-scrollbar-thumb { background:var(--scroll-thumb) !important; border:3px solid var(--scroll-track); border-radius:12px; min-height:44px; }
-*::-webkit-scrollbar-corner { background:var(--scroll-track); }
+:root { --scroll-size:32px; --scroll-thumb:var(--accent); --scroll-track:var(--bg); --display-bg:var(--bg); --display-text:var(--text); --display-edge:var(--layer-1-edge, var(--border)); --display-muted:var(--text-muted); --display-accent:var(--accent); }
+/* Wide scrollbars are for kiosk mode only (touch screen, no mouse). Everywhere else the page keeps its own scrollbars.
+   Only the kiosk switch changes the width, never a click, key or scroll: a width that grew on interaction shifted the
+   content under the pointer, so row controls moved away before they could be clicked. */
+.kiosk-mode, .kiosk-mode * { scrollbar-width:auto !important; scrollbar-color:var(--scroll-thumb) var(--scroll-track) !important; }
+.kiosk-mode::-webkit-scrollbar, .kiosk-mode *::-webkit-scrollbar { display:block !important; width:var(--scroll-size) !important; height:var(--scroll-size) !important; }
+.kiosk-mode::-webkit-scrollbar-track, .kiosk-mode *::-webkit-scrollbar-track { background:var(--scroll-track) !important; }
+.kiosk-mode::-webkit-scrollbar-thumb, .kiosk-mode *::-webkit-scrollbar-thumb { background:var(--scroll-thumb) !important; border:3px solid var(--scroll-track); border-radius:12px; min-height:44px; }
+.kiosk-mode::-webkit-scrollbar-corner, .kiosk-mode *::-webkit-scrollbar-corner { background:var(--scroll-track); }
 [hidden] { display:none !important; }
 .display-controls { gap:4px; padding:0; }
 .display-controls button, .display-controls a { min-height:44px; padding:6px 8px; border:2px solid var(--display-edge); border-radius:8px; background:var(--display-bg); color:var(--display-text); font:600 12px var(--font-ui, sans-serif); text-decoration:none; }
@@ -23,7 +25,7 @@
 .kiosk-mode .main-toolbar { height:auto; min-height:48px; flex-shrink:0; }
 .kiosk-mode .toolbar-right { flex-wrap:wrap; }
 .app-shell { height:100dvh; }
-@supports selector(::-webkit-scrollbar) { * { scrollbar-color:auto !important; } }
+@supports selector(::-webkit-scrollbar) { .kiosk-mode, .kiosk-mode * { scrollbar-color:auto !important; } }
 @media (max-width:768px) {
   .nav-rail { overflow-y:auto; overflow-x:hidden; }
   .nav-rail .display-controls { flex-shrink:0; }

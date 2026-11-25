@@ -48,6 +48,4 @@ export default function KioskControls() {
   return <button type="button" className="btn-secondary kiosk-toggle kiosk-switch" role="switch" aria-label="Kiosk" onClick={toggle} aria-checked={enabled}><span>Kiosk</span><span className="kiosk-slider" aria-hidden="true" /></button>;
 }
 
-import './touch-scroll.js';
-
 import './touch-display.css';

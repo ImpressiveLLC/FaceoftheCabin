@@ -1074,3 +1074,13 @@ inside against outside is the point of the chart), and the CSV export format (ou
 the mean only; high and low are on screen).
 
 ---
+
+## 2026-11-24 — Wide scrollbars are for kiosk mode only
+
+Reported in Device Manager: reaching for a row's on/off toggle, the scrollbar grew and pushed the row left, then shrank
+back before the click landed. Cause: `touch-scroll.js` widened every scrollbar from 16px to 32px for 3 seconds after any
+click, key or scroll, in both Cabin UI and Family Hub. The script is removed.
+
+Nate's rule: thick scrollbars only in kiosk mode, for a touch screen with no mouse. Every rule in `touch-display.css` that
+restyles a scrollbar is now scoped to `.kiosk-mode` at a fixed 32px; outside kiosk the page keeps its own scrollbars,
+including on touch devices. Only the kiosk switch changes the width.
