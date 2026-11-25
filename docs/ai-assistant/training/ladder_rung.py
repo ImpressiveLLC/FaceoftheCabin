@@ -114,6 +114,12 @@ class Watcher(threading.Thread):
             self.trace = open(trace_path, "w", encoding="utf-8", buffering=1)   # line-buffered: survives a SIGKILL
             self.trace.write("epoch,current,rss,anon,file,shmem,metric,phase,majflt,pgmajfault,refault_file,refault_anon\n")
         self.ceiling_metric = ceiling_metric
+        # one sample at a time: the watcher thread and the phase boundaries both sample, and rows written out of order
+        # would look like counters going backwards
+        self.lock = threading.RLock()
+        # trace times are the wall clock at start plus monotonic time since: the WSL wall clock steps (seen in run 4:
+        # one sample stamped 61 s early in the middle of training), which would break every interval
+        self.clock_start = (time.time(), time.monotonic())
         self.metric_peak = 0
         self.metric_fallback = False   # anon_shmem asked for but memory.stat unreadable: judged on the original, stricter figure
         self.ceiling = int(budget_bytes * ceiling_fraction) if budget_bytes else None   # budget_bytes = effective budget
@@ -132,7 +138,20 @@ class Watcher(threading.Thread):
         self.file_peak = None
         self.at_cur_peak = None
 
+    def set_phase(self, phase):
+        """Changes phase between a closing sample of the old one and an opening sample of the new one, with no other
+        sample in between."""
+        global PHASE
+        with self.lock:
+            self.sample()
+            PHASE = phase
+            self.sample()
+
     def sample(self):
+        with self.lock:
+            self._sample()
+
+    def _sample(self):
         cur, rss = _read_int(CGROUP / "memory.current"), _rss_bytes()
         stat = _read_stat(CGROUP / "memory.stat")
         values = [v for v in (cur, rss) if v is not None]
@@ -162,7 +181,7 @@ class Watcher(threading.Thread):
             judged = max(judged, self.kernel_peak)
         self.metric_peak = max(self.metric_peak, judged)
         if self.trace is not None:
-            cells = ([f"{time.time():.1f}"] + ["" if v is None else str(v) for v in (cur, rss, stat.get("anon"), stat.get("file"), stat.get("shmem"))]
+            cells = ([f"{self.clock_start[0] + time.monotonic() - self.clock_start[1]:.3f}"] + ["" if v is None else str(v) for v in (cur, rss, stat.get("anon"), stat.get("file"), stat.get("shmem"))]
                      + [str(metric_value), PHASE]
                      + ["" if v is None else str(v) for v in (_major_faults(), stat.get("pgmajfault"), stat.get("workingset_refault_file"), stat.get("workingset_refault_anon"))])
             self.trace.write(",".join(cells) + "\n")
@@ -205,10 +224,11 @@ class Watcher(threading.Thread):
 
     def finish(self):
         self.stop.set()
-        self.sample()
-        if self.trace is not None:
-            self.trace.close()
-            self.trace = None
+        with self.lock:
+            self.sample()
+            if self.trace is not None:
+                self.trace.close()
+                self.trace = None
         if self.kernel_peak is not None:
             self.peak = max(self.peak, self.kernel_peak)
         faults = _major_faults()
@@ -286,18 +306,19 @@ def phase_callback():
     """Marks the load/train/save boundary in the trace so paging can be judged on the training window only."""
     from transformers import TrainerCallback
 
+    def enter(phase):
+        global PHASE
+        if WATCHER is not None:
+            WATCHER.set_phase(phase)
+        else:
+            PHASE = phase
+
     class PhaseCallback(TrainerCallback):
         def on_train_begin(self, args, state, control, **kwargs):
-            global PHASE
-            PHASE = "train"
-            if WATCHER is not None:
-                WATCHER.sample()
+            enter("train")
 
         def on_train_end(self, args, state, control, **kwargs):
-            global PHASE
-            PHASE = "save"
-            if WATCHER is not None:
-                WATCHER.sample()
+            enter("save")
     return PhaseCallback()
 
 
