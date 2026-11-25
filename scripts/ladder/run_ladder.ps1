@@ -62,7 +62,7 @@ $ModelCacheDir = 'models--unsloth--Llama-3.2-3B-Instruct'
 
 $modes = @($Preflight, $Run, $Stop, $Cleanup | Where-Object { $_ }).Count
 if ($modes -ne 1) { Write-Error 'Choose exactly one of -Preflight, -Run, -Stop, -Cleanup.'; exit 2 }
-if ($PagingRule -eq 'v2' -and $PagingMaxTrainRefaultsPerSecond -lt 0) { [Console]::Error.WriteLine('-PagingRule v2 needs -PagingMaxTrainRefaultsPerSecond (no limit has been ruled, so there is no default).'); exit 2 }
+if ($PagingRule -eq 'v2' -and ([double]::IsNaN($PagingMaxTrainRefaultsPerSecond) -or [double]::IsInfinity($PagingMaxTrainRefaultsPerSecond) -or $PagingMaxTrainRefaultsPerSecond -lt 0)) { [Console]::Error.WriteLine('-PagingRule v2 needs -PagingMaxTrainRefaultsPerSecond (no limit has been ruled, so there is no default).'); exit 2 }
 if ($FakeAvailableBytes -gt 0 -and -not $DryRun) { Write-Error '-FakeAvailableBytes is only allowed with -DryRun.'; exit 2 }
 if (-not $RepoDir) { $RepoDir = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path }
 $TrainingDir = Join-Path (Join-Path (Join-Path $RepoDir 'docs') 'ai-assistant') 'training'

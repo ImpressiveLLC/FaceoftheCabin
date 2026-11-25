@@ -97,14 +97,17 @@ def paging_from_trace(path):
         lines = Path(path).read_text(encoding="utf-8").splitlines()
     except OSError:
         return None
-    phases = {}
+    phases, resets, malformed = {}, {}, 0
+    previous = {}
     for line in lines[1:]:
         parts = line.split(",")
         if len(parts) != 12:
+            malformed += 1   # a cut or foreign line: the trace is incomplete
             continue
         try:
             epoch = float(parts[0])
         except ValueError:
+            malformed += 1
             continue
         values = {}
         for name, raw in zip(PAGING_COUNTERS, parts[8:12]):
@@ -112,13 +115,18 @@ def paging_from_trace(path):
                 values[name] = int(raw)
             except ValueError:
                 values[name] = None
+            if values[name] is not None:
+                if values[name] < 0 or values[name] < previous.get(name, 0):
+                    resets.setdefault(parts[7], set()).add(name)
+                previous[name] = values[name]
         phases.setdefault(parts[7], []).append((epoch, values))
     if not phases:
         return None
     out = {}
     for phase, rows in phases.items():
         seconds = rows[-1][0] - rows[0][0]
-        entry = {"rows": len(rows), "seconds": round(seconds, 1)}
+        entry = {"rows": len(rows), "seconds": round(seconds, 1), "reset": sorted(resets.get(phase, ())),
+                 "invalid_samples": sum(any(v[name] is None for name in PAGING_COUNTERS) for _, v in rows) + malformed}
         for name in PAGING_COUNTERS:
             first = next((v[name] for _, v in rows if v[name] is not None), None)
             last = next((v[name] for _, v in reversed(rows) if v[name] is not None), None)
@@ -201,6 +209,11 @@ def read_cgroup_max(path=CGROUP_MEMORY_MAX):
         return None
 
 
+def is_count(value):
+    """A usable measurement: a finite number, zero or more. None, NaN, infinity, negatives and booleans are not evidence."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0
+
+
 def cap_gate(budget_bytes, container_memory_bytes, cgroup_memory_max) -> list:
     """Admission for a real run: the container limit is declared, matches what the kernel enforces, and the ceiling under
     the effective budget still holds the measured Stage 2 peak."""
@@ -226,8 +239,8 @@ def judge_rung(record: dict, *, budget_bytes: int, host_before=None, host_after=
         return {"status": "FAILURE", "reasons": ["no rung record was written"]}
     if record.get("completed") is not True:
         reasons.append(f"rung did not complete ({record.get('failure') or 'no reason recorded'})")
-    if record.get("oom_events", None) is None:
-        reasons.append("OOM counter not recorded")
+    if not is_count(record.get("oom_events")):
+        reasons.append("OOM counter not recorded or not a valid count")
     elif record["oom_events"] > 0:
         reasons.append(f"memory.events oom/oom_kill count {record['oom_events']}")
     for key in ("losses", "grad_norms"):
@@ -242,35 +255,67 @@ def judge_rung(record: dict, *, budget_bytes: int, host_before=None, host_after=
         reasons.append("adapter reload did not reproduce the saved tensors")
     # The ceiling is judged on the metric the rung ran under; records without one are the original configuration.
     metric = record.get("ceiling_metric") or "original"
-    peak = record.get("ceiling_metric_peak_bytes") if record.get("ceiling_metric_peak_bytes") is not None else record.get("memory_peak_bytes")
-    if peak is None:
-        reasons.append("memory high-water not recorded")
+    # The original metric is the larger of memory.current and RSS. Samples miss short excursions, so the kernel's own
+    # high-water of memory.current (memory.peak) is part of it, and is required. It also applies when anon_shmem fell back to
+    # the original figure. memory.peak is container-wide (parent and earlier rungs included); the ladder stops at the first
+    # failure, so an excursion is charged to the first rung whose record shows it. anon plus shmem has no kernel high-water.
+    original = metric == "original" or record.get("ceiling_metric_fallback_to_original") is True
+    peak = record.get("ceiling_metric_peak_bytes")
+    if peak is None and metric == "original":
+        peak = record.get("memory_peak_bytes")
+    if not is_count(peak):
+        reasons.append("memory high-water not recorded or not a valid byte count")
+        peak = None
+    if original:
+        kernel = record.get("kernel_memory_peak_bytes")
+        if not is_count(kernel):
+            reasons.append("kernel memory.peak not recorded; excursions between samples cannot be ruled out")
+        else:
+            peak = max(kernel, peak or 0)
     effective = effective_budget(budget_bytes, container_memory_bytes, record.get("cgroup_memory_max"))
     if peak is not None and peak > ceiling_bytes(effective):
         reasons.append(f"memory high-water {peak} ({metric}) above {int(CEILING_FRACTION * 100)} percent of the effective budget {effective}")
     if record.get("effective_budget_bytes") not in (None, effective):
         reasons.append(f"the rung ran under effective budget {record['effective_budget_bytes']}, the verdict uses {effective}")
-    if (record.get("swap_peak_bytes") or 0) > 0:
-        reasons.append(f"swap used ({record['swap_peak_bytes']} bytes); no swap-dependent qualification")
+    swap = record.get("swap_peak_bytes")
+    if not is_count(swap) or record.get("swap_missing_samples") != 0:
+        reasons.append("swap evidence missing or incomplete (swap_peak_bytes, swap_missing_samples)")
+    if is_count(swap) and swap > 0:
+        reasons.append(f"swap used ({swap} bytes); no swap-dependent qualification")
+    phases = (record.get("paging") or {}).get("phases") or {}
+    for name, entry in phases.items():
+        if entry.get("reset"):
+            reasons.append(f"paging evidence invalid: counter went backwards in the {name} phase ({', '.join(entry['reset'])})")
     if paging_rule == "v2":
         # v2 judges file-page refaults in the TRAINING phase only (cold reads while loading are not paging pressure). The
         # limit is explicit: nobody has ruled a number, so there is no default.
         if paging_limit is None:
             reasons.append("paging rule v2 needs an explicit --paging-max-train-refaults-per-s")
+        elif not is_count(paging_limit):
+            reasons.append(f"paging rule v2 limit {paging_limit} is not a finite number of zero or more")
         else:
-            train = ((record.get("paging") or {}).get("phases") or {}).get("train")
+            train = phases.get("train")
             if not train:
                 reasons.append("paging evidence missing: no training-phase counters in the rung record")
             else:
+                if train.get("invalid_samples") != 0 or train.get("reset") != []:
+                    reasons.append("paging evidence incomplete: unreadable or reset counter samples in the training phase")
                 rate = train.get("max_refault_file_per_s")
-                if rate is None:
-                    reasons.append("paging evidence missing: no refault_file counter in the training phase")
+                if not is_count(rate):
+                    reasons.append("paging evidence missing: no valid refault_file rate in the training phase")
                 elif rate > paging_limit:
                     reasons.append(f"sustained paging (v2): {rate} file-page refaults per second in training, over {paging_limit}")
-                if (train.get("refault_anon_delta") or 0) > 0:
-                    reasons.append(f"sustained paging (v2): {train['refault_anon_delta']} anonymous-page refaults in training (swap-ins)")
-    elif (record.get("major_fault_delta") or 0) > MAJOR_FAULT_DELTA_LIMIT:
-        reasons.append(f"sustained paging: {record['major_fault_delta']} major faults")
+                anon = train.get("refault_anon_delta")
+                if not is_count(anon):
+                    reasons.append("paging evidence missing: no valid anonymous-page refault count in the training phase")
+                elif anon > 0:
+                    reasons.append(f"sustained paging (v2): {anon} anonymous-page refaults in training (swap-ins)")
+    else:
+        faults = record.get("major_fault_delta")
+        if not is_count(faults):
+            reasons.append("paging evidence missing or invalid: major_fault_delta")
+        elif faults > MAJOR_FAULT_DELTA_LIMIT:
+            reasons.append(f"sustained paging: {faults} major faults")
     if record.get("wall_seconds") is not None and record["wall_seconds"] > RUNG_TIMEOUT_SECONDS:
         reasons.append(f"rung took {record['wall_seconds']:.0f}s, over {RUNG_TIMEOUT_SECONDS}s")
     seen = [v for v in (host_before, host_after, host_min_seen) if v is not None]
@@ -408,6 +453,13 @@ def default_child_command(rung, rung_dir, model="pinned", steps=3, budget_bytes=
             "--effective-budget-bytes", str(effective_budget_bytes or budget_bytes), "--ceiling-metric", ceiling_metric]
 
 
+def paging_limit_arg(text):
+    value = float(text)
+    if not is_count(value):
+        raise argparse.ArgumentTypeError(f"must be a finite number of zero or more, not {text}")
+    return value
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -417,7 +469,7 @@ def main(argv=None):
         p.add_argument("--rungs", default=",".join(str(r) for r in DEFAULT_RUNGS))
         p.add_argument("--paging-rule", choices=PAGING_RULES, default="v1",
                        help="v1 = whole-rung process major faults (as run 3); v2 = training-phase file-page refaults per second")
-        p.add_argument("--paging-max-train-refaults-per-s", type=float, default=None,
+        p.add_argument("--paging-max-train-refaults-per-s", type=paging_limit_arg, default=None,
                        help="the limit for paging rule v2; there is no default because none has been ruled")
         p.add_argument("--container-cap", choices=CONTAINER_CAPS, default="fixed",
                        help="how the container memory limit was set (the launcher sets it); budget = from the fixed budget")

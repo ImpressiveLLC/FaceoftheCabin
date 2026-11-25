@@ -18,7 +18,8 @@ BUDGET = 10 * GIB
 def good_record(**over):
     record = {"completed": True, "oom_events": 0, "losses": [4.1, 4.0, 3.9], "grad_norms": [0.1, 0.1, 0.1],
               "adapter_saved": True, "adapter_reload_equal": True, "memory_peak_bytes": 5 * GIB,
-              "swap_peak_bytes": 0, "major_fault_delta": 0, "wall_seconds": 30.0}
+              "swap_peak_bytes": 0, "swap_missing_samples": 0, "major_fault_delta": 0, "wall_seconds": 30.0,
+              "kernel_memory_peak_bytes": 5 * GIB}
     record.update(over)
     return record
 
@@ -417,7 +418,8 @@ class PagingRuleTests(unittest.TestCase):
         return ladder.judge_rung(rec, budget_bytes=BUDGET, paging_rule=rule, paging_limit=limit)
 
     def train(self, rate=0.0, anon=0):
-        return {"phases": {"train": {"max_refault_file_per_s": rate, "refault_anon_delta": anon, "refault_file_delta": 0}}}
+        return {"phases": {"train": {"max_refault_file_per_s": rate, "refault_anon_delta": anon, "refault_file_delta": 0,
+                                     "reset": [], "invalid_samples": 0}}}
 
     def test_v1_is_unchanged_and_still_fails_run_3s_record(self):
         self.assertEqual(self.judge(None, major_fault_delta=28750)["status"], "FAILURE")   # run 3 under the rule as run
@@ -595,6 +597,178 @@ class EffectiveBudgetTests(unittest.TestCase):
         argv = ladder.default_child_command(128, "d", budget_bytes=20, effective_budget_bytes=18)
         self.assertEqual(argv[argv.index("--budget-bytes") + 1], "20")
         self.assertEqual(argv[argv.index("--effective-budget-bytes") + 1], "18")
+
+
+class EvidenceTests(unittest.TestCase):
+    """Codex findings 2 and 4: the kernel high-water counts, and missing or invalid evidence is never zero or PASS."""
+
+    NAN, INF = float("nan"), float("inf")
+    TRAIN = {"max_refault_file_per_s": 0.0, "refault_anon_delta": 0, "reset": [], "invalid_samples": 0}
+
+    def verdict(self, drop=(), rule="v1", limit=None, train=None, **over):
+        if rule == "v2" and "paging" not in over:
+            over["paging"] = {"phases": {"train": dict(self.TRAIN, **(train or {}))}}
+        rec = good_record(**over)
+        for key in drop:
+            rec.pop(key, None)
+        return ladder.judge_rung(rec, budget_bytes=BUDGET, paging_rule=rule, paging_limit=limit)
+
+    def assertFails(self, needle, **kw):
+        v = self.verdict(**kw)
+        self.assertEqual(v["status"], "FAILURE", kw)
+        self.assertTrue(any(needle in r for r in v["reasons"]), (needle, v["reasons"]))
+
+    def test_baselines_pass(self):
+        self.assertEqual(self.verdict()["status"], "PASS")
+        self.assertEqual(self.verdict(rule="v2", limit=50.0)["status"], "PASS")
+
+    def test_kernel_peak_between_samples_fails_the_original_metric(self):
+        # Codex's reproduction: sampled 80, kernel 99, budget 100
+        rec = good_record(memory_peak_bytes=99, ceiling_metric="original", ceiling_metric_peak_bytes=80, kernel_memory_peak_bytes=99)
+        verdict = ladder.judge_rung(rec, budget_bytes=100)
+        self.assertEqual(verdict["status"], "FAILURE")
+        self.assertTrue(any("high-water 99" in r for r in verdict["reasons"]), verdict["reasons"])
+
+    def test_original_metric_needs_the_kernel_peak(self):
+        self.assertFails("kernel memory.peak not recorded", drop=("kernel_memory_peak_bytes",))
+        self.assertFails("kernel memory.peak not recorded", kernel_memory_peak_bytes=self.NAN)
+
+    def test_anon_shmem_is_not_judged_on_the_kernel_peak_unless_it_fell_back(self):
+        over = dict(ceiling_metric="anon_shmem", ceiling_metric_peak_bytes=5 * GIB, kernel_memory_peak_bytes=BUDGET)
+        self.assertEqual(self.verdict(**over)["status"], "PASS")
+        self.assertFails("above 90 percent", ceiling_metric_fallback_to_original=True, **over)
+
+    def test_anon_shmem_does_not_borrow_another_figure_when_its_peak_is_missing(self):
+        self.assertFails("memory high-water not recorded", ceiling_metric="anon_shmem")
+
+    def test_invalid_memory_figures_never_pass(self):
+        for bad in (None, self.NAN, self.INF, -1, True):
+            with self.subTest(bad=bad):
+                self.assertFails("memory high-water not recorded", memory_peak_bytes=bad)
+
+    def test_invalid_swap_oom_and_fault_counts_never_pass(self):
+        cases = (("swap_peak_bytes", "swap evidence"), ("swap_missing_samples", "swap evidence"),
+                 ("oom_events", "OOM counter"), ("major_fault_delta", "major_fault_delta"))
+        for key, needle in cases:
+            with self.subTest(key=key, case="absent"):
+                self.assertFails(needle, drop=(key,))
+            for bad in (None, self.NAN, -1):
+                with self.subTest(key=key, bad=bad):
+                    self.assertFails(needle, **{key: bad})
+        self.assertFails("swap evidence", swap_missing_samples=1)
+
+    def test_v2_missing_or_invalid_anonymous_refaults_never_pass(self):
+        # Codex's reproduction: rate 0 with no anonymous counter returned PASS
+        for bad in (None, self.NAN, -1):
+            with self.subTest(bad=bad):
+                self.assertFails("anonymous-page refault", rule="v2", limit=50.0, train={"refault_anon_delta": bad})
+
+    def test_v2_rate_and_limit_must_be_finite_and_nonnegative(self):
+        for bad in (None, self.NAN, self.INF, -1):
+            with self.subTest(rate=bad):
+                self.assertFails("refault_file rate", rule="v2", limit=50.0, train={"max_refault_file_per_s": bad})
+        for bad in (self.NAN, self.INF, -1):   # Codex's reproduction: rate 100 with a NaN limit returned PASS
+            with self.subTest(limit=bad):
+                self.assertFails("not a finite number", rule="v2", limit=bad, train={"max_refault_file_per_s": 100.0})
+
+    def test_v2_incomplete_or_reset_samples_never_pass(self):
+        for train in ({"invalid_samples": 1}, {"invalid_samples": None}, {"reset": ["refault_file"]}, {"reset": None}):
+            with self.subTest(train=train):
+                self.assertFails("incomplete", rule="v2", limit=50.0, train=train)
+
+    def test_a_reset_counter_fails_under_v1_too(self):
+        self.assertFails("went backwards", paging={"phases": {"load": {"reset": ["majflt"]}}})
+
+    def test_cli_rejects_a_nan_or_negative_limit(self):
+        for bad in ("nan", "inf", "-1"):
+            proc = subprocess.run([sys.executable, str(HERE / "ladder.py"), "run", "--budget-bytes", "1000", "--out", "x",
+                                   "--paging-rule", "v2", f"--paging-max-train-refaults-per-s={bad}"],
+                                  cwd=str(HERE), capture_output=True, text=True, timeout=60)
+            self.assertNotEqual(proc.returncode, 0, bad)
+            self.assertIn("finite number", proc.stderr, bad)
+
+    def paging(self, rows, extra=""):
+        header = "epoch,current,rss,anon,file,shmem,metric,phase,majflt,pgmajfault,refault_file,refault_anon\n"
+        body = "".join(f"{t},1,1,1,1,0,1,{ph},{a},{b},{c},{d}\n" for t, ph, a, b, c, d in rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "memory-trace.csv"
+            path.write_text(header + body + extra, encoding="utf-8")
+            return ladder.paging_from_trace(path)["phases"]
+
+    def test_trace_reports_resets_inside_and_across_phases(self):
+        inside = self.paging([(0, "train", 5, 5, 5, 0), (1, "train", 4, 5, 5, 0), (9, "train", 9, 5, 5, 0)])
+        self.assertEqual(inside["train"]["reset"], ["majflt"])
+        across = self.paging([(0, "load", 5, 5, 50, 0), (1, "train", 5, 5, 3, 0), (9, "train", 5, 5, 4, 0)])
+        self.assertEqual(across["train"]["reset"], ["refault_file"])
+        self.assertEqual(across["load"]["reset"], [])
+
+    def test_trace_counts_blank_counters_and_cut_lines(self):
+        clean = self.paging([(0, "train", 1, 1, 1, 0), (9, "train", 1, 1, 1, 0)])
+        self.assertEqual((clean["train"]["invalid_samples"], clean["train"]["reset"]), (0, []))
+        blank = self.paging([(0, "train", 1, 1, 1, 0), (5, "train", 1, 1, "", 0), (9, "train", 1, 1, 1, 0)])
+        self.assertEqual(blank["train"]["invalid_samples"], 1)
+        cut = self.paging([(0, "train", 1, 1, 1, 0), (9, "train", 1, 1, 1, 0)], extra="10,1,1,1")
+        self.assertEqual(cut["train"]["invalid_samples"], 1)
+
+
+class WatcherEvidenceTests(unittest.TestCase):
+    """ladder_rung imports no torch at module level, so these run everywhere."""
+
+    def cgroup(self, **files):
+        import ladder_rung
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        cg = Path(tmp.name)
+        for name, value in files.items():
+            (cg / name.replace("_", ".", 1).replace("_", ".")).write_text(f"{value}\n")
+        old = ladder_rung.CGROUP
+        ladder_rung.CGROUP = cg
+        self.addCleanup(setattr, ladder_rung, "CGROUP", old)
+        return ladder_rung, cg
+
+    def watch(self, module, metric="original", budget=1000):
+        breaches = []
+        with mock.patch.object(module, "_rss_bytes", return_value=10):
+            watcher = module.Watcher(budget, 0.9, breaches.append, metric)
+            watcher.sample()
+            record = watcher.finish()
+        return breaches, record
+
+    def test_kernel_peak_breaches_live_and_is_the_metric_peak(self):
+        module, _ = self.cgroup(memory_current=800, memory_peak=990, memory_swap_current=0)
+        breaches, record = self.watch(module)
+        self.assertEqual(breaches[0], 990)
+        self.assertEqual(record["ceiling_metric_peak_bytes"], 990)
+        self.assertEqual(record["kernel_memory_peak_bytes"], 990)
+        self.assertEqual(record["kernel_memory_peak_at_start_bytes"], 990)
+
+    def test_kernel_peak_does_not_enter_the_anon_shmem_metric(self):
+        module, cg = self.cgroup(memory_current=800, memory_peak=990, memory_swap_current=0)
+        (cg / "memory.stat").write_text("anon 100\nshmem 1\n")
+        breaches, record = self.watch(module, "anon_shmem")
+        self.assertEqual(breaches, [])
+        self.assertEqual(record["ceiling_metric_peak_bytes"], 101)
+        self.assertEqual(record["kernel_memory_peak_bytes"], 990)
+
+    def test_unread_swap_is_none_not_zero(self):
+        module, _ = self.cgroup(memory_current=1)
+        _, record = self.watch(module)
+        self.assertIsNone(record["swap_peak_bytes"])
+        self.assertEqual(record["swap_missing_samples"], 2)
+        self.assertIsNone(record["kernel_memory_peak_bytes"])
+
+    def test_swap_high_water_between_samples_is_kept(self):
+        module, _ = self.cgroup(memory_current=1, memory_swap_current=0, memory_swap_peak=4096)
+        _, record = self.watch(module)
+        self.assertEqual((record["swap_peak_bytes"], record["swap_missing_samples"]), (4096, 0))
+
+    def test_oom_delta_never_invents_a_start_value(self):
+        import ladder_rung
+        both = {"oom": 0, "oom_kill": 0}
+        self.assertEqual(ladder_rung.oom_delta(both, {"oom": 1, "oom_kill": 1}), 2)
+        self.assertEqual(ladder_rung.oom_delta(both, both), 0)
+        for start, end in (({}, both), (both, {}), ({"oom": 0}, both), ({"oom": 2, "oom_kill": 0}, both)):
+            self.assertIsNone(ladder_rung.oom_delta(start, end), (start, end))
 
 
 @unittest.skipUnless(HAVE_TORCH, "torch, peft and transformers are not installed")
