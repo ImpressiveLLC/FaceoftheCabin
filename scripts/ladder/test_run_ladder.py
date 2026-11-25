@@ -1,9 +1,12 @@
-"""Tests for run_ladder.ps1 in -DryRun mode. A dry run prints the plan as JSON and executes nothing (no docker, no wsl, no
-writes), so these run anywhere pwsh is installed (the GitHub ubuntu runner has it) and are SKIPPED, not passed, otherwise.
-The real -Run and -Preflight paths are NOT covered here: they need Docker Desktop and the host, and have not run."""
+"""Tests for run_ladder.ps1. They need pwsh (the GitHub ubuntu runner has it) and are SKIPPED, not passed, without it.
+No test touches the machine: dry runs execute nothing, and flow tests run a COPY of the script beside a stub host_ops.ps1,
+with LADDER_TEST_NO_HOST set so the real host_ops.ps1 would refuse even if it were loaded. The real host operations
+themselves (WSL, Docker, process stop, power state, beep) are therefore NOT covered here."""
+import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -13,13 +16,14 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 SCRIPT = HERE / "run_ladder.ps1"
+HOST_OPS = HERE / "host_ops.ps1"
 PWSH = shutil.which("pwsh")
 GIB = 1024 ** 3
 
 
 def run(*args, expect=None):
     proc = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-File", str(SCRIPT), *args],
-                          capture_output=True, text=True, timeout=120)
+                          capture_output=True, text=True, timeout=120, env=dict(os.environ, LADDER_TEST_NO_HOST="1"))
     if expect is not None:
         assert proc.returncode == expect, f"exit {proc.returncode}\n{proc.stdout}\n{proc.stderr}"
     return proc
@@ -83,7 +87,7 @@ class DryRunTests(unittest.TestCase):
         mounts = [argv[i + 1] for i, a in enumerate(argv) if a == "-v"]
         self.assertIn("fotc-hf-cache:/root/.cache/huggingface", mounts)
         text = SCRIPT.read_text(encoding="utf-8")
-        self.assertIn("function Invoke-Docker { & wsl -d $Distro --exec docker @args }", text)
+        self.assertIn("function Invoke-Docker { Invoke-Wsl -d $Distro --exec docker @args }", text)
         self.assertNotIn("& docker ", text)  # never the Windows docker (Docker Desktop)
 
     def test_no_docker_run_can_pull_an_image(self):
@@ -219,53 +223,219 @@ class DryRunTests(unittest.TestCase):
         self.assertNotEqual(run("-Run", "-Stop", "-DryRun").returncode, 0)
 
 
-@unittest.skipUnless(PWSH and sys.platform == "win32", "needs pwsh on Windows (Win32 keep-awake call, cmd stubs)")
-class RunFlowWithStubsTests(unittest.TestCase):
-    """Runs the real -Run flow with stub docker and wsl on PATH and the gate thresholds patched down, so the keep-awake
-    call, sampler job, markers, manifest and banner execute for real. Docker and WSL are NOT touched."""
+HOST_PATTERNS = (r"&\s*wsl\b", r"&\s*docker\b", r"\bStop-Process\b", r"\bStart-Process\b", r"\bGet-Process\b", r"\bGet-CimInstance\b",
+                 r"\bGet-WmiObject\b", r"\bAdd-Type\b", r"SetThreadExecutionState", r"\[console\]::Beep", r"GetFolderPath",
+                 r"(?m)^\s*wsl(\.exe)?\s", r"\btaskkill\b", r"\bStop-Service\b", r"\bRestart-Computer\b")
 
-    # One stub stands in for wsl.exe: answers `wsl -l -v`, ignores `--shutdown`, and plays the part of `wsl -d X --exec docker ...`.
-    WSL_STUB = (
-        "if ($args -contains '-l') { 'Ubuntu-24.04 Running'; exit 0 }\n"
-        "if ($args -contains '--shutdown') { exit 0 }\n"
-        "$i = [array]::IndexOf($args, 'docker')\n"
-        "$d = if ($i -ge 0 -and $i + 1 -lt $args.Count) { @($args[($i + 1)..($args.Count - 1)]) } else { @() }\n"
-        "if ($d.Count -gt 0 -and $d[0] -eq 'run' -and ($d -contains '--name')) {\n"
-        "  for ($k = 0; $k -lt $d.Count; $k++) { if ($d[$k] -eq '-v' -and $d[$k + 1] -match '^/mnt/([a-z])/(.*):/out$') { $out = $Matches[1].ToUpper() + ':/' + $Matches[2] } }\n"
-        "  New-Item -ItemType Directory -Force -Path (Join-Path $out 'ladder') | Out-Null\n"
-        "  Start-Sleep 7\n"
-        "  Set-Content (Join-Path $out 'ladder/summary.json') '{\"complete\": true, \"stopped_at\": null}'\n"
-        "}\nexit 0\n")
 
-    def test_run_flow_reaches_done_with_stubs(self):
+class HostIsolationTests(unittest.TestCase):
+    """Codex finding 6: a test must not be able to reach real processes, sampling or power state."""
+
+    def test_the_launcher_touches_the_machine_only_through_host_ops(self):
+        text = SCRIPT.read_text(encoding="utf-8")
+        for pattern in HOST_PATTERNS:
+            self.assertIsNone(re.search(pattern, text, re.IGNORECASE), f"direct host call in run_ladder.ps1: {pattern}")
+        self.assertIn("$HostOps = Join-Path $PSScriptRoot 'host_ops.ps1'", text)
+        self.assertEqual(text.count(". $HostOps"), 1)
+        self.assertIn(". $hostOps", text)   # the sampler job loads the same file
+
+    def test_every_real_host_function_that_acts_is_guarded(self):
+        functions = self.host_functions()
+        self.assertGreaterEqual(len(functions), 9)
+        for name, block in functions:
+            if name not in ("Assert-HostOpsAllowed", "Get-DockerDesktopProcessNames"):
+                self.assertTrue(block.split("{", 1)[1].lstrip().startswith("Assert-HostOpsAllowed"), f"{name}: guard first")
+
+    def host_functions(self):
+        blocks = re.split(r"(?m)^function ", HOST_OPS.read_text(encoding="utf-8"))[1:]
+        return [(b.split()[0].split("(")[0], b) for b in blocks]
+
+    @unittest.skipUnless(PWSH, "pwsh is not installed")
+    def test_real_host_ops_refuse_under_the_test_guard(self):
+        calls = ("Invoke-Wsl --version", "Get-HostAvailableBytes", "Test-DockerDesktopRunning", "Stop-DockerDesktop",
+                 "Set-KeepAwake $true", "Get-HostMachineFacts 'x'", "Get-DesktopPath", "Send-FinishSignal")
+        # Shadow every command the real functions would use, so a missing guard fails this test instead of acting on the machine.
+        shadow = " ".join(f"function {c} {{ throw 'REACHED THE HOST: {c}' }};" for c in
+                          ("wsl", "Get-Process", "Stop-Process", "Get-CimInstance", "Add-Type", "Get-PSDrive"))
+        self.assertTrue(all(b.split("{", 1)[1].lstrip().startswith("Assert-HostOpsAllowed") for n, b in self.host_functions()
+                            if n in ("Send-FinishSignal", "Get-DesktopPath")), "guard first: these cannot be shadowed")
+        script = shadow + f" . '{HOST_OPS}'; " + " ".join(
+            f"try {{ {c} | Out-Null; 'RAN {c.split()[0]}' }} catch {{ if ($_ -match 'refused') {{ 'ok' }} else {{ 'OTHER ' + $_ }} }};" for c in calls)
+        proc = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True, text=True,
+                              timeout=120, env=dict(os.environ, LADDER_TEST_NO_HOST="1"))
+        self.assertEqual(proc.stdout.split(), ["ok"] * len(calls), proc.stdout + proc.stderr)
+
+
+    @unittest.skipUnless(PWSH, "pwsh is not installed")
+    def test_real_invoke_wsl_passes_every_argument_through_unchanged(self):
+        """The real Invoke-Wsl, with a fake `wsl` first on PATH that only prints its arguments. The distro name does not
+        exist, so even a missed fake could start nothing."""
+        wanted = ["-d", "NoSuchDistro", "--exec", "docker", "run", "--rm", "--pull=never", "--memory=22g", "--network", "none",
+                  "-e", "HF_HUB_OFFLINE=1", "-v", "vol:/root/.cache/huggingface", "-v", "/mnt/c/a:/work:ro", "-w", "/work",
+                  "img:tag", "python", "ladder.py", "--budget-bytes", "123"]
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
-            stubs = tmp / "stubs"
-            stubs.mkdir()
-            (stubs / "wsl.cmd").write_text('@echo off\r\npwsh -NoProfile -File "%~dp0wsl_stub.ps1" %*\r\nexit /b %ERRORLEVEL%\r\n')
-            (stubs / "wsl_stub.ps1").write_text(self.WSL_STUB)
-            text = SCRIPT.read_text(encoding="utf-8")
-            patched = text.replace("$StartMinBytes = 6 * $GiB", "$StartMinBytes = 1 * $GiB").replace(
-                "$NeedAtStartBytes = [int64][math]::Ceiling($Stage2PeakBytes / 0.9) + $FloorBytes", "$NeedAtStartBytes = 1 * $GiB")
-            self.assertIn("$NeedAtStartBytes = 1 * $GiB", patched)
-            self.assertNotEqual(patched, text)
-            sim = tmp / "run_ladder_sim.ps1"
-            sim.write_text(patched, encoding="utf-8")
-            env = dict(os.environ, PATH=str(stubs) + os.pathsep + os.environ["PATH"])
-            proc = subprocess.run([PWSH, "-NoProfile", "-File", str(sim), "-Run", "-OutRoot", str(tmp / "out"),
-                                   "-RepoDir", str(HERE.parent.parent), "-DesktopDir", str(tmp)],
-                                  capture_output=True, text=True, timeout=180, env=env)
-            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-            run_dir = next((tmp / "out").iterdir())
-            self.assertTrue((run_dir / "DONE").exists(), proc.stdout + proc.stderr)
-            self.assertTrue((run_dir / "manifest.sha256").exists())
-            self.assertGreaterEqual(len((run_dir / "host.csv").read_text().splitlines()), 2)
-            self.assertIn("LADDER FINISHED: DONE", (tmp / "LADDER-FINISHED.txt").read_text())
+            (tmp / "echo_args.py").write_text("import sys\nfor a in sys.argv[1:]:\n    print(a)\n")
+            (tmp / "wsl.cmd").write_text(f'@"{sys.executable}" "%~dp0echo_args.py" %*\n')
+            (tmp / "wsl").write_text(f'#!/bin/sh\nexec "{sys.executable}" "$(dirname "$0")/echo_args.py" "$@"\n', newline="\n")
+            (tmp / "wsl").chmod(0o755)
+            line = next(x for x in SCRIPT.read_text(encoding="utf-8").splitlines() if x.startswith("function Invoke-Docker "))
+            argv = " ".join(f"'{a}'" if not a.startswith("-") else a for a in wanted[4:])
+            script = (f"$env:PATH = '{tmp}' + [IO.Path]::PathSeparator + $env:PATH; . '{HOST_OPS}'; $Distro = 'NoSuchDistro'; "
+                      f"{line}; Invoke-Docker {argv}")
+            env = {k: v for k, v in os.environ.items() if k != "LADDER_TEST_NO_HOST"}
+            proc = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True, text=True,
+                                  timeout=120, env=env)
+        self.assertEqual(proc.stdout.split(), wanted, proc.stdout + proc.stderr)
+
+
+STUB_OPS = r"""
+function Note([string]$Line) { Add-Content -LiteralPath $env:STUB_LOG -Value $Line }
+function Invoke-Wsl {
+    $a = @($args | ForEach-Object { "$_" })
+    $global:LASTEXITCODE = 0
+    Note ('wsl ' + ($a -join ' '))
+    if ($a -contains '-l') { 'Ubuntu-24.04 Running'; return }
+    if ($a -contains '--shutdown') { return }
+    if ($env:STUB_NO_IMAGE -and ($a -contains 'image')) { $global:LASTEXITCODE = 1; return }
+    if (($a -contains 'run') -and ($a -contains '--name')) {
+        foreach ($v in $a) { if ($v -match '^(.*):/out$') { $out = $Matches[1] } }
+        if ($out -match '^/mnt/([a-z])/(.*)$') { $out = $Matches[1].ToUpper() + ':/' + $Matches[2] }
+        Start-Sleep 3
+        if ($env:STUB_COMPLETE) { Set-Content (Join-Path (Join-Path $out 'ladder') 'summary.json') ('{"complete": ' + $env:STUB_COMPLETE + ', "stopped_at": 128}') }
+        'container output'
+    }
+}
+function Get-HostAvailableBytes { if ($env:STUB_AVAILABLE) { return [int64]$env:STUB_AVAILABLE }; return [int64]32212254720 }
+function Get-DockerDesktopProcessNames { return @('Docker Desktop') }
+function Test-DockerDesktopRunning { return $true }
+function Stop-DockerDesktop { Note 'stop-docker-desktop'; 'Docker Desktop' }
+function Set-KeepAwake([bool]$On) { Note "keep-awake $On" }
+function Get-HostMachineFacts([string]$OutRoot) { return [ordered]@{ windows_available_bytes = (Get-HostAvailableBytes) } }
+function Get-DesktopPath { Note 'desktop-path'; return $env:STUB_DESKTOP }
+function Send-FinishSignal { Note 'beep' }
+"""
+
+
+@unittest.skipUnless(PWSH, "pwsh is not installed")
+class RunFlowWithStubsTests(unittest.TestCase):
+    """Runs the real -Run flow from a copy of the launcher beside a stub host_ops.ps1: gate, sampler job, markers,
+    manifest and banner execute for real; nothing on the machine is touched."""
+
+    def setUp(self):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        self.tmp = Path(d.name).resolve()
+        launcher = self.tmp / "launcher"
+        launcher.mkdir()
+        shutil.copy(SCRIPT, launcher / "run_ladder.ps1")
+        (launcher / "host_ops.ps1").write_text(STUB_OPS, encoding="utf-8")
+        self.script = launcher / "run_ladder.ps1"
+        self.log = self.tmp / "calls.log"
+        self.out = self.tmp / "out"
+
+    def launch(self, *args, **stub):
+        env = dict(os.environ, LADDER_TEST_NO_HOST="1", STUB_LOG=str(self.log), STUB_DESKTOP=str(self.tmp), STUB_COMPLETE="true")
+        env.update(stub)
+        return subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-File", str(self.script), *args, "-OutRoot", str(self.out),
+                               "-RepoDir", str(HERE.parent.parent)], capture_output=True, text=True, timeout=180, env=env)
+
+    def calls(self):
+        return self.log.read_text(encoding="utf-8-sig").splitlines() if self.log.exists() else []
+
+    def run_dir(self):
+        return next(self.out.iterdir())
+
+    def assertSealed(self, bundle):
+        """Checked here independently of the script: every file is listed and every hash matches."""
+        listed = {}
+        for line in (bundle / "manifest.sha256").read_text(encoding="utf-8-sig").splitlines():
+            digest, name = line.split("  ", 1)
+            listed[name.replace("\\", "/")] = digest
+        actual = {p.relative_to(bundle).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                  for p in bundle.rglob("*") if p.is_file() and p.name != "manifest.sha256"}
+        self.assertEqual(listed, actual)
+        self.assertIn("launcher.log", listed)
+
+    def test_run_flow_reaches_done_and_the_bundle_verifies(self):
+        proc = self.launch("-Run")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        run_dir = self.run_dir()
+        self.assertTrue((run_dir / "DONE").exists(), proc.stdout + proc.stderr)
+        self.assertGreaterEqual(len((run_dir / "host.csv").read_text(encoding="utf-8-sig").splitlines()), 2)
+        self.assertSealed(run_dir)
+        note = (self.tmp / "LADDER-FINISHED.txt").read_text(encoding="utf-8-sig")
+        self.assertIn("LADDER FINISHED: DONE", note)
+        self.assertIn("manifest verified", note)
+        calls = self.calls()
+        for needed in ("keep-awake True", "stop-docker-desktop", "wsl --shutdown", "keep-awake False", "beep"):
+            self.assertIn(needed, calls)
+
+    def test_stopped_and_missing_summary_bundles_verify(self):
+        for complete in ("false", ""):
+            with self.subTest(complete=complete):
+                self.setUp()
+                proc = self.launch("-Run", STUB_COMPLETE=complete)
+                self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+                self.assertTrue((self.run_dir() / "STOPPED").exists())
+                self.assertSealed(self.run_dir())
+
+    def test_first_gate_refusal_changes_nothing_and_verifies(self):
+        proc = self.launch("-Run", STUB_AVAILABLE=str(5 * GIB))
+        self.assertEqual(proc.returncode, 3, proc.stdout + proc.stderr)
+        self.assertTrue((self.run_dir() / "NOT_RUN").exists())
+        self.assertSealed(self.run_dir())
+        self.assertEqual(self.calls(), [])   # no keep-awake, no process stop, no wsl
+
+    def test_late_refusal_releases_keep_awake_and_verifies(self):
+        proc = self.launch("-Run", STUB_NO_IMAGE="1")
+        self.assertEqual(proc.returncode, 3, proc.stdout + proc.stderr)
+        self.assertTrue((self.run_dir() / "NOT_RUN").exists())
+        self.assertTrue((self.run_dir() / "STOP").exists())
+        self.assertSealed(self.run_dir())
+        self.assertIn("keep-awake False", self.calls())
+
+    def test_verify_mode_passes_a_clean_bundle_and_names_each_difference(self):
+        self.assertEqual(self.launch("-Run").returncode, 0)
+        bundle = self.run_dir()
+        self.assertEqual(self.launch("-Verify", "-RunId", bundle.name).returncode, 0)
+        with open(bundle / "launcher.log", "a", encoding="utf-8") as fh:
+            fh.write("appended after sealing\n")
+        (bundle / "extra.txt").write_text("x")
+        (bundle / "host.csv").unlink()
+        proc = self.launch("-Verify", "-RunId", bundle.name)
+        self.assertEqual(proc.returncode, 5, proc.stdout + proc.stderr)
+        for needle in ("changed: launcher.log", "not listed: extra.txt", "missing: host.csv"):
+            self.assertIn(needle, proc.stdout)
+
+    def test_verify_without_a_manifest_fails(self):
+        (self.out / "r1").mkdir(parents=True)
+        self.assertEqual(self.launch("-Verify", "-RunId", "r1").returncode, 5)
+
+    def test_stop_never_changes_a_sealed_bundle(self):
+        self.assertEqual(self.launch("-Run").returncode, 0)
+        bundle = self.run_dir()
+        self.assertEqual(self.launch("-Stop").returncode, 0)
+        self.assertSealed(bundle)
+        self.assertFalse((bundle / "STOPPED-by-operator").exists())
+
+    def test_stop_still_marks_an_unsealed_run(self):
+        (self.out / "r1").mkdir(parents=True)
+        self.assertEqual(self.launch("-Stop").returncode, 0)
+        self.assertTrue((self.out / "r1" / "STOPPED-by-operator").exists())
+
+    def test_cleanup_and_preflight_go_through_the_stubs(self):
+        self.assertEqual(self.launch("-Cleanup").returncode, 0)
+        self.assertIn("stop-docker-desktop", self.calls())
+        self.assertIn("wsl --shutdown", self.calls())
+        proc = self.launch("-Preflight")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
 
     def test_keep_awake_flags_are_unsigned_casts(self):
-        text = SCRIPT.read_text(encoding="utf-8")
+        text = HOST_OPS.read_text(encoding="utf-8")
         self.assertNotIn("SetThreadExecutionState(0x", text)  # a bare 0x80000001 is Int32 in PowerShell and throws
-        self.assertIn("SetThreadExecutionState([uint32]", text)
+        for flag in ("[uint32]2147483649", "[uint32]2147483648"):
+            self.assertIn(flag, text)
 
 
 if __name__ == "__main__":
