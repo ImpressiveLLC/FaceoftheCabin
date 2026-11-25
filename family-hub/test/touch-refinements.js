@@ -32,12 +32,21 @@ module.exports = async function ({ browser, check, base }) {
   // Chromium touch gesture: real panning, not setting scrollTop directly.
   const cdp = await page.context().newCDPSession(page);
   const box = await page.locator('#chores-card').boundingBox();
+  await page.locator('#chores-card').evaluate(el => {
+    window.choresScrollEnded = false;
+    el.addEventListener('scrollend', () => { window.choresScrollEnded = true; }, { once: true });
+  });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + 100, y: box.y + box.height - 30 }] });
   for (let step = 1; step <= 8; step++) {
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: box.x + 100, y: box.y + box.height - 30 - step * 12 }] });
   }
+  // Rest the finger before lifting, so the swipe ends without a fling. Headless
+  // Chromium can leave a fling pending (scrollTop frozen, no scrollend); the next
+  // touch is then spent stopping it and produces no click, so the tap below was
+  // lost. Chromium treats a pointer idle for over 40 ms as stopped.
+  await page.waitForTimeout(100);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await page.waitForTimeout(250);
+  await page.waitForFunction(() => window.choresScrollEnded, null, { timeout: 10000 });
   check('finger swipe scrolls chores without mouse or keyboard', await page.locator('#chores-card').evaluate(el => el.scrollTop > 0), true);
   check('touch scrolling does not resize the scrollbar', await page.locator('#chores-card').evaluate(el => getComputedStyle(el, '::-webkit-scrollbar').width), geometry.thumb);
   await page.locator('[data-landing-kid-compact="p8"]').tap();
