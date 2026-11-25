@@ -117,7 +117,7 @@ def paging_from_trace(path):
     the intervals across its two boundaries count against training rather than being dropped. `load` and `save` cover their
     own samples; `boundaries` lists each interval between phases. `coverage_ok` is true only when the phases appear once
     each in order, training has a sample on both sides and at least two samples of its own spanning at least one window,
-    sample times never go backwards and no gap is longer than the window. None if the trace has no 12-column rows.
+    sample times never go backwards and no gap is longer than the window. None if the trace has no 12-column rows."""
     try:
         lines = Path(path).read_text(encoding="utf-8").splitlines()
     except OSError:
