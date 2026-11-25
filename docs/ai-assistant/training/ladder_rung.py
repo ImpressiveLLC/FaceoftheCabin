@@ -40,6 +40,15 @@ def _read_int(path):
         return None
 
 
+def oom_delta(start, end):
+    """New oom plus oom_kill events between two memory.events reads, or None when either read lacks a counter (a missing
+    start value is not zero) or a counter went backwards."""
+    keys = ("oom", "oom_kill")
+    if not all(k in start and k in end for k in keys) or any(end[k] < start[k] for k in keys):
+        return None
+    return sum(end[k] - start[k] for k in keys)
+
+
 def _read_events(path):
     out = {}
     try:
@@ -110,7 +119,10 @@ class Watcher(threading.Thread):
         self.ceiling = int(budget_bytes * ceiling_fraction) if budget_bytes else None   # budget_bytes = effective budget
         self.on_breach = on_breach
         self.peak = 0
-        self.swap_peak = 0
+        self.swap_peak = None          # None until memory.swap.current has been read: unread is not zero
+        self.swap_missing = 0
+        self.kernel_peak = None        # the kernel's memory.peak: catches excursions between samples (container-wide)
+        self.kernel_peak_start = _read_int(CGROUP / "memory.peak")
         self.stop = threading.Event()
         self.faults_start = _major_faults()
         # Breakdown only. It never feeds the stop rule: the ceiling is still on `peak`, the larger of memory.current and RSS.
@@ -135,17 +147,27 @@ class Watcher(threading.Thread):
             if key in stat and (getattr(self, attr) is None or stat[key] > getattr(self, attr)):
                 setattr(self, attr, stat[key])
         swap = _read_int(CGROUP / "memory.swap.current")
-        if swap:
-            self.swap_peak = max(self.swap_peak, swap)
+        if swap is None:
+            self.swap_missing += 1
+        for value in (swap, _read_int(CGROUP / "memory.swap.peak")):   # swap.peak is absent on older kernels
+            if value is not None:
+                self.swap_peak = max(self.swap_peak or 0, value)
         metric_value = self.peak_now(cur, rss, stat)
-        self.metric_peak = max(self.metric_peak, metric_value)
+        kernel = _read_int(CGROUP / "memory.peak")
+        if kernel is not None:
+            self.kernel_peak = max(self.kernel_peak or 0, kernel)
+        # judged = the sample, raised to the kernel high-water when the rung is judged on the original figure
+        judged = metric_value
+        if self.kernel_peak is not None and (self.ceiling_metric != "anon_shmem" or self.metric_fallback):
+            judged = max(judged, self.kernel_peak)
+        self.metric_peak = max(self.metric_peak, judged)
         if self.trace is not None:
             cells = ([f"{time.time():.1f}"] + ["" if v is None else str(v) for v in (cur, rss, stat.get("anon"), stat.get("file"), stat.get("shmem"))]
                      + [str(metric_value), PHASE]
                      + ["" if v is None else str(v) for v in (_major_faults(), stat.get("pgmajfault"), stat.get("workingset_refault_file"), stat.get("workingset_refault_anon"))])
             self.trace.write(",".join(cells) + "\n")
-        if self.ceiling and metric_value > self.ceiling:
-            self.on_breach(metric_value)
+        if self.ceiling and judged > self.ceiling:
+            self.on_breach(judged)
 
     def peak_now(self, cur, rss, stat):
         """The figure the ceiling is judged on, per --ceiling-metric. `original` is the larger of memory.current and RSS.
@@ -171,6 +193,11 @@ class Watcher(threading.Thread):
             "memory_stat_at_current_peak": self.at_cur_peak,
             "note": "anon is non-reclaimable; file is page cache and reclaimable. Not used by any stop rule."}}
 
+    def evidence(self):
+        """Kernel and swap evidence, for both a finished rung and a ceiling breach."""
+        return {"kernel_memory_peak_bytes": self.kernel_peak, "kernel_memory_peak_at_start_bytes": self.kernel_peak_start,
+                "swap_peak_bytes": self.swap_peak, "swap_missing_samples": self.swap_missing}
+
     def run(self):
         while not self.stop.is_set():
             self.sample()
@@ -182,12 +209,10 @@ class Watcher(threading.Thread):
         if self.trace is not None:
             self.trace.close()
             self.trace = None
-        cg_peak = _read_int(CGROUP / "memory.peak")
-        if cg_peak is not None:
-            self.peak = max(self.peak, cg_peak)
+        if self.kernel_peak is not None:
+            self.peak = max(self.peak, self.kernel_peak)
         faults = _major_faults()
-        return {**self.breakdown(), "memory_peak_bytes": self.peak or None,
-                "swap_peak_bytes": self.swap_peak,
+        return {**self.breakdown(), **self.evidence(), "memory_peak_bytes": self.peak or None,
                 "major_fault_delta": (faults - self.faults_start) if None not in (faults, self.faults_start) else None}
 
 
@@ -300,8 +325,9 @@ def main(argv=None):
 
     def breach(peak):
         record.update(failure=f"memory {peak} ({args.ceiling_metric}) above {int(ladder.CEILING_FRACTION * 100)} percent of budget {effective} (effective)",
-                      memory_peak_bytes=peak, oom_events=0, wall_seconds=time.monotonic() - started,
-                      **watcher.breakdown())
+                      memory_peak_bytes=peak, wall_seconds=time.monotonic() - started,
+                      oom_events=oom_delta(record["oom_events_start"], _read_events(CGROUP / "memory.events")),
+                      **watcher.breakdown(), **watcher.evidence())
         write_record(args.out, record)
         os._exit(3)
 
@@ -357,12 +383,8 @@ def main(argv=None):
     finally:
         record.update(watcher.finish())
         record["paging"] = ladder.paging_from_trace(args.out / "memory-trace.csv")
-        events = _read_events(CGROUP / "memory.events")
-        start = record["oom_events_start"]
-        if events:
-            record["oom_events"] = sum(events.get(k, 0) - start.get(k, 0) for k in ("oom", "oom_kill"))
-        else:
-            record["oom_events"] = None  # not readable here: judge_rung treats that as missing evidence
+        # None (not readable, or reset): judge_rung treats that as missing evidence
+        record["oom_events"] = oom_delta(record["oom_events_start"], _read_events(CGROUP / "memory.events"))
         record["wall_seconds"] = time.monotonic() - started
         write_record(args.out, record)
     return 0 if record["completed"] else 2

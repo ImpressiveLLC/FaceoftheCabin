@@ -163,6 +163,11 @@ class DryRunTests(unittest.TestCase):
         refused = run("-Run", "-DryRun", "-FakeAvailableBytes", str(22 * GIB), "-PagingRule", "v2")
         self.assertNotEqual(refused.returncode, 0)
         self.assertIn("no limit has been ruled", refused.stdout + refused.stderr)
+        for bad in ("NaN", "Infinity", "-5"):
+            with self.subTest(limit=bad):
+                proc = run("-Run", "-DryRun", "-FakeAvailableBytes", str(22 * GIB), "-PagingRule", "v2",
+                           "-PagingMaxTrainRefaultsPerSecond", bad)
+                self.assertNotEqual(proc.returncode, 0)
 
     def test_six_gib_start_minimum_is_named_when_below_it(self):
         _, p = plan(5)
