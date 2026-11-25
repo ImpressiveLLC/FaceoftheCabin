@@ -19,7 +19,9 @@
 
   Policy (Codex 7096272556, Cowork 7091727691, 7123997237): at least 6 GiB Windows available to start; the pinned 3B run
   needs 14.21 GiB (Stage 2 peak) / 0.9 plus the 4 GiB floor, so about 19.8 GiB at the start; stop below 4 GiB; container 22 GiB with
-  no swap; budget fixed once before the run as min(container limit, available at start minus the floor); never recomputed.
+  no swap; budget fixed once before the run as min(22 GiB, available at start minus the floor); never recomputed.
+  The 90 percent ceiling is on the effective budget: the lower of that budget and the container memory limit. With
+  -ContainerCap budget the limit is the budget less 2 GiB, so the start needs 2 GiB more (about 21.8 GiB).
   A refused or failed start writes a NOT_RUN or STOPPED marker with the reason and never counts as a pass.
 #>
 [CmdletBinding()]
@@ -53,6 +55,8 @@ $NeedAtStartBytes = [int64][math]::Ceiling($Stage2PeakBytes / 0.9) + $FloorBytes
 $ContainerLimitBytes = 22 * $GiB
 $PollSeconds = 1   # the host fell 14 GiB in 5 s in run 2; a 5 s poll with two samples was too slow
 $OverheadMarginBytes = 2 * $GiB
+# In budget cap mode the container limit (budget less the margin) is the ceiling denominator, so the start needs the margin too.
+if ($ContainerCap -eq 'budget') { $NeedAtStartBytes += $OverheadMarginBytes }
 $ModelRevision = '006f5dcd1393c3add266de40994ba96225e9689d'
 $ModelCacheDir = 'models--unsloth--Llama-3.2-3B-Instruct'
 
@@ -71,7 +75,7 @@ function Get-AvailableBytes {
 function Get-GateReasons([int64]$Available) {
     $reasons = @()
     if ($Available -lt $StartMinBytes) { $reasons += "Windows available $Available bytes is below the $StartMinBytes start minimum (6 GiB)" }
-    if ($Available -lt $NeedAtStartBytes) { $reasons += "Windows available $Available bytes is below the $NeedAtStartBytes needed to start the pinned 3B (Stage 2 peak 14.21 GiB / 0.9 for the 90 percent ceiling, plus the 4 GiB floor)" }
+    if ($Available -lt $NeedAtStartBytes) { $reasons += "Windows available $Available bytes is below the $NeedAtStartBytes needed to start the pinned 3B (Stage 2 peak 14.21 GiB / 0.9 for the 90 percent ceiling, plus the 4 GiB floor, plus 2 GiB in budget cap mode)" }
     return $reasons
 }
 
@@ -84,6 +88,10 @@ function ConvertTo-WslPath([string]$Path) {
     if ($p -match '^([A-Za-z]):(.*)$') { return '/mnt/' + $Matches[1].ToLower() + $Matches[2] }
     return $p
 }
+
+# The one ceiling denominator: the lower of the fixed budget and the container memory limit.
+function Get-EffectiveBudget([int64]$Budget) { return [int64][math]::Min($Budget, (Get-ContainerLimitBytes $Budget)) }
+function Get-CeilingBytes([int64]$Budget) { $e = Get-EffectiveBudget $Budget; return [int64](($e * 9 - (($e * 9) % 10)) / 10) }
 
 # Docker runs INSIDE the Ubuntu WSL distro (where the Stage 2 image and the model cache live), not Docker Desktop.
 function Invoke-Docker { & wsl -d $Distro --exec docker @args }
@@ -179,7 +187,8 @@ if ($DryRun) {
         container_cap = $ContainerCap
         paging_rule = $PagingRule
         container_memory_bytes = (Get-ContainerLimitBytes $budget)
-        ceiling_bytes = [int64][math]::Floor($budget * 0.9)
+        effective_budget_bytes = (Get-EffectiveBudget $budget)
+        ceiling_bytes = (Get-CeilingBytes $budget)
         out_dir = $outDir
         docker_argv = @(if ($reasons.Count -eq 0) { Get-DockerArgv "ladder-$id" '/out-dir' $budget $avail })
         steps = @('preflight gate', 'keep awake', 'quit Docker Desktop if running', 'wsl --shutdown', 'wait for the Docker daemon inside the WSL distro',
@@ -281,7 +290,8 @@ try {
     $budget = Get-Budget $avail2
     Log ("container memory limit: {0} bytes (cap mode {1})" -f (Get-ContainerLimitBytes $budget), $ContainerCap)
     Log "ceiling metric: $CeilingMetric (original = first-run gate; anon_shmem = new labelled configuration)"
-    Log "fixed budget $budget bytes (min of 22 GiB and available minus 4 GiB); ceiling 90 percent"
+    Log "fixed budget $budget bytes (min of 22 GiB and available minus 4 GiB)"
+    Log ("effective budget {0} bytes (lower of budget and container limit); ceiling {1} bytes (90 percent)" -f (Get-EffectiveBudget $budget), (Get-CeilingBytes $budget))
     $csv = Join-Path $out 'host.csv'
     Set-Content $csv 'epoch,bytes'
     $job = Start-Job -ArgumentList $csv, $name, $FloorBytes, $PollSeconds, (Join-Path $out 'STOP'), (Join-Path $out 'host-floor-breach.json'), $Distro -ScriptBlock {

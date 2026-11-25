@@ -13,7 +13,8 @@ writes every later rung as NOT_RUN; it never retries and never continues to a lo
       only for proving the mechanics. The summary says which one ran; a synthetic summary is never qualification.
 
 Stop rules (any one stops the ladder at that rung): OOM (child killed by the kernel or memory.events oom/oom_kill > 0),
-nonfinite loss or gradient norm, failed adapter save or reload, memory above 90 percent of --budget-bytes, any swap use
+nonfinite loss or gradient norm, failed adapter save or reload, memory above 90 percent of the effective budget (the
+lower of --budget-bytes and the container memory limit), any swap use
 or major-fault paging above the allowed floor, 20 minutes per rung, or a child that wrote no record. The budget is fixed
 before the run (the lower of the usable training budget and the container ceiling); it is never recomputed from the
 shrinking free RAM. Host (Windows) available memory is not visible inside the container, so the operator records it
@@ -33,6 +34,10 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 DEFAULT_RUNGS = (128, 256, 512, 1024, 2048)
 CEILING_FRACTION = 0.90
+STAGE2_PEAK_BYTES = round(14.21 * 1024 ** 3)   # measured Stage 2 peak; a real run must fit it under the ceiling
+CEILING_POLICY = "90 percent of the lower of the fixed usable budget and the container memory limit (Codex 7096272556)"
+CGROUP_MEMORY_MAX = Path("/sys/fs/cgroup/memory.max")
+CGROUP_PAGE_SLACK_BYTES = 64 * 1024   # the kernel rounds a memory limit down to a whole page
 RUNG_TIMEOUT_SECONDS = 20 * 60
 HOST_START_MIN_BYTES = 6 * 1024 ** 3     # Windows available before the first rung
 HOST_STOP_BELOW_BYTES = 4 * 1024 ** 3    # stop if Windows available falls below this
@@ -177,8 +182,43 @@ def build_row(row_index: int, target_tokens: int, encode, bos_id: int, build_exa
 
 
 # ---------------------------------------------------------------- stop rules
+def effective_budget(*limits):
+    """The one ceiling denominator: the lowest of the limits that are known (usable budget, declared container limit, actual
+    cgroup memory.max). Startup admission, the child watcher and the parent verdict all use this."""
+    known = [v for v in limits if v]
+    return min(known) if known else 0
+
+
+def ceiling_bytes(effective):
+    return effective * 9 // 10
+
+
+def read_cgroup_max(path=CGROUP_MEMORY_MAX):
+    """The cgroup's memory limit in bytes, or None when it is unreadable or unlimited ("max")."""
+    try:
+        return int(Path(path).read_text().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def cap_gate(budget_bytes, container_memory_bytes, cgroup_memory_max) -> list:
+    """Admission for a real run: the container limit is declared, matches what the kernel enforces, and the ceiling under
+    the effective budget still holds the measured Stage 2 peak."""
+    reasons = []
+    if not container_memory_bytes:
+        reasons.append("container memory limit not declared (--container-memory-bytes)")
+    if cgroup_memory_max is None:
+        reasons.append("cgroup memory.max not readable or unlimited; the container limit cannot be shown to apply")
+    elif container_memory_bytes and not 0 <= container_memory_bytes - cgroup_memory_max < CGROUP_PAGE_SLACK_BYTES:
+        reasons.append(f"cgroup memory.max {cgroup_memory_max} does not match the declared container limit {container_memory_bytes}")
+    effective = effective_budget(budget_bytes, container_memory_bytes, cgroup_memory_max)
+    if ceiling_bytes(effective) < STAGE2_PEAK_BYTES:
+        reasons.append(f"ceiling {ceiling_bytes(effective)} under effective budget {effective} is below the Stage 2 peak {STAGE2_PEAK_BYTES}")
+    return reasons
+
+
 def judge_rung(record: dict, *, budget_bytes: int, host_before=None, host_after=None, host_min_seen=None,
-               paging_rule="v1", paging_limit=None) -> dict:
+               paging_rule="v1", paging_limit=None, container_memory_bytes=None) -> dict:
     """Applies the stop rules to one rung's record. Returns {"status": "PASS"|"FAILURE", "reasons": [...]}.
     Missing evidence is a failure, never a pass. The record keys are those ladder_rung.py writes."""
     reasons = []
@@ -205,8 +245,11 @@ def judge_rung(record: dict, *, budget_bytes: int, host_before=None, host_after=
     peak = record.get("ceiling_metric_peak_bytes") if record.get("ceiling_metric_peak_bytes") is not None else record.get("memory_peak_bytes")
     if peak is None:
         reasons.append("memory high-water not recorded")
-    elif peak > CEILING_FRACTION * budget_bytes:
-        reasons.append(f"memory high-water {peak} ({metric}) above {int(CEILING_FRACTION * 100)} percent of the fixed budget {budget_bytes}")
+    effective = effective_budget(budget_bytes, container_memory_bytes, record.get("cgroup_memory_max"))
+    if peak is not None and peak > ceiling_bytes(effective):
+        reasons.append(f"memory high-water {peak} ({metric}) above {int(CEILING_FRACTION * 100)} percent of the effective budget {effective}")
+    if record.get("effective_budget_bytes") not in (None, effective):
+        reasons.append(f"the rung ran under effective budget {record['effective_budget_bytes']}, the verdict uses {effective}")
     if (record.get("swap_peak_bytes") or 0) > 0:
         reasons.append(f"swap used ({record['swap_peak_bytes']} bytes); no swap-dependent qualification")
     if paging_rule == "v2":
@@ -246,7 +289,8 @@ def host_start_gate(host_available_bytes) -> list:
 
 # ---------------------------------------------------------------- parent runner
 def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, rung_timeout=RUNG_TIMEOUT_SECONDS,
-               host_available_start=None, host_available_end_of_rung=None, host_min_reader=None, host_clock_offset=0.0, ceiling_metric="original", container_cap="fixed", container_memory_bytes=None, paging_rule="v1", paging_limit=None, child_command=None) -> dict:
+               host_available_start=None, host_available_end_of_rung=None, host_min_reader=None, host_clock_offset=0.0, ceiling_metric="original", container_cap="fixed", container_memory_bytes=None, paging_rule="v1", paging_limit=None, cgroup_memory_max=None, require_cgroup_evidence=False,
+               child_command=None) -> dict:
     """Runs rungs in order in separate processes. `child_command(rung, rung_dir)` -> argv list (tests inject a stub).
     `host_available_end_of_rung(rung)` -> bytes or None, supplied by the operator's host reader.
     `host_min_reader(start_epoch, end_epoch)` -> the lowest Windows-available reading taken during the rung, or None if there
@@ -255,14 +299,18 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
     Windows (seen: 65 s ahead), so rung times are shifted onto the Windows clock before the sampler file is read."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    effective = effective_budget(budget_bytes, container_memory_bytes, cgroup_memory_max)
     summary = {"kind": "length_ladder", "model": model, "synthetic_only": True, "qualification": model == "pinned",
-               "budget_bytes": budget_bytes, "ceiling_bytes": int(CEILING_FRACTION * budget_bytes), "steps": steps,
+               "budget_bytes": budget_bytes, "effective_budget_bytes": effective, "ceiling_bytes": ceiling_bytes(effective),
+               "ceiling_policy": CEILING_POLICY, "cgroup_memory_max_bytes": cgroup_memory_max, "steps": steps,
                "configuration": {"ceiling_metric": ceiling_metric, "container_cap": container_cap,
                                  "paging_rule": paging_rule, "paging_max_train_refaults_per_s": paging_limit,
                                  "container_memory_bytes": container_memory_bytes,
                                  "label": CONFIG_LABELS[(ceiling_metric, container_cap)], "metric_label": CEILING_METRICS[ceiling_metric]},
                "rungs": [], "stopped_at": None, "host_clock_offset_seconds": host_clock_offset, "host_start_gate": host_start_gate(host_available_start),
                "host_available_start": host_available_start}
+    if require_cgroup_evidence:
+        summary["host_start_gate"] += cap_gate(budget_bytes, container_memory_bytes, cgroup_memory_max)
     if model != "pinned":
         summary["qualification"] = False
         summary["note"] = "synthetic tiny model: mechanics only, never host qualification"
@@ -277,7 +325,7 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
             continue
         rung_dir = out_dir / f"rung-{rung}"
         rung_dir.mkdir(parents=True, exist_ok=True)
-        argv = (child_command or (lambda r, d: default_child_command(r, d, model, steps, budget_bytes, ceiling_metric)))(rung, rung_dir)
+        argv = (child_command or (lambda r, d: default_child_command(r, d, model, steps, budget_bytes, ceiling_metric, effective)))(rung, rung_dir)
         started = time.monotonic()
         started_epoch = time.time()
         reasons = []
@@ -304,7 +352,10 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
         host_after = host_available_end_of_rung(rung) if host_available_end_of_rung else None
         host_min = host_min_reader(started_epoch + host_clock_offset, ended_epoch + host_clock_offset) if host_min_reader else None
         verdict = judge_rung(record, budget_bytes=budget_bytes, host_after=host_after, host_min_seen=host_min,
-                             paging_rule=paging_rule, paging_limit=paging_limit)
+                             paging_rule=paging_rule, paging_limit=paging_limit,
+                             container_memory_bytes=effective_budget(container_memory_bytes, cgroup_memory_max) or None)
+        if require_cgroup_evidence and record.get("cgroup_memory_max") is None:
+            verdict["reasons"].append("the rung record has no cgroup memory.max reading")
         if host_min_reader and host_min is None:
             verdict["reasons"].append("no Windows-available reading was taken during the rung")
         verdict["reasons"] = reasons + verdict["reasons"]
@@ -350,9 +401,11 @@ def read_host_min(csv_path, start_epoch, end_epoch, slack=10):
     return best
 
 
-def default_child_command(rung, rung_dir, model="pinned", steps=3, budget_bytes=0, ceiling_metric="original"):
+def default_child_command(rung, rung_dir, model="pinned", steps=3, budget_bytes=0, ceiling_metric="original",
+                          effective_budget_bytes=0):
     return [sys.executable, str(HERE / "ladder_rung.py"), "--rung", str(rung), "--out", str(rung_dir),
-            "--model", model, "--steps", str(steps), "--budget-bytes", str(budget_bytes), "--ceiling-metric", ceiling_metric]
+            "--model", model, "--steps", str(steps), "--budget-bytes", str(budget_bytes),
+            "--effective-budget-bytes", str(effective_budget_bytes or budget_bytes), "--ceiling-metric", ceiling_metric]
 
 
 def main(argv=None):
@@ -367,8 +420,8 @@ def main(argv=None):
         p.add_argument("--paging-max-train-refaults-per-s", type=float, default=None,
                        help="the limit for paging rule v2; there is no default because none has been ruled")
         p.add_argument("--container-cap", choices=CONTAINER_CAPS, default="fixed",
-                       help="how the container memory limit was set (informational: the launcher sets it); budget = from the fixed budget")
-        p.add_argument("--container-memory-bytes", type=int, default=None, help="the container memory limit actually used, bytes")
+                       help="how the container memory limit was set (the launcher sets it); budget = from the fixed budget")
+        p.add_argument("--container-memory-bytes", type=int, default=None, help="the container memory limit actually used, bytes; lowers the ceiling when below the budget")
         p.add_argument("--ceiling-metric", choices=sorted(CEILING_METRICS), default="original",
                        help="what the 90 percent ceiling is measured on; anon_shmem is a new labelled configuration")
     run = sub.choices["run"]
@@ -388,8 +441,9 @@ def main(argv=None):
         parser.error("--paging-rule v2 needs --paging-max-train-refaults-per-s (no limit has been ruled, so there is no default)")
     rungs = [int(r) for r in args.rungs.split(",")]
     if args.command == "plan":
-        print(json.dumps({"rungs": rungs, "budget_bytes": args.budget_bytes,
-                          "ceiling_bytes": int(CEILING_FRACTION * args.budget_bytes),
+        effective = effective_budget(args.budget_bytes, args.container_memory_bytes)
+        print(json.dumps({"rungs": rungs, "budget_bytes": args.budget_bytes, "effective_budget_bytes": effective,
+                          "ceiling_bytes": ceiling_bytes(effective),
                           "host_start_min_bytes": HOST_START_MIN_BYTES, "host_stop_below_bytes": HOST_STOP_BELOW_BYTES,
                           "rung_timeout_seconds": RUNG_TIMEOUT_SECONDS}, indent=2))
         return 0
@@ -408,7 +462,7 @@ def main(argv=None):
         host_clock_offset=clock_offset(args.host_epoch_at_start), ceiling_metric=args.ceiling_metric,
         container_cap=args.container_cap, container_memory_bytes=args.container_memory_bytes,
         paging_rule=args.paging_rule, paging_limit=args.paging_max_train_refaults_per_s,
-        child_command=lambda rung, d: default_child_command(rung, d, args.model, args.steps, args.budget_bytes, args.ceiling_metric))
+        cgroup_memory_max=read_cgroup_max(), require_cgroup_evidence=args.model == "pinned")
     print(json.dumps({k: summary[k] for k in ("model", "qualification", "configuration", "stopped_at", "complete")}, indent=2))
     return 0 if summary["complete"] else 1
 

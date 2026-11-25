@@ -10,7 +10,8 @@ another adapter name and checks every tensor is equal. Writes DIR/rung.json, eve
 `pinned` loads the pinned 3B base model (BASE_MODEL at BASE_REVISION). `synthetic` uses a tiny random Llama-shaped model
 and token ids; it proves the mechanics only and is labelled as such in the record.
 
-A watcher thread samples memory twice a second. If the process goes above 90 percent of --budget-bytes it writes a failure
+A watcher thread samples memory twice a second. If the process goes above 90 percent of the effective budget (the lowest
+of --budget-bytes, --effective-budget-bytes and this cgroup's memory.max) it writes a failure
 record and exits at once; it does not wait to be killed by the kernel.
 """
 import argparse
@@ -106,7 +107,7 @@ class Watcher(threading.Thread):
         self.ceiling_metric = ceiling_metric
         self.metric_peak = 0
         self.metric_fallback = False   # anon_shmem asked for but memory.stat unreadable: judged on the original, stricter figure
-        self.ceiling = int(budget_bytes * ceiling_fraction) if budget_bytes else None
+        self.ceiling = int(budget_bytes * ceiling_fraction) if budget_bytes else None   # budget_bytes = effective budget
         self.on_breach = on_breach
         self.peak = 0
         self.swap_peak = 0
@@ -282,6 +283,8 @@ def main(argv=None):
     parser.add_argument("--model", choices=("pinned", "synthetic"), default="pinned")
     parser.add_argument("--steps", type=int, default=3)
     parser.add_argument("--budget-bytes", type=int, default=0)
+    parser.add_argument("--effective-budget-bytes", type=int, default=0,
+                        help="the parent's ceiling denominator (usable budget lowered to the container limit)")
     parser.add_argument("--ceiling-metric", choices=("original", "anon_shmem"), default="original")
     args = parser.parse_args(argv)
 
@@ -291,16 +294,18 @@ def main(argv=None):
               "configuration_label": ladder.CEILING_METRICS[args.ceiling_metric],
               "cgroup_memory_max": _read_int(CGROUP / "memory.max"),
               "oom_events_start": _read_events(CGROUP / "memory.events")}
+    effective = ladder.effective_budget(args.budget_bytes, args.effective_budget_bytes, record["cgroup_memory_max"])
+    record["effective_budget_bytes"] = effective or None
     started = time.monotonic()
 
     def breach(peak):
-        record.update(failure=f"memory {peak} ({args.ceiling_metric}) above {int(ladder.CEILING_FRACTION * 100)} percent of budget {args.budget_bytes}",
+        record.update(failure=f"memory {peak} ({args.ceiling_metric}) above {int(ladder.CEILING_FRACTION * 100)} percent of budget {effective} (effective)",
                       memory_peak_bytes=peak, oom_events=0, wall_seconds=time.monotonic() - started,
                       **watcher.breakdown())
         write_record(args.out, record)
         os._exit(3)
 
-    watcher = Watcher(args.budget_bytes, ladder.CEILING_FRACTION, breach, args.ceiling_metric, args.out / "memory-trace.csv")
+    watcher = Watcher(effective, ladder.CEILING_FRACTION, breach, args.ceiling_metric, args.out / "memory-trace.csv")
     watcher.start()
     globals()["WATCHER"] = watcher
     try:

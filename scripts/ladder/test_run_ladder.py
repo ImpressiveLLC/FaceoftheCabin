@@ -119,11 +119,29 @@ class DryRunTests(unittest.TestCase):
         self.assertNotIn("--memory=22g", argv)
 
     def test_budget_cap_follows_available_memory(self):
-        for avail in (21.5, 24.0, 30.0):
+        for avail in (22.0, 24.0, 30.0):
             with self.subTest(avail=avail):
                 _, c = plan(avail, "-Run", "-ContainerCap", "budget")
                 budget = min(22, avail - 4)
-                self.assertEqual(c["container_memory_bytes"], int(budget * GIB) - 2 * GIB)
+                limit = int(budget * GIB) - 2 * GIB
+                self.assertEqual(c["container_memory_bytes"], limit)
+                self.assertEqual(c["effective_budget_bytes"], limit)
+                self.assertEqual(c["ceiling_bytes"], limit * 9 // 10)
+                self.assertEqual(c["budget_bytes"], int(budget * GIB))
+
+    def test_fixed_cap_keeps_the_budget_as_the_denominator(self):
+        _, a = plan(22)
+        self.assertEqual(a["effective_budget_bytes"], 18 * GIB)
+        _, big = plan(40)
+        self.assertEqual(big["effective_budget_bytes"], 22 * GIB)
+
+    def test_budget_cap_needs_the_margin_at_the_start(self):
+        need = math.ceil(round(14.21 * GIB) / 0.9) + 6 * GIB
+        base = ("-Run", "-DryRun", "-RunId", "t1", "-ContainerCap", "budget", "-FakeAvailableBytes")
+        ok = run(*base, str(need))
+        self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
+        self.assertGreaterEqual(json.loads(ok.stdout)["ceiling_bytes"], round(14.21 * GIB))
+        self.assertEqual(run(*base, str(need - 1)).returncode, 3)
 
     def test_watchdog_polls_every_second_and_kills_on_one_low_sample(self):
         text = SCRIPT.read_text(encoding="utf-8")
