@@ -383,7 +383,7 @@ class PagingTimelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             p = ladder.paging_from_trace(self.write(rows, tmp))
         self.assertEqual(p["phases"]["load"]["majflt_delta"], 28000)
-        self.assertEqual(p["phases"]["train"]["majflt_delta"], 650)
+        self.assertEqual(p["phases"]["train"]["majflt_delta"], 760)   # last load sample to first save sample: both boundaries
         self.assertEqual(p["phases"]["train"]["refault_file_delta"], 2)
         self.assertLess(p["phases"]["train"]["max_refault_file_per_s"], 0.1)
         self.assertEqual(p["phases"]["train"]["refault_anon_delta"], 0)
@@ -419,7 +419,7 @@ class PagingRuleTests(unittest.TestCase):
 
     def train(self, rate=0.0, anon=0):
         return {"phases": {"train": {"max_refault_file_per_s": rate, "refault_anon_delta": anon, "refault_file_delta": 0,
-                                     "reset": [], "invalid_samples": 0}}}
+                                     "reset": [], "invalid_samples": 0, "coverage_ok": True}}}
 
     def test_v1_is_unchanged_and_still_fails_run_3s_record(self):
         self.assertEqual(self.judge(None, major_fault_delta=28750)["status"], "FAILURE")   # run 3 under the rule as run
@@ -603,7 +603,7 @@ class EvidenceTests(unittest.TestCase):
     """Codex findings 2 and 4: the kernel high-water counts, and missing or invalid evidence is never zero or PASS."""
 
     NAN, INF = float("nan"), float("inf")
-    TRAIN = {"max_refault_file_per_s": 0.0, "refault_anon_delta": 0, "reset": [], "invalid_samples": 0}
+    TRAIN = {"max_refault_file_per_s": 0.0, "refault_anon_delta": 0, "reset": [], "invalid_samples": 0, "coverage_ok": True}
 
     def verdict(self, drop=(), rule="v1", limit=None, train=None, **over):
         if rule == "v2" and "paging" not in over:
@@ -769,6 +769,159 @@ class WatcherEvidenceTests(unittest.TestCase):
         self.assertEqual(ladder_rung.oom_delta(both, both), 0)
         for start, end in (({}, both), (both, {}), ({"oom": 0}, both), ({"oom": 2, "oom_kill": 0}, both)):
             self.assertIsNone(ladder_rung.oom_delta(start, end), (start, end))
+
+
+class PhaseCoverageTests(unittest.TestCase):
+    """Codex finding 4, second half: boundary intervals kept, enough of training sampled, unrounded comparison."""
+
+    HEADER = "epoch,current,rss,anon,file,shmem,metric,phase,majflt,pgmajfault,refault_file,refault_anon\n"
+
+    def analyse(self, rows):
+        """rows: (t, phase, refault_file, refault_anon)"""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "memory-trace.csv"
+            path.write_text(self.HEADER + "".join(f"{t},1,1,1,1,0,1,{ph},0,0,{rf},{ra}\n" for t, ph, rf, ra in rows), encoding="utf-8")
+            return ladder.paging_from_trace(path)
+
+    def good(self, step=1.0, end=10):
+        train = [(1 + i * step, "train", 0, 0) for i in range(int(end / step) + 1)]
+        return [(0, "load", 0, 0)] + train + [(train[-1][0] + 1, "save", 0, 0)]
+
+    def verdict(self, paging, limit=50.0):
+        return ladder.judge_rung(good_record(paging=paging), budget_bytes=BUDGET, paging_rule="v2", paging_limit=limit)
+
+    def assertIncomplete(self, rows):
+        paging = self.analyse(rows)
+        self.assertFalse(paging["phases"]["train"]["coverage_ok"], paging)
+        verdict = self.verdict(paging)
+        self.assertEqual(verdict["status"], "FAILURE")
+        self.assertTrue(any("do not cover the training phase" in r for r in verdict["reasons"]), verdict["reasons"])
+
+    def test_a_well_sampled_training_phase_passes(self):
+        paging = self.analyse(self.good())
+        self.assertTrue(paging["phases"]["train"]["coverage_ok"])
+        self.assertEqual(self.verdict(paging)["status"], "PASS")
+
+    def test_anonymous_refaults_across_either_boundary_count_against_training(self):
+        for which in ("entry", "exit"):
+            with self.subTest(which=which):
+                rows = self.good()
+                if which == "entry":   # rose between the last load sample and the first training sample
+                    rows = [rows[0]] + [(t, ph, rf, 4) for t, ph, rf, _ in rows[1:]]
+                else:                  # rose between the last training sample and the first save sample
+                    rows = rows[:-1] + [(rows[-1][0], "save", 0, 4)]
+                paging = self.analyse(rows)
+                self.assertEqual(paging["phases"]["train"]["refault_anon_delta"], 4)
+                self.assertEqual(self.verdict(paging)["status"], "FAILURE")
+                self.assertEqual(sum(b["refault_anon_delta"] for b in paging["boundaries"]), 4)
+
+    def test_load_and_save_keep_their_own_samples(self):
+        rows = [(0, "load", 0, 0), (1, "load", 7, 0), (2, "train", 9, 0), (8, "train", 9, 0), (9, "save", 9, 0)]
+        phases = self.analyse(rows)["phases"]
+        self.assertEqual((phases["load"]["refault_file_delta"], phases["train"]["refault_file_delta"]), (7, 2))
+
+    def test_a_file_refault_spike_in_the_last_short_interval_is_seen(self):
+        rows = [(0, "load", 0, 0), (1, "train", 0, 0), (6, "train", 0, 0), (6.5, "save", 5000, 0)]
+        rate = self.analyse(rows)["phases"]["train"]["max_refault_file_per_s"]
+        self.assertGreater(rate, 800)   # 5000 over the shortest window ending at the last sample
+
+    def test_a_spike_at_the_start_is_seen(self):
+        rows = [(0, "load", 0, 0), (0.5, "train", 5000, 0), (5.5, "train", 5000, 0), (11, "save", 5000, 0)]
+        self.assertGreater(self.analyse(rows)["phases"]["train"]["max_refault_file_per_s"], 800)
+
+    def test_rate_is_not_rounded_before_comparison(self):
+        rows = [(0, "load", 0, 0), (0, "train", 0, 0), (5, "train", 251, 0), (10, "save", 251, 0)]
+        paging = self.analyse(rows)
+        rate = paging["phases"]["train"]["max_refault_file_per_s"]
+        self.assertEqual(rate, 251 / 5)
+        self.assertEqual(self.verdict(paging, limit=50.2)["status"], "PASS")
+        self.assertEqual(self.verdict(paging, limit=50.1999)["status"], "FAILURE")
+        paging["phases"]["train"]["max_refault_file_per_s"] = 50.004
+        self.assertEqual(self.verdict(paging, limit=50.0)["status"], "FAILURE")
+        third = self.analyse([(0, "load", 0, 0), (0, "train", 0, 0), (6, "train", 100, 0), (7, "save", 100, 0)])
+        self.assertEqual(third["phases"]["train"]["max_refault_file_per_s"], 100 / 6)
+
+    def test_training_shorter_than_one_window_is_incomplete(self):
+        self.assertIncomplete([(0, "load", 0, 0), (1, "train", 0, 0), (3, "train", 0, 0), (4, "save", 0, 0)])
+
+    def test_a_gap_longer_than_the_window_is_incomplete(self):
+        self.assertIncomplete([(0, "load", 0, 0), (1, "train", 0, 0), (7, "train", 0, 0), (8, "save", 0, 0)])
+        self.assertIncomplete(self.good()[:-1] + [(30, "save", 0, 0)])             # across the exit boundary
+        self.assertIncomplete([(-20, "load", 0, 0)] + self.good()[1:])             # across the entry boundary
+
+    def test_missing_a_boundary_sample_is_incomplete(self):
+        self.assertIncomplete(self.good()[1:])    # nothing before training
+        self.assertIncomplete(self.good()[:-1])   # nothing after it
+
+    def test_time_going_backwards_or_phases_out_of_order_is_incomplete(self):
+        rows = self.good()
+        rows[3] = (0.5, "train", 0, 0)
+        self.assertIncomplete(rows)
+        rows = self.good()
+        rows.insert(4, (3.5, "load", 0, 0))
+        self.assertIncomplete(rows)
+
+    def test_a_summary_without_a_coverage_flag_never_passes(self):
+        train = {"max_refault_file_per_s": 0.0, "refault_anon_delta": 0, "reset": [], "invalid_samples": 0}
+        self.assertEqual(self.verdict({"phases": {"train": train}})["status"], "FAILURE")
+
+    def test_non_finite_time_is_a_malformed_line(self):
+        rows = self.good()
+        rows.insert(3, ("nan", "train", 0, 0))
+        self.assertEqual(self.analyse(rows)["phases"]["train"]["invalid_samples"], 1)
+
+
+class PhaseSwitchTests(unittest.TestCase):
+    def watcher(self):
+        import ladder_rung
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.addCleanup(setattr, ladder_rung, "PHASE", "load")
+        self.addCleanup(setattr, ladder_rung, "CGROUP", ladder_rung.CGROUP)
+        ladder_rung.CGROUP = Path(tmp.name)
+        trace = Path(tmp.name) / "memory-trace.csv"
+        return ladder_rung, ladder_rung.Watcher(10 ** 12, 0.9, lambda peak: None, "original", trace), trace
+
+    def test_a_switch_writes_a_closing_and_an_opening_sample(self):
+        module, watcher, trace = self.watcher()
+        watcher.set_phase("train")
+        watcher.set_phase("save")
+        watcher.finish()
+        phases = [line.split(",")[7] for line in trace.read_text().splitlines()[1:]]
+        self.assertEqual(phases, ["load", "train", "train", "save", "save"])
+
+    def test_a_wall_clock_step_does_not_move_trace_times(self):
+        import time
+        module, watcher, trace = self.watcher()
+        real = time.time()
+        with mock.patch.object(module.time, "time", side_effect=[real - 61, real + 62, real - 3600, real] * 5):
+            for _ in range(4):
+                watcher.sample()
+        watcher.finish()
+        times = [float(line.split(",")[0]) for line in trace.read_text().splitlines()[1:]]
+        self.assertEqual(times, sorted(times))
+        self.assertLess(times[-1] - times[0], 5)
+        self.assertLess(abs(times[0] - real), 5)
+
+    def test_samples_from_two_threads_never_interleave(self):
+        import threading
+        import time
+        module, watcher, trace = self.watcher()
+        counter = iter(range(10 ** 6))
+
+        def slow_faults():
+            value = next(counter)
+            time.sleep(0.02 if value % 2 == 0 else 0)   # an unlocked later sample would overtake this one
+            return value
+        with mock.patch.object(module, "_major_faults", slow_faults):
+            threads = [threading.Thread(target=lambda: [watcher.sample() for _ in range(15)]) for _ in range(3)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            watcher.finish()
+        faults = [int(line.split(",")[8]) for line in trace.read_text().splitlines()[1:]]
+        self.assertEqual(faults, sorted(faults))
 
 
 @unittest.skipUnless(HAVE_TORCH, "torch, peft and transformers are not installed")

@@ -88,17 +88,38 @@ def summarize_trace(path):
     return {"rows": rows, "last_epoch": last, **{f"{c}_peak_bytes": v for c, v in peaks.items()}} if rows else None
 
 
+def worst_window_rate(rows, name="refault_file", window=PAGING_WINDOW_SECONDS):
+    """Highest per-second rise of one cumulative counter over the shortest windows of at least `window` seconds: one such
+    window starting at every sample and one ending at every sample, so no interval is left outside all of them. Rows with
+    no reading of the counter are not window edges. Unrounded. None when no window of that length exists."""
+    points = [(t, v[name]) for t, v in rows if v[name] is not None]
+    best = None
+    for i, (t0, a) in enumerate(points):
+        starting = next(((t, b) for t, b in points[i + 1:] if t - t0 >= window), None)
+        ending = next(((t, b) for t, b in reversed(points[:i]) if t0 - t >= window), None)
+        pairs = ([((t0, a), starting)] if starting else []) + ([(ending, (t0, a))] if ending else [])
+        for (ta, va), (tb, vb) in pairs:
+            rate = (vb - va) / (tb - ta)
+            best = rate if best is None or rate > best else best
+    return best
+
+
 def paging_from_trace(path):
     """Per-phase paging counters from a rung's memory-trace.csv (12-column rows: load, train, save). All four counters are
-    cumulative, so a phase's figure is last minus first inside it. `refault_file` is the cgroup's workingset_refault_file:
-    file pages that were evicted and read again, which is real cache pressure; cold reads of the weights on a fresh VM show
-    up in `majflt` and `pgmajfault` but not in `refault_*`. None if the trace has no 12-column rows."""
+    cumulative, so a figure is last minus first. `refault_file` is the cgroup's workingset_refault_file: file pages that
+    were evicted and read again, which is real cache pressure; cold reads of the weights on a fresh VM show up in `majflt`
+    and `pgmajfault` but not in `refault_*`.
+
+    `train` is the phase a gate may judge, so it is measured from the last sample before it to the first sample after it:
+    the intervals across its two boundaries count against training rather than being dropped. `load` and `save` cover their
+    own samples; `boundaries` lists each interval between phases. `coverage_ok` is true only when the phases appear once
+    each in order, training has a sample on both sides, the measured span is at least one window, sample times never go
+    backwards and no gap is longer than the window. None if the trace has no 12-column rows."""
     try:
         lines = Path(path).read_text(encoding="utf-8").splitlines()
     except OSError:
         return None
-    phases, resets, malformed = {}, {}, 0
-    previous = {}
+    trace, resets, malformed, previous = [], {}, 0, {}
     for line in lines[1:]:
         parts = line.split(",")
         if len(parts) != 12:
@@ -107,6 +128,8 @@ def paging_from_trace(path):
         try:
             epoch = float(parts[0])
         except ValueError:
+            epoch = math.nan
+        if not math.isfinite(epoch):
             malformed += 1
             continue
         values = {}
@@ -119,32 +142,50 @@ def paging_from_trace(path):
                 if values[name] < 0 or values[name] < previous.get(name, 0):
                     resets.setdefault(parts[7], set()).add(name)
                 previous[name] = values[name]
-        phases.setdefault(parts[7], []).append((epoch, values))
-    if not phases:
+        trace.append((parts[7], epoch, values))
+    if not trace:
         return None
-    out = {}
-    for phase, rows in phases.items():
-        seconds = rows[-1][0] - rows[0][0]
-        entry = {"rows": len(rows), "seconds": round(seconds, 1), "reset": sorted(resets.get(phase, ())),
-                 "invalid_samples": sum(any(v[name] is None for name in PAGING_COUNTERS) for _, v in rows) + malformed}
+    segments = []   # [phase, first index, last index] of each unbroken stretch
+    for index, (phase, _, _) in enumerate(trace):
+        if segments and segments[-1][0] == phase:
+            segments[-1][2] = index
+        else:
+            segments.append([phase, index, index])
+    order = [seg[0] for seg in segments]
+    expected = [name for name in ("load", "train", "save") if name in order]
+    in_order = order == expected
+
+    def deltas(rows):
+        found = {}
         for name in PAGING_COUNTERS:
-            first = next((v[name] for _, v in rows if v[name] is not None), None)
-            last = next((v[name] for _, v in reversed(rows) if v[name] is not None), None)
-            entry[name + "_delta"] = None if None in (first, last) else last - first
-        # worst rate over any window of at least PAGING_WINDOW_SECONDS inside the phase
-        best = None
-        for i, (t0, v0) in enumerate(rows):
-            if v0["refault_file"] is None:
-                continue
-            for t1, v1 in rows[i + 1:]:
-                if t1 - t0 >= PAGING_WINDOW_SECONDS and v1["refault_file"] is not None:
-                    rate = (v1["refault_file"] - v0["refault_file"]) / (t1 - t0)
-                    best = rate if best is None or rate > best else best
-                    break
-        entry["max_refault_file_per_s"] = None if best is None else round(best, 2)
+            seen = [v[name] for _, v in rows if v[name] is not None]
+            found[name + "_delta"] = seen[-1] - seen[0] if seen else None
+        return found
+
+    out = {}
+    for phase in dict.fromkeys(order):
+        own = [i for i, row in enumerate(trace) if row[0] == phase]
+        first, last = own[0], own[-1]
+        if phase == "train":
+            first, last = max(first - 1, 0), min(last + 1, len(trace) - 1)
+        rows = [(t, v) for _, t, v in trace[first:last + 1]]
+        gaps = [b[0] - a[0] for a, b in zip(rows, rows[1:])]
+        seconds = rows[-1][0] - rows[0][0]
+        entry = {"rows": len(own), "seconds": seconds, "reset": sorted(resets.get(phase, ())),
+                 "invalid_samples": sum(any(v[name] is None for name in PAGING_COUNTERS) for _, v in rows) + malformed,
+                 "max_gap_s": max(gaps) if gaps else None}
+        entry.update(deltas(rows))
+        entry["max_refault_file_per_s"] = worst_window_rate(rows)
+        bounded = phase != "train" or (first < own[0] and last > own[-1])
+        entry["coverage_ok"] = bool(in_order and bounded and gaps and seconds >= PAGING_WINDOW_SECONDS
+                                    and min(gaps) >= 0 and max(gaps) <= PAGING_WINDOW_SECONDS)
         out[phase] = entry
-    return {"window_seconds": PAGING_WINDOW_SECONDS, "phases": out,
-            "note": "counters are cumulative; the gap between phases (under one sample) is not attributed"}
+    boundaries = []
+    for before, after in zip(segments, segments[1:]):
+        a, b = trace[before[2]], trace[after[1]]
+        boundaries.append({"from": a[0], "to": b[0], "seconds": b[1] - a[1], **deltas([(a[1], a[2]), (b[1], b[2])])})
+    return {"window_seconds": PAGING_WINDOW_SECONDS, "phases": out, "boundaries": boundaries,
+            "note": "counters are cumulative; train includes the intervals across both of its boundaries"}
 
 
 FILLER = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel"]
@@ -300,6 +341,9 @@ def judge_rung(record: dict, *, budget_bytes: int, host_before=None, host_after=
             else:
                 if train.get("invalid_samples") != 0 or train.get("reset") != []:
                     reasons.append("paging evidence incomplete: unreadable or reset counter samples in the training phase")
+                if train.get("coverage_ok") is not True:
+                    reasons.append("paging evidence incomplete: the samples do not cover the training phase (both boundaries, "
+                                   f"at least {PAGING_WINDOW_SECONDS} s, no gap longer than that)")
                 rate = train.get("max_refault_file_per_s")
                 if not is_count(rate):
                     reasons.append("paging evidence missing: no valid refault_file rate in the training phase")
