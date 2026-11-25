@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -326,10 +327,21 @@ function Invoke-Wsl {
     $a = @($args | ForEach-Object { "$_" })
     $global:LASTEXITCODE = 0
     Note ('wsl ' + ($a -join ' '))
-    if ($a -contains '-l') { 'Ubuntu-24.04 Running'; return }
     if ($a -contains '--shutdown') { return }
     if ($env:STUB_THROW_ON -and ($a -contains $env:STUB_THROW_ON)) { throw 'stub failure' }
+    $op = if ($a -contains '-l') { '-l' } elseif ($a -contains 'ps') { 'ps' } elseif ($a -contains 'kill') { 'kill' }
+    if ($op -and $env:STUB_HANG -eq $op) {
+        if ($env:STUB_NATIVE) { & $env:STUB_NATIVE -c 'import time; time.sleep(150)' } else { Start-Sleep 150 }
+    }
+    if ($op -and $env:STUB_FAIL -eq $op) { $global:LASTEXITCODE = 1; return }
+    if ($a -contains 'ps') {
+        $seen = $env:STUB_LOG + '.ps'
+        Add-Content -LiteralPath $seen 'p'
+        if ($env:STUB_LEFTOVER -eq 'stays' -or ($env:STUB_LEFTOVER -eq 'once' -and @(Get-Content -LiteralPath $seen).Count -eq 1)) { 'abc123' }
+        return
+    }
     if ($a -contains 'kill') { Set-Content -LiteralPath ($env:STUB_LOG + '.killed') 'x'; return }
+    if ($a -contains '-l') { 'Ubuntu-24.04 Running'; return }
     if ($env:STUB_NO_IMAGE -and ($a -contains 'image')) { $global:LASTEXITCODE = 1; return }
     if (($a -contains 'run') -and ($a -contains '--name')) {
         foreach ($v in $a) { if ($v -match '^(.*):/out$') { $out = $Matches[1] } }
@@ -347,11 +359,26 @@ function Invoke-Wsl {
         if ($env:STUB_COMPLETE) { Set-Content $summary $text }
         if ($env:STUB_SUMMARY_RAW) { Set-Content $summary $env:STUB_SUMMARY_RAW }
         if ($env:STUB_APPEND_CSV) { Add-Content (Join-Path $out 'host.csv') $env:STUB_APPEND_CSV }
+        if ($env:STUB_HOLD_FILE) {
+            $held = Join-Path $out 'held.txt'
+            Start-Process -FilePath (Get-Process -Id $PID).Path -WindowStyle Hidden -ArgumentList '-NoProfile', '-Command',
+                "`$f = [IO.File]::Open('$held', 'Create', 'Write', 'None'); Start-Sleep 25; `$f.Dispose()"
+            while (-not (Test-Path -LiteralPath $held)) { Start-Sleep -Milliseconds 100 }
+        }
+        if ($env:STUB_END_SAMPLER) {
+            Set-Content -LiteralPath ($env:STUB_LOG + '.endsampler') 'x'
+            while (-not (Test-Path -LiteralPath ($env:STUB_LOG + '.sampler-hit'))) { Start-Sleep -Milliseconds 50 }
+        }
         if ($env:STUB_EXIT) { $global:LASTEXITCODE = [int]$env:STUB_EXIT }
         'container output'
     }
 }
 function Get-HostAvailableBytes {
+    if ($env:STUB_END_SAMPLER -and (Test-Path -LiteralPath ($env:STUB_LOG + '.endsampler'))) {
+        Set-Content -LiteralPath ($env:STUB_LOG + '.sampler-hit') 'x'
+        if ($env:STUB_END_SAMPLER -eq 'throw') { throw 'stub: failed at completion' }
+        Start-Sleep 60
+    }
     if ($env:STUB_AVAILABLE) { return [int64]$env:STUB_AVAILABLE }
     if ($env:STUB_BAD) {
         # reads 1 and 2 are the launcher's gate; the sampler's start at 3
@@ -523,6 +550,67 @@ class RunFlowWithStubsTests(unittest.TestCase):
     def test_launcher_error_still_seals_a_stopped_bundle(self):
         proc = self.launch("-Run", STUB_THROW_ON="image")
         self.assertStopped(proc, "launcher error: stub failure", code=4)
+
+    # ---- Codex HOLD on 30c88d9: completion-boundary sampler failure, native cleanup failures, calls that never return
+
+    def test_sampler_failure_at_container_completion_is_not_done(self):
+        self.assertStopped(self.launch("-Run", STUB_END_SAMPLER="throw"), "the host sampler did not end cleanly (job Failed)")
+
+    def test_a_sampler_that_hangs_as_the_run_ends_is_not_done(self):
+        # every reading so far is fresh; only the check after telling it to stop catches this
+        self.assertStopped(self.launch("-Run", STUB_END_SAMPLER="hang"), "the host sampler did not end cleanly")
+
+    def test_failed_native_cleanup_commands_are_recorded_and_not_done(self):
+        cases = {"ps": "could not list containers (exit 1)", "-l": "could not query WSL (exit 1)"}
+        for op, needle in cases.items():
+            with self.subTest(op=op):
+                self.setUp()
+                self.assertStopped(self.launch("-Run", STUB_FAIL=op), needle)
+
+    def test_a_leftover_container_that_cannot_be_killed_is_not_done(self):
+        text = self.assertStopped(self.launch("-Run", STUB_LEFTOVER="stays", STUB_FAIL="kill"), "docker kill exit 1")
+        self.assertIn("could not confirm that the container stopped", text)
+
+    def test_a_leftover_container_that_survives_a_successful_kill_is_not_done(self):
+        self.assertStopped(self.launch("-Run", STUB_LEFTOVER="stays"), "could not confirm that the container stopped")
+
+    def test_a_leftover_container_that_is_killed_and_confirmed_gone_is_done(self):
+        proc = self.launch("-Run", STUB_LEFTOVER="once")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertTrue((self.run_dir() / "DONE").exists(), proc.stdout)
+        self.assertTrue(any(c.endswith("kill abc123") for c in self.calls()))
+
+    @unittest.skipUnless(sys.platform == "win32", "only Windows refuses to read a file another process holds exclusively")
+    def test_a_file_still_held_open_gives_an_unverified_bundle_not_a_crash(self):
+        proc = self.launch("-Run", STUB_HOLD_FILE="1")
+        self.assertEqual(proc.returncode, 5, proc.stdout + proc.stderr)
+        self.assertIn("MANIFEST DOES NOT VERIFY: not listed: held.txt", proc.stdout)
+        self.assertTrue((self.run_dir() / "manifest.sha256").exists())
+        self.assertIn("keep-awake False", self.calls())
+        time.sleep(30)   # let the holder exit before the temporary folder is removed
+
+    def bounded(self, needle, **stub):
+        began = time.monotonic()
+        proc = self.launch("-Run", **stub)
+        self.assertLess(time.monotonic() - began, 120, "a call that never returns must not hold the launcher")
+        return self.assertStopped(proc, needle)
+
+    def test_a_cleanup_command_that_never_returns_is_bounded(self):
+        for op in ("ps", "-l"):
+            with self.subTest(op=op):
+                self.setUp()
+                self.bounded("timed out after 20 s", STUB_HANG=op)
+
+    def test_a_native_command_that_never_returns_is_bounded(self):
+        self.bounded("timed out after 20 s", STUB_HANG="ps", STUB_NATIVE=sys.executable)
+
+    def test_an_abort_kill_that_never_returns_is_bounded(self):
+        began = time.monotonic()
+        proc = self.launch("-Run", STUB_BAD="throw", STUB_BAD_FROM="9", STUB_RUN_SECONDS="150", STUB_HANG="kill")
+        self.assertLess(time.monotonic() - began, 145)
+        text = self.assertStopped(proc, "the abort kill timed out")
+        self.assertIn("did not end within 60 s", text)
+        self.assertIn("container exit code unknown", text)
 
     def test_coverage_is_checked_after_the_run_too(self):
         # a bad line written as the container ends; this wording comes only from the after-run coverage check

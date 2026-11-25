@@ -28,7 +28,9 @@
   (30 s to get there, else NOT_RUN). During the run a floor breach, a stopped sampler, a reading older than 10 s or an
   operator stop kills the container. DONE needs every rung PASS and none of: breach, abnormal or unknown container exit,
   gap in the host readings, operator stop, launcher or cleanup error. Otherwise the run is STOPPED with every reason.
-  The 10 s and 30 s limits were chosen by Code with finding 3's repair; they are not measured values.
+  Every abort and cleanup WSL/Docker command is limited to 20 s and its native exit code is checked; a failed or timed-out
+  one leaves the container state unknown, which is recorded, and the other cleanup steps still run.
+  The 10 s, 30 s and 20 s limits were chosen by Code with finding 3's repair; they are not measured values.
   The manifest is written after the last write into the run folder and verified at once; a bundle that does not verify
   exits 5. Everything that touches the machine is in host_ops.ps1 beside this script.
 #>
@@ -66,6 +68,8 @@ $PollSeconds = 1   # the host fell 14 GiB in 5 s in run 2; a 5 s poll with two s
 $MaxSampleGapSeconds = 10   # an older or wider gap than this is no coverage (chosen by Code, not measured)
 $SamplerReadySeconds = 30   # time the sampler has to produce two good readings before launch
 $AbortWaitSeconds = 60      # after an abort, how long to keep killing before giving up on the container client
+$CommandTimeoutSeconds = 20 # longest any abort or cleanup WSL/Docker command may take
+$JobStopSeconds = 10        # longest to wait for an abandoned background job to stop
 $OverheadMarginBytes = 2 * $GiB
 # In budget cap mode the container limit (budget less the margin) is the ceiling denominator, so the start needs the margin too.
 if ($ContainerCap -eq 'budget') { $NeedAtStartBytes += $OverheadMarginBytes }
@@ -166,7 +170,10 @@ function Get-HostFacts {
 function Write-Manifest([string]$Dir) {
     $root = (Resolve-Path -LiteralPath $Dir).Path
     $lines = Get-ChildItem -LiteralPath $root -Recurse -File -Force | Where-Object { $_.Name -ne 'manifest.sha256' } | ForEach-Object {
-        "{0}  {1}" -f (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.FullName.Substring($root.Length + 1) }
+        # a file still held open cannot be hashed: it is left out, and verification then reports it as not listed
+        try { "{0}  {1}" -f (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256 -ErrorAction Stop).Hash.ToLower(), $_.FullName.Substring($root.Length + 1) }
+        catch { Write-Host "cannot hash a file in the run folder: $_" }
+    }
     Set-Content -LiteralPath (Join-Path $root 'manifest.sha256') $lines
 }
 
@@ -253,6 +260,46 @@ function Get-CoverageProblems([string]$Csv, [int64]$From, [int64]$To, [int64]$Fl
     if ($tail -gt $MaxGap) { "host readings: none in the last $tail s of the run (limit $MaxGap)" }
     $low = @($window | Where-Object { $_.bytes -lt $Floor } | Sort-Object bytes)
     if ($low.Count -gt 0) { "Windows available fell to $($low[0].bytes) bytes, below the $Floor floor" }
+}
+
+# One WSL command with a time limit. Runs in its own job so a command that never returns cannot hold the launcher.
+# ok only when it finished in time and the native exit code was 0.
+function Invoke-WslBounded([string[]]$WslArgs, [int]$TimeoutSeconds) {
+    $call = Start-Job -ArgumentList $HostOps, $WslArgs -ScriptBlock {
+        param($hostOps, $wslArgs)
+        . $hostOps
+        $global:LASTEXITCODE = $null
+        $text = @(Invoke-Wsl @wslArgs 2>&1 | ForEach-Object { "$_" -replace [string][char]0, '' })
+        [pscustomobject]@{ exit = $global:LASTEXITCODE; output = $text }
+    }
+    if (-not (Wait-Job $call -Timeout $TimeoutSeconds)) {
+        $null = Stop-JobBounded $call
+        return [pscustomobject]@{ ok = $false; why = "timed out after $TimeoutSeconds s"; output = @() }
+    }
+    $result = @(Receive-Job $call -ErrorAction SilentlyContinue) | Select-Object -Last 1
+    $state = $call.State
+    Remove-Job $call -Force -ErrorAction SilentlyContinue
+    $why = if ($state -ne 'Completed' -or $null -eq $result -or $null -eq $result.exit) { "no exit code (job $state)" }
+    elseif ($result.exit -ne 0) { "exit $($result.exit)" }
+    return [pscustomobject]@{ ok = -not $why; why = $why; output = @(if ($result) { $result.output }) }
+}
+
+# Ends a background job without ever blocking for longer than $JobStopSeconds. Returns $true when it has ended.
+function Stop-JobBounded($Job) {
+    if ($Job.State -in 'NotStarted', 'Running') {
+        # Stop-Job blocks until the job ends, so it runs in its own runspace and is waited on with a limit
+        $stopper = [powershell]::Create()
+        $null = $stopper.AddScript('param($j) Stop-Job -Job $j').AddArgument($Job)
+        $wait = $stopper.BeginInvoke()
+        if ($wait.AsyncWaitHandle.WaitOne($JobStopSeconds * 1000)) { $stopper.Dispose() }
+    }
+    if ($Job.State -in 'NotStarted', 'Running', 'Stopping') { return $false }
+    Remove-Job $Job -Force -ErrorAction SilentlyContinue
+    return $true
+}
+
+function Invoke-DockerBounded([string[]]$DockerArgs) {
+    return Invoke-WslBounded (@('-d', $Distro, '--exec', 'docker') + $DockerArgs) $CommandTimeoutSeconds
 }
 
 function Out-Json($Object, [string]$Path) {
@@ -449,7 +496,8 @@ try {
         }
         if ($abort) {
             # repeated: the first kill can arrive before the container exists
-            Invoke-Docker kill $name *> $null
+            $kill = Invoke-DockerBounded @('kill', $name)   # a nonzero exit is expected before the container exists
+            if ($kill.why -like 'timed out*') { Fail "the abort kill $($kill.why)" }
             if ((Get-Date) -gt $giveUp) { Fail "the container client did not end within $AbortWaitSeconds s of the abort"; break }
         }
         Start-Sleep 1
@@ -470,15 +518,42 @@ finally {
         $steps = [ordered]@{
             'stop the sampler' = {
                 if (-not (Test-Path $stopFile)) { Set-Content $stopFile 'run finished' }
-                if ($job) { Wait-Job $job -Timeout 15 | Out-Null; Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue }
-            }
-            'kill leftover containers' = {
-                if (Test-DistroRunning) {
-                    $left = @(Invoke-Docker ps -q --filter "name=$name" 2>$null)
-                    foreach ($c in $left) { Invoke-Docker kill $c | Out-Null }
+                if ($job) {
+                    $null = Wait-Job $job -Timeout 15
+                    # A sampler told to stop ends as Completed. Anything else, including a failure after the run loop's last
+                    # look (the container finishing in between), is recorded here, before the job is removed.
+                    if ($job.State -ne 'Completed') {
+                        Fail "the host sampler did not end cleanly (job $($job.State)) $($job.ChildJobs[0].JobStateInfo.Reason.Message)".Trim()
+                    }
+                    if (-not (Stop-JobBounded $job)) { Fail 'the host sampler could not be stopped' }
                 }
             }
-            'end the container client' = { if ($runJob) { Stop-Job $runJob -ErrorAction SilentlyContinue; Remove-Job $runJob -Force -ErrorAction SilentlyContinue } }
+            'kill leftover containers' = {
+                $wsl = Invoke-WslBounded @('-l', '-v') $CommandTimeoutSeconds
+                if (-not $wsl.ok) { Fail "cleanup: could not query WSL ($($wsl.why)); container state unknown" }
+                elseif (-not (($wsl.output -join "`n") -match "$Distro +Running")) { return }   # no VM, so no container
+                $list = Invoke-DockerBounded @('ps', '-q', '--filter', "name=$name")
+                if (-not $list.ok) {
+                    Fail "cleanup: could not list containers ($($list.why)); container state unknown"
+                    $kill = Invoke-DockerBounded @('kill', $name)   # try anyway; its result cannot be confirmed
+                    return
+                }
+                $left = @($list.output | Where-Object { $_ })
+                foreach ($c in $left) {
+                    $kill = Invoke-DockerBounded @('kill', $c)
+                    if (-not $kill.ok) { Fail "cleanup: docker kill $($kill.why)" }
+                }
+                if ($left.Count -gt 0) {
+                    $again = Invoke-DockerBounded @('ps', '-q', '--filter', "name=$name")
+                    if (-not $again.ok -or @($again.output | Where-Object { $_ }).Count -gt 0) { Fail 'cleanup: could not confirm that the container stopped' }
+                }
+            }
+            'end the container client' = {
+                if ($runJob) {
+                    if ($runJob.State -in 'NotStarted', 'Running') { Fail 'the container client was still running at cleanup' }
+                    if (-not (Stop-JobBounded $runJob)) { Fail 'the container client could not be stopped' }
+                }
+            }
             'release keep-awake' = { Set-KeepAwake $false }
         }
         foreach ($step in $steps.Keys) {
