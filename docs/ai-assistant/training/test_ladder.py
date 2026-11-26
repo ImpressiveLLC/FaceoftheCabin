@@ -959,6 +959,177 @@ class PhaseSwitchTests(unittest.TestCase):
         self.assertEqual(faults, sorted(faults))
 
 
+PSI = "some avg10=0.00 avg60=0.00 avg300=0.00 total={some}\nfull avg10=0.00 avg60=0.00 avg300=0.00 total={full}\n"
+
+
+class PressureReadTests(unittest.TestCase):
+    def read(self, text):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "memory.pressure"
+            path.write_bytes(text.encode("latin-1"))
+            return ladder.read_pressure(path)
+
+    def test_totals_in_microseconds(self):
+        self.assertEqual(self.read(PSI.format(some=1500, full=700)), ({"some": 1500, "full": 700}, None))
+        self.assertEqual(self.read(PSI.format(some=0, full=0)), ({"some": 0, "full": 0}, None))   # a real zero is a reading
+
+    def test_absent_and_unreadable_are_unavailable_never_zero(self):
+        self.assertEqual(ladder.read_pressure(Path("nope") / "io.pressure"), (None, "file absent"))
+        with tempfile.TemporaryDirectory() as tmp:
+            totals, reason = ladder.read_pressure(tmp)   # a directory: the read itself fails
+        self.assertIsNone(totals)
+        self.assertTrue(reason.startswith("read error"), reason)
+        self.assertTrue(self.read("some total=1\nfull total=\xff\n")[1].startswith("read error"))
+
+    def test_malformed_files_are_unavailable(self):
+        good = PSI.format(some=5, full=3)
+        for bad in ("", "garbage\n", good.splitlines()[0] + "\n", good.splitlines()[1] + "\n",
+                    good.replace("total=5", "total=-5"), good.replace("total=5", "total=5.5"), good.replace("total=3", ""),
+                    good.replace("total=5", "total=5 total=6"), good + good):
+            totals, reason = self.read(bad)
+            self.assertIsNone(totals, bad)
+            self.assertIn("malformed", reason, bad)
+
+
+def psi_sample(phase, when, memory=(0, 0), io=(0, 0)):
+    def one(value):
+        return (None, value) if isinstance(value, str) else ({"some": value[0], "full": value[1]}, None)
+    return (phase, when, {"memory": one(memory), "io": one(io)})
+
+
+class PressureSummaryTests(unittest.TestCase):
+    def three(self):
+        return [psi_sample("load", 0.0, (10, 1), (100, 10)), psi_sample("load", 11.0, (40, 4), (900, 90)),
+                psi_sample("train", 11.0, (40, 4), (900, 90)), psi_sample("train", 111.5, (2040, 504), (950, 91)),
+                psi_sample("save", 111.5, (2040, 504), (950, 91)), psi_sample("save", 112.5, (2041, 505), (999, 99))]
+
+    def test_endpoints_deltas_and_monotonic_elapsed_per_phase(self):
+        out = ladder.pressure_summary(self.three())
+        train = out["phases"]["train"]
+        self.assertEqual(train["elapsed_s"], 100.5)
+        self.assertEqual(train["memory"]["some"], {"start_us": 40, "end_us": 2040, "delta_us": 2000})
+        self.assertEqual(train["memory"]["full"]["delta_us"], 500)
+        self.assertEqual(train["io"]["some"]["delta_us"], 50)
+        self.assertEqual(out["phases"]["load"]["io"]["full"]["delta_us"], 80)
+        self.assertEqual(out["phases"]["save"]["memory"]["some"]["delta_us"], 1)
+        self.assertEqual((out["unit"], out["evidence_only"]), ("microseconds", True))
+        self.assertIn("EVIDENCE ONLY", out["note"])
+        self.assertIn("cgroup", out["scope"])
+        self.assertNotIn("slowdown_percent", json.dumps(out))
+
+    def test_one_bad_sample_makes_only_that_phase_and_resource_unavailable(self):
+        samples = self.three()
+        samples.insert(3, psi_sample("train", 50.0, "read error: OSError", (920, 90)))
+        phases = ladder.pressure_summary(samples)["phases"]
+        self.assertEqual(phases["train"]["memory"], {"status": "unavailable", "reason": "read error: OSError"})
+        self.assertEqual(phases["train"]["io"]["status"], "ok")
+        self.assertEqual(phases["load"]["memory"]["status"], "ok")
+
+    def test_a_missing_endpoint_is_unavailable(self):
+        for index, phase in ((2, "train"), (3, "train")):
+            samples = self.three()
+            del samples[index]
+            entry = ladder.pressure_summary(samples)["phases"][phase]
+            self.assertIsNone(entry["elapsed_s"])
+            self.assertIn("missing endpoint", entry["memory"]["reason"])
+        bad_start = self.three()
+        bad_start[2] = psi_sample("train", 11.0, "file absent", (900, 90))
+        self.assertEqual(ladder.pressure_summary(bad_start)["phases"]["train"]["memory"]["reason"], "file absent")
+
+    def test_a_reset_is_unavailable_in_the_phase_where_it_appears_and_not_clamped(self):
+        samples = self.three()
+        samples[3] = psi_sample("train", 111.5, (5, 1), (950, 91))   # memory went backwards inside train
+        phases = ladder.pressure_summary(samples)["phases"]
+        self.assertEqual(phases["train"]["memory"], {"status": "unavailable", "reason": "counter went backwards"})
+        self.assertEqual(phases["train"]["io"]["status"], "ok")
+        across = self.three()
+        across[2] = psi_sample("train", 11.0, (39, 4), (900, 90))    # lower than the last load sample
+        phases = ladder.pressure_summary(across)["phases"]
+        self.assertEqual(phases["train"]["memory"]["reason"], "counter went backwards")
+        self.assertEqual(phases["load"]["memory"]["status"], "ok")
+
+    def test_phases_never_reached_say_so(self):
+        phases = ladder.pressure_summary(self.three()[:2])["phases"]
+        for name in ("train", "save"):
+            self.assertEqual(phases[name]["io"], {"status": "unavailable", "reason": "phase not sampled"})
+        self.assertEqual(ladder.pressure_summary([])["phases"]["load"]["memory"]["status"], "unavailable")
+
+
+class PressureWatcherTests(unittest.TestCase):
+    def watcher(self, files):
+        import ladder_rung
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.addCleanup(setattr, ladder_rung, "PHASE", "load")
+        self.addCleanup(setattr, ladder_rung, "CGROUP", ladder_rung.CGROUP)
+        ladder_rung.CGROUP = Path(tmp.name)
+        def put(some):
+            for name in files:
+                (Path(tmp.name) / f"{name}.pressure").write_text(PSI.format(some=some, full=some // 2))
+        return ladder_rung.Watcher(10 ** 12, 0.9, lambda peak: None), put
+
+    def test_phase_switches_attribute_stall_time(self):
+        watcher, put = self.watcher(("memory", "io"))
+        put(100)
+        watcher.sample()
+        put(300)
+        watcher.set_phase("train")
+        put(1300)
+        watcher.set_phase("save")
+        put(1350)
+        phases = watcher.finish()["pressure"]["phases"]
+        self.assertEqual([phases[p]["memory"]["some"]["delta_us"] for p in ("load", "train", "save")], [200, 1000, 50])
+        self.assertEqual(phases["train"]["io"]["full"]["delta_us"], 500)
+
+    def test_no_pressure_files_is_unavailable_with_the_reason(self):
+        watcher, _ = self.watcher(())
+        watcher.sample()
+        record = watcher.finish()
+        self.assertEqual(record["pressure"]["phases"]["load"]["memory"], {"status": "unavailable", "reason": "file absent"})
+        self.assertNotIn("delta_us", json.dumps(record["pressure"]))
+        self.assertIn("pressure", watcher.evidence())   # the ceiling-breach record uses evidence()
+
+
+class PressureNeverJudgesTests(unittest.TestCase):
+    """No verdict may consume this evidence."""
+
+    # the sealed run 5 figures, as a synthetic fixture
+    RUN5 = dict(ceiling_metric="anon_shmem", ceiling_metric_peak_bytes=15026892800, memory_peak_bytes=16984993792,
+                kernel_memory_peak_bytes=16984993792, major_fault_delta=28729)
+
+    def variants(self):
+        heavy = ladder.pressure_summary([psi_sample("train", 0, (0, 0)), psi_sample("train", 100, (10 ** 9, 10 ** 9))])
+        return (None, ladder.pressure_summary([]), heavy, "garbage", {"phases": {"train": {"memory": float("nan")}}})
+
+    def test_verdicts_are_identical_with_and_without_pressure(self):
+        for rule, limit in (("v1", None), ("v2", 50.0)):
+            for over in ({}, self.RUN5):
+                def verdict(**extra):
+                    return ladder.judge_rung(good_record(**over, **extra), budget_bytes=19132477440,
+                                             container_memory_bytes=16984993792, paging_rule=rule, paging_limit=limit)
+                bare = verdict()
+                for value in self.variants():
+                    self.assertEqual(verdict(pressure=value), bare, (rule, value))
+
+    def test_run_5_figures_still_fail_for_the_same_single_reason(self):
+        verdict = ladder.judge_rung(good_record(**self.RUN5, pressure=self.variants()[2]), budget_bytes=19132477440,
+                                    container_memory_bytes=16984993792)
+        self.assertEqual(verdict, {"status": "FAILURE", "reasons": ["sustained paging: 28729 major faults"]})
+
+    def test_no_deciding_function_mentions_pressure(self):
+        import inspect
+        for function in (ladder.judge_rung, ladder.cap_gate, ladder.host_start_gate, ladder.host_window, ladder.effective_budget):
+            self.assertNotRegex(inspect.getsource(function), r"""["']pressure["']|pressure_summary|read_pressure|PRESSURE_""", function.__name__)
+
+    def test_the_summary_carries_it_beside_an_unchanged_verdict(self):
+        heavy = self.variants()[2]
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = ladder.run_ladder(rungs=[128], budget_bytes=BUDGET, out_dir=Path(tmp), model="pinned",
+                                        host_available_start=8 * GIB, child_command=stub(good_record(pressure=heavy)))
+        self.assertEqual(summary["rungs"][0]["status"], "PASS")
+        self.assertEqual(summary["rungs"][0]["pressure"]["phases"]["train"]["memory"]["full"]["delta_us"], 10 ** 9)
+
+
 @unittest.skipUnless(HAVE_TORCH, "torch, peft and transformers are not installed")
 class ChildTests(unittest.TestCase):
     def run_child(self, rung, extra=()):

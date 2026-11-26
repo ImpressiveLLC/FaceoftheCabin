@@ -197,6 +197,75 @@ def paging_from_trace(path):
             "note": "counters are cumulative; train includes the intervals across both of its boundaries"}
 
 
+# ---------------------------------------------------------------- kernel stall time (PSI): evidence only, nothing judges it
+PRESSURE_RESOURCES = ("memory", "io")
+PRESSURE_KINDS = ("some", "full")
+PRESSURE_NOTE = ("EVIDENCE ONLY: no verdict, gate or stop rule reads this. total= stall time from the cgroup's pressure files. "
+                 "'some' = at least one task stalled, 'full' = all non-idle tasks stalled at once. Stall time is not the "
+                 "slowdown against an unconstrained run, and memory/io and some/full are never added together.")
+PRESSURE_SCOPE = "the rung container's cgroup, which holds the ladder parent and the rung process"
+
+
+def read_pressure(path):
+    """({"some": total_us, "full": total_us}, None) from a cgroup v2 pressure file, or (None, reason). Never zero for
+    something that could not be read."""
+    try:
+        text = Path(path).read_text(encoding="ascii")
+    except FileNotFoundError:
+        return None, "file absent"
+    except (OSError, UnicodeError) as error:
+        return None, f"read error: {type(error).__name__}"
+    totals = {}
+    for line in text.splitlines():
+        words = line.split()
+        if not words or words[0] not in PRESSURE_KINDS:
+            continue
+        found = [w[len("total="):] for w in words[1:] if w.startswith("total=")]
+        if words[0] in totals or len(found) != 1 or not (found[0].isascii() and found[0].isdigit()):
+            return None, f"malformed {words[0]} line"
+        totals[words[0]] = int(found[0])
+    missing = [kind for kind in PRESSURE_KINDS if kind not in totals]
+    if missing:
+        return None, f"malformed: no {' or '.join(missing)} line"
+    return totals, None
+
+
+def pressure_summary(samples):
+    """Per phase and resource, the cumulative totals at the phase's first and last sample and their difference, with the
+    monotonic time between them. `samples` is [(phase, monotonic_seconds, {resource: (totals, reason)})] in order. A phase
+    with an unreadable sample, a counter that went backwards, or only one sample is "unavailable" with the reason."""
+    phases, previous, backwards = {}, {}, set()
+    for phase, when, readings in samples:
+        phases.setdefault(phase, []).append((when, readings))
+        for resource in PRESSURE_RESOURCES:
+            totals = readings[resource][0]
+            if totals is None:
+                continue
+            if any(totals[k] < previous.get(resource, {}).get(k, 0) for k in PRESSURE_KINDS):
+                backwards.add((phase, resource))
+            previous[resource] = totals
+    out = {}
+    for phase in dict.fromkeys(("load", "train", "save", *phases)):
+        rows = phases.get(phase, [])
+        entry = {"samples": len(rows), "elapsed_s": rows[-1][0] - rows[0][0] if len(rows) > 1 else None}
+        for resource in PRESSURE_RESOURCES:
+            reason = next((r[resource][1] for _, r in rows if r[resource][0] is None), None)
+            if not rows:
+                reason = "phase not sampled"
+            elif reason is None and (phase, resource) in backwards:
+                reason = "counter went backwards"
+            elif reason is None and len(rows) < 2:
+                reason = "missing endpoint: only one sample"
+            if reason:
+                entry[resource] = {"status": "unavailable", "reason": reason}
+                continue
+            start, end = rows[0][1][resource][0], rows[-1][1][resource][0]
+            entry[resource] = {"status": "ok", **{k: {"start_us": start[k], "end_us": end[k], "delta_us": end[k] - start[k]}
+                                                  for k in PRESSURE_KINDS}}
+        out[phase] = entry
+    return {"evidence_only": True, "note": PRESSURE_NOTE, "scope": PRESSURE_SCOPE, "unit": "microseconds", "phases": out}
+
+
 FILLER = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel"]
 
 
@@ -461,7 +530,8 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
                      actual_token_lengths=record.get("actual_token_lengths"), memory_peak_bytes=record.get("memory_peak_bytes"),
                      wall_seconds=round(record.get("wall_seconds", wall), 1),
                      memory_trace=summarize_trace(rung_dir / "memory-trace.csv"),
-                     paging=record.get("paging") or paging_from_trace(rung_dir / "memory-trace.csv"))
+                     paging=record.get("paging") or paging_from_trace(rung_dir / "memory-trace.csv"),
+                     pressure=record.get("pressure"))   # evidence only; the verdict above is already decided
         summary["rungs"].append(entry)
         if verdict["status"] != "PASS":
             summary["stopped_at"] = rung
