@@ -672,7 +672,8 @@ class RunFlowWithStubsTests(unittest.TestCase):
         proc = self.launch("-Run", "-EvidenceMode", STUB_COMPLETE="false", STUB_EXIT="1")
         text = self.assertStopped(proc, "ladder not complete")
         self.assertIn(notice, text)
-        self.assertIn(notice, proc.stdout)
+        banner = proc.stdout[proc.stdout.index("LADDER FINISHED: STOPPED"):]   # the log line comes earlier
+        self.assertIn(notice, banner)
         self.assertIn(notice, (self.run_dir() / "launcher.log").read_text(encoding="utf-8-sig"))
         self.assertIn(notice, (self.tmp / "LADDER-FINISHED.txt").read_text(encoding="utf-8-sig"))
         [line] = self.launched()
