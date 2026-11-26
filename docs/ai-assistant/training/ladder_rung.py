@@ -127,6 +127,7 @@ class Watcher(threading.Thread):
         self.peak = 0
         self.swap_peak = None          # None until memory.swap.current has been read: unread is not zero
         self.swap_missing = 0
+        self.pressure_samples = []     # (phase, monotonic time, memory and io stall totals): evidence only
         self.kernel_peak = None        # the kernel's memory.peak: catches excursions between samples (container-wide)
         self.kernel_peak_start = _read_int(CGROUP / "memory.peak")
         self.stop = threading.Event()
@@ -171,6 +172,9 @@ class Watcher(threading.Thread):
         for value in (swap, _read_int(CGROUP / "memory.swap.peak")):   # swap.peak is absent on older kernels
             if value is not None:
                 self.swap_peak = max(self.swap_peak or 0, value)
+        import ladder
+        self.pressure_samples.append((PHASE, time.monotonic(), {name: ladder.read_pressure(CGROUP / f"{name}.pressure")
+                                                                for name in ladder.PRESSURE_RESOURCES}))
         metric_value = self.peak_now(cur, rss, stat)
         kernel = _read_int(CGROUP / "memory.peak")
         if kernel is not None:
@@ -213,8 +217,11 @@ class Watcher(threading.Thread):
             "note": "anon is non-reclaimable; file is page cache and reclaimable. Not used by any stop rule."}}
 
     def evidence(self):
-        """Kernel and swap evidence, for both a finished rung and a ceiling breach."""
-        return {"kernel_memory_peak_bytes": self.kernel_peak, "kernel_memory_peak_at_start_bytes": self.kernel_peak_start,
+        """Kernel, swap and stall evidence, for both a finished rung and a ceiling breach."""
+        import ladder
+        with self.lock:
+            pressure = ladder.pressure_summary(list(self.pressure_samples))
+        return {"pressure": pressure, "kernel_memory_peak_bytes": self.kernel_peak, "kernel_memory_peak_at_start_bytes": self.kernel_peak_start,
                 "swap_peak_bytes": self.swap_peak, "swap_missing_samples": self.swap_missing}
 
     def run(self):
