@@ -15,6 +15,9 @@
   -Cleanup     Return the machine to normal: kills any ladder container, runs wsl --shutdown, quits Docker Desktop. Touches
                nothing else and deletes nothing (the records stay). Safe to run any time, also after a failed run.
   -Verify      With -RunId: read-only check of that run's manifest.sha256 against the files in its folder (exit 0 or 5).
+  -EvidenceMode  Off unless given; paging rule v1 only. A rung whose only failure is the v1 paging rule stays FAILURE
+               but the ladder continues. Every other failure stops it as usual. The result is never DONE for such a run and
+               is not a qualification.
   -DryRun      With -Run or -Preflight: prints the plan as JSON (gate, budget, the exact docker argv) and executes nothing.
                -FakeAvailableBytes supplies the Windows-available figure for tests; it is refused without -DryRun.
 
@@ -42,6 +45,7 @@ param(
     [switch]$Cleanup,
     [switch]$Verify,
     [switch]$DryRun,
+    [switch]$EvidenceMode,
     [string]$OutRoot = 'C:\ladder-run',
     [string]$Distro = 'Ubuntu-24.04',
     [ValidateSet('original', 'anon_shmem')][string]$CeilingMetric = 'original',
@@ -79,6 +83,8 @@ $ModelCacheDir = 'models--unsloth--Llama-3.2-3B-Instruct'
 $modes = @($Preflight, $Run, $Stop, $Cleanup, $Verify | Where-Object { $_ }).Count
 if ($modes -ne 1) { Write-Error 'Choose exactly one of -Preflight, -Run, -Stop, -Cleanup, -Verify.'; exit 2 }
 if ($PagingRule -eq 'v2' -and ([double]::IsNaN($PagingMaxTrainRefaultsPerSecond) -or [double]::IsInfinity($PagingMaxTrainRefaultsPerSecond) -or $PagingMaxTrainRefaultsPerSecond -lt 0)) { [Console]::Error.WriteLine('-PagingRule v2 needs -PagingMaxTrainRefaultsPerSecond (no limit has been ruled, so there is no default).'); exit 2 }
+if ($EvidenceMode -and $PagingRule -ne 'v1') { [Console]::Error.WriteLine('-EvidenceMode continues past a v1 paging failure only; use it with -PagingRule v1.'); exit 2 }
+$EvidenceNotice = 'EVIDENCE MODE: a paging-only (v1) failure does not stop the ladder; not a qualification'
 if ($FakeAvailableBytes -gt 0 -and -not $DryRun) { Write-Error '-FakeAvailableBytes is only allowed with -DryRun.'; exit 2 }
 if (-not $RepoDir) { $RepoDir = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path }
 $TrainingDir = Join-Path (Join-Path (Join-Path $RepoDir 'docs') 'ai-assistant') 'training'
@@ -143,7 +149,7 @@ function Get-DockerArgv([string]$Name, [string]$OutDir, [int64]$Budget, [int64]$
         '--container-cap', $ContainerCap, '--container-memory-bytes', "$limit",
         '--paging-rule', $PagingRule,
         '--host-available-start', "$AvailableAtStart", '--host-csv', '/out/host.csv'
-    ) + $(if ($PagingRule -eq 'v2') { @('--paging-max-train-refaults-per-s', "$PagingMaxTrainRefaultsPerSecond") } else { @() })
+    ) + $(if ($EvidenceMode) { @('--evidence-mode') } else { @() }) + $(if ($PagingRule -eq 'v2') { @('--paging-max-train-refaults-per-s', "$PagingMaxTrainRefaultsPerSecond") } else { @() })
 }
 
 function New-RunId { if ($RunId) { return $RunId } else { return (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ') } }
@@ -335,6 +341,7 @@ if ($DryRun) {
         steps = @('preflight gate', 'keep awake', 'quit Docker Desktop if running', 'wsl --shutdown', 'wait for the Docker daemon inside the WSL distro',
             'second gate read', 'check the image and the model cache are present offline', 'start sampler and watchdog', 'docker run', 'summary, marker, manifest')
     }
+    if ($EvidenceMode) { $plan.evidence_mode = $EvidenceNotice }
     Out-Json $plan $null
     exit $(if ($reasons.Count -eq 0) { 0 } else { 3 })
 }
@@ -409,6 +416,7 @@ function Complete-Bundle {
 }
 
 Log "ladder launcher start, run id $id, out $out"
+if ($EvidenceMode) { Log $EvidenceNotice }
 $job = $null
 $runJob = $null
 $name = "ladder-$id"
@@ -576,18 +584,20 @@ if (Test-Path $summaryPath) {
 } else {
     Fail "no ladder summary was written (container exit $exit)"
 }
-if ($failures.Count -eq 0) { Mark 'DONE' 'all rungs PASS' } else { Mark 'STOPPED' ($failures -join "`n") }
+if ($failures.Count -eq 0) { Mark 'DONE' $(if ($EvidenceMode) { "all rungs PASS`n$EvidenceNotice" } else { 'all rungs PASS' }) }
+else { Mark 'STOPPED' $(if ($EvidenceMode) { ($failures -join "`n") + "`n$EvidenceNotice" } else { $failures -join "`n" }) }
 Log 'done; reopen Claude Code and read the records'
 $problems = @(Complete-Bundle)   # the last writes into $out are above this line
 $sealed = if ($problems.Count -eq 0) { 'manifest verified' } else { 'MANIFEST DOES NOT VERIFY: ' + ($problems -join '; ') }
 $result = (Get-ChildItem $out -File | Where-Object { $_.Name -in 'DONE', 'STOPPED', 'NOT_RUN' } | Select-Object -First 1).Name
-$note = "LADDER FINISHED: $result`r`nRecords: $out ($sealed)`r`nNext: run  powershell -File scripts/ladder/run_ladder.ps1 -Cleanup  to return the machine to normal, then reopen Claude Code and tell it the ladder finished."
+$note = "LADDER FINISHED: $result`r`n$(if ($EvidenceMode) { "$EvidenceNotice`r`n" })Records: $out ($sealed)`r`nNext: run  powershell -File scripts/ladder/run_ladder.ps1 -Cleanup  to return the machine to normal, then reopen Claude Code and tell it the ladder finished."
 $desktop = if ($DesktopDir) { $DesktopDir } else { Get-DesktopPath }
 if ($desktop -and (Test-Path $desktop)) { Set-Content (Join-Path $desktop 'LADDER-FINISHED.txt') $note }
 Write-Host ''
 Write-Host '==================================================' -ForegroundColor Green
 Write-Host "  LADDER FINISHED: $result" -ForegroundColor Green
 Write-Host "  Records: $out" -ForegroundColor Green
+if ($EvidenceMode) { Write-Host "  $EvidenceNotice" -ForegroundColor Yellow }
 Write-Host "  $sealed" -ForegroundColor $(if ($problems.Count -eq 0) { 'Green' } else { 'Red' })
 Write-Host '  Next: run -Cleanup, then reopen Claude Code.' -ForegroundColor Green
 Write-Host '==================================================' -ForegroundColor Green

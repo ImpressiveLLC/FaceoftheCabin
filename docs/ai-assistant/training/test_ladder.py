@@ -1130,6 +1130,137 @@ class PressureNeverJudgesTests(unittest.TestCase):
         self.assertEqual(summary["rungs"][0]["pressure"]["phases"]["train"]["memory"]["full"]["delta_us"], 10 ** 9)
 
 
+class EvidenceModeTests(unittest.TestCase):
+    """Opt-in: continue past a v1 paging-only failure. Off by default; every other failure still stops."""
+
+    RUN5 = PressureNeverJudgesTests.RUN5
+    PAGING = {"major_fault_delta": 28729}
+
+    def ladder_run(self, records, rungs=(128, 256, 512), mode=True, **kw):
+        """records[i] is what rung i writes; a (record, exit code) pair sets the child's exit code."""
+        made = iter(records)
+
+        def command(rung, rung_dir):
+            item = next(made)
+            record, code = item if isinstance(item, tuple) else (item, 0)
+            return stub(record, code=code)(rung, rung_dir)
+        kw.setdefault("host_available_start", 8 * GIB)
+        if mode is not None:
+            kw["evidence_mode"] = mode
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("builtins.print") as printed:
+            summary = ladder.run_ladder(rungs=list(rungs), budget_bytes=BUDGET, out_dir=Path(tmp), model="pinned",
+                                        child_command=command, **kw)
+            text = (Path(tmp) / "summary.json").read_text()
+        self.printed = " ".join(str(c.args[0]) for c in printed.call_args_list if c.args)
+        return summary, text
+
+    def statuses(self, summary):
+        return [r["status"] for r in summary["rungs"]]
+
+    def test_off_is_the_default_and_adds_nothing(self):
+        records = [good_record(**self.PAGING)]
+        default, default_text = self.ladder_run(list(records), mode=None)
+        off, off_text = self.ladder_run(list(records), mode=False)
+        self.assertEqual(default_text, off_text)
+        self.assertEqual(self.statuses(off), ["FAILURE", "NOT_RUN", "NOT_RUN"])
+        self.assertEqual((off["stopped_at"], off["complete"]), (128, False))
+        for word in ("evidence_mode", "continued_in_evidence_mode", "after_continued_failure"):
+            self.assertNotIn(word, off_text)
+        self.assertEqual(self.printed, "")
+
+    def test_off_run_5_figures_give_the_same_entry_as_before(self):
+        record = good_record(**PressureNeverJudgesTests.RUN5, wall_seconds=113.2)
+        with mock.patch.object(ladder, "effective_budget", side_effect=ladder.effective_budget):
+            summary, _ = self.ladder_run([record], rungs=(128, 256), mode=False,
+                                         container_memory_bytes=16984993792)
+        self.assertEqual(sorted(summary), sorted(["kind", "model", "synthetic_only", "pinned_model", "qualification_decision",
+                                                  "budget_bytes", "effective_budget_bytes", "ceiling_bytes", "ceiling_policy",
+                                                  "cgroup_memory_max_bytes", "steps", "configuration", "rungs", "stopped_at",
+                                                  "host_window", "host_start_gate", "host_available_start", "complete"]))
+        self.assertEqual(sorted(summary["rungs"][1]), ["reasons", "rung", "status"])
+
+    def test_paging_only_failure_continues_and_stays_a_failure(self):
+        summary, _ = self.ladder_run([good_record(**self.PAGING), good_record(), good_record(**self.PAGING)])
+        self.assertEqual(self.statuses(summary), ["FAILURE", "PASS", "FAILURE"])
+        self.assertEqual((summary["complete"], summary["stopped_at"]), (False, None))
+        self.assertEqual(summary["evidence_mode"], {"enabled": True, "continued_rungs": [128, 512],
+                                                    "notice": "evidence mode, paging-only failure continued; not a qualification"})
+        first, second, third = summary["rungs"]
+        self.assertEqual(first["reasons"], ["sustained paging: 28729 major faults"])
+        self.assertTrue(first["continued_in_evidence_mode"])
+        self.assertNotIn("after_continued_failure", first)
+        self.assertTrue(second["after_continued_failure"])
+        self.assertTrue(third["after_continued_failure"])
+        self.assertIn("evidence mode, paging-only failure continued; not a qualification", self.printed)
+
+    def test_memory_breach_still_stops_after_a_continued_rung(self):
+        over = good_record(memory_peak_bytes=BUDGET, **self.PAGING)
+        summary, _ = self.ladder_run([good_record(**self.PAGING), over])
+        self.assertEqual(self.statuses(summary), ["FAILURE", "FAILURE", "NOT_RUN"])
+        self.assertEqual(summary["stopped_at"], 256)
+        self.assertEqual(summary["evidence_mode"]["continued_rungs"], [128])
+
+    def test_every_other_failure_still_stops_even_with_paging_over(self):
+        p = self.PAGING
+        cases = {
+            "oom": good_record(oom_events=1, **p),
+            "nonfinite loss": good_record(losses=[float("nan")], **p),
+            "nonfinite gradient": good_record(grad_norms=[float("inf")], **p),
+            "adapter save": good_record(adapter_saved=False, **p),
+            "adapter reload": good_record(adapter_reload_equal=False, **p),
+            "ceiling": good_record(memory_peak_bytes=BUDGET, **p),
+            "swap": good_record(swap_peak_bytes=4096, **p),
+            "swap evidence": good_record(swap_missing_samples=1, **p),
+            "counter reset": good_record(paging={"phases": {"load": {"reset": ["majflt"]}}}, **p),
+            "not completed": good_record(completed=False, **p),
+            "nonzero exit": (good_record(**p), 2),
+            "killed": (good_record(**p), 137),
+            "timeout": good_record(wall_seconds=ladder.RUNG_TIMEOUT_SECONDS + 1, **p),
+            "faults missing": good_record(major_fault_delta=None),
+            "faults invalid": good_record(major_fault_delta=-1),
+        }
+        for name, item in cases.items():
+            with self.subTest(case=name):
+                summary, _ = self.ladder_run([item], rungs=(128, 256))
+                self.assertEqual(self.statuses(summary), ["FAILURE", "NOT_RUN"])
+                self.assertEqual(summary["stopped_at"], 128)
+                self.assertEqual(summary["evidence_mode"]["continued_rungs"], [])
+                self.assertEqual(summary["evidence_mode"]["notice"], "evidence mode on; not a qualification")
+
+    def test_host_floor_and_missing_host_evidence_stop(self):
+        for kw in ({"host_available_end_of_rung": lambda rung: 1 * GIB}, {"host_log": lambda: []}):
+            summary, _ = self.ladder_run([good_record(**self.PAGING)], rungs=(128, 256), **kw)
+            self.assertEqual(self.statuses(summary), ["FAILURE", "NOT_RUN"], kw)
+
+    def test_missing_cgroup_evidence_stops(self):
+        summary, _ = self.ladder_run([good_record(**self.PAGING)], rungs=(128, 256), require_cgroup_evidence=True,
+                                     container_memory_bytes=18 * GIB, cgroup_memory_max=18 * GIB,
+                                     host_available_start=26 * GIB)
+        self.assertEqual(self.statuses(summary)[1], "NOT_RUN")
+
+    def test_all_pass_is_complete_but_still_says_not_a_qualification(self):
+        summary, _ = self.ladder_run([good_record()] * 2, rungs=(128, 256))
+        self.assertTrue(summary["complete"])
+        self.assertIn("not a qualification", summary["evidence_mode"]["notice"])
+
+    def test_it_cannot_be_combined_with_v2(self):
+        with self.assertRaises(ValueError):
+            self.ladder_run([good_record()], paging_rule="v2", paging_limit=1.0)
+        proc = subprocess.run([sys.executable, str(HERE / "ladder.py"), "run", "--budget-bytes", "1", "--out", "x",
+                               "--evidence-mode", "--paging-rule", "v2", "--paging-max-train-refaults-per-s", "1"],
+                              cwd=str(HERE), capture_output=True, text=True, timeout=60)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("v1 paging failure only", proc.stderr)
+
+    def test_cli_passes_the_flag_and_defaults_off(self):
+        result = {"model": "synthetic", "pinned_model": False, "qualification_decision": "none:", "configuration": {},
+                  "stopped_at": None, "complete": True}
+        for extra, expected in (((), False), (("--evidence-mode",), True)):
+            with mock.patch.object(ladder, "run_ladder", return_value=dict(result)) as runner, mock.patch("builtins.print"):
+                ladder.main(["run", "--budget-bytes", "1000", "--out", "x", "--model", "synthetic", *extra])
+            self.assertIs(runner.call_args.kwargs["evidence_mode"], expected)
+
+
 @unittest.skipUnless(HAVE_TORCH, "torch, peft and transformers are not installed")
 class ChildTests(unittest.TestCase):
     def run_child(self, rung, extra=()):
