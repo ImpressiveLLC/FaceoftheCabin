@@ -130,7 +130,9 @@ class RunLadderTests(unittest.TestCase):
         summary = self.run_ladder(stub(good_record()))
         self.assertTrue(summary["complete"])
         self.assertIsNone(summary["stopped_at"])
-        self.assertTrue(summary["qualification"])
+        self.assertTrue(summary["pinned_model"])
+        self.assertNotIn("qualification", summary)   # a pinned run must not read as a qualification
+        self.assertTrue(summary["qualification_decision"].startswith("none:"))
 
     def test_stops_at_first_failure_and_marks_rest_not_run(self):
         def command(rung, rung_dir):
@@ -174,11 +176,13 @@ class RunLadderTests(unittest.TestCase):
         self.assertEqual(summary["rungs"][0]["status"], "FAILURE")
         self.assertEqual(summary["rungs"][1]["status"], "NOT_RUN")
 
-    def test_synthetic_model_is_never_qualification(self):
+    def test_synthetic_model_is_marked_and_never_a_decision(self):
         with tempfile.TemporaryDirectory() as tmp:
             summary = ladder.run_ladder(rungs=[128], budget_bytes=BUDGET, out_dir=Path(tmp), model="synthetic",
                                         host_available_start=8 * GIB, child_command=stub(good_record()))
-        self.assertFalse(summary["qualification"])
+        self.assertFalse(summary["pinned_model"])
+        self.assertTrue(summary["qualification_decision"].startswith("none:"))
+        self.assertIn("never host qualification", summary["note"])
 
 
 class HostWindowTests(unittest.TestCase):
@@ -266,9 +270,18 @@ class HostWindowTests(unittest.TestCase):
         self.assertIn("--host-csv", proc.stdout)
         self.assertNotIn("--host-epoch-at-start", proc.stdout)
 
+    def test_cli_prints_the_decision_wording_and_no_qualification_flag(self):
+        result = {"model": "pinned", "pinned_model": True, "qualification_decision": "none: x", "configuration": {},
+                  "stopped_at": None, "complete": True}
+        with mock.patch.object(ladder, "run_ladder", return_value=result), mock.patch("builtins.print") as printed:
+            ladder.main(["run", "--budget-bytes", "1000", "--out", "x", "--model", "synthetic"])
+        shown = json.loads(printed.call_args.args[0])
+        self.assertEqual((shown["pinned_model"], shown["qualification_decision"]), (True, "none: x"))
+        self.assertNotIn("qualification", shown)
+
     def test_cli_passes_the_sampler_file_through(self):
         path = self.csv("epoch,bytes\n100,9000\n")
-        result = {"model": "synthetic", "qualification": False, "configuration": {}, "stopped_at": None, "complete": True}
+        result = {"model": "synthetic", "pinned_model": False, "qualification_decision": "none:", "configuration": {}, "stopped_at": None, "complete": True}
         with mock.patch.object(ladder, "run_ladder", return_value=result) as runner, mock.patch("builtins.print"):
             ladder.main(["run", "--budget-bytes", "1000", "--out", "x", "--model", "synthetic", "--host-csv", str(path)])
         self.assertEqual(runner.call_args.kwargs["host_log"](), [9000])
@@ -590,7 +603,7 @@ class EffectiveBudgetTests(unittest.TestCase):
 
     def test_cli_requires_cgroup_evidence_for_the_pinned_model_only(self):
         for model, required in (("pinned", True), ("synthetic", False)):
-            result = {"model": model, "qualification": False, "configuration": {}, "stopped_at": None, "complete": True}
+            result = {"model": model, "pinned_model": False, "qualification_decision": "none:", "configuration": {}, "stopped_at": None, "complete": True}
             with mock.patch.object(ladder, "run_ladder", return_value=result) as runner,                     mock.patch.object(ladder, "read_cgroup_max", return_value=123), mock.patch("builtins.print"):
                 ladder.main(["run", "--budget-bytes", "1000", "--out", "x", "--model", model])
             self.assertEqual(runner.call_args.kwargs["require_cgroup_evidence"], required, model)

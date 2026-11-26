@@ -14,6 +14,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 SCRIPT = HERE / "run_ladder.ps1"
@@ -23,9 +24,26 @@ PWSH = shutil.which(os.environ.get("LADDER_TEST_PWSH") or "pwsh")
 GIB = 1024 ** 3
 
 
+def base_env():
+    """The environment the PowerShell under test starts with. Windows PowerShell 5.1 started from a process that carries a
+    PowerShell 7 module path cannot load its own modules (Get-FileHash was not found), so that variable is dropped for it
+    and 5.1 builds its default. Other hosts get the environment unchanged."""
+    env = dict(os.environ)
+    if PWSH and Path(PWSH).stem.lower() == "powershell":
+        for key in [k for k in env if k.lower() == "psmodulepath"]:
+            del env[key]
+    return env
+
+
+def said(proc):
+    """Everything the script printed, with all whitespace removed: Windows PowerShell wraps error text to the window width,
+    mid-word, at a place that depends on the checkout path."""
+    return "".join((proc.stdout + proc.stderr).split())
+
+
 def run(*args, expect=None):
     proc = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-File", str(SCRIPT), *args],
-                          capture_output=True, text=True, timeout=120, env=dict(os.environ, LADDER_TEST_NO_HOST="1"))
+                          capture_output=True, text=True, timeout=120, env=dict(base_env(), LADDER_TEST_NO_HOST="1"))
     if expect is not None:
         assert proc.returncode == expect, f"exit {proc.returncode}\n{proc.stdout}\n{proc.stderr}"
     return proc
@@ -37,6 +55,26 @@ def plan(avail_gib, mode="-Run", *extra):
         return proc, json.loads(proc.stdout)
     except ValueError:
         raise AssertionError("no JSON plan; exit %s | STDOUT: %s | STDERR: %s" % (proc.returncode, proc.stdout, proc.stderr))
+
+
+class TestHarnessTests(unittest.TestCase):
+    def test_windows_powershell_does_not_inherit_a_module_path_and_pwsh_does(self):
+        with mock.patch.dict(os.environ, {"PSModulePath": "C:/pwsh7/Modules"}):
+            for host, kept in (("C:/x/powershell.exe", False), ("/usr/bin/pwsh", True), ("C:/x/pwsh.exe", True)):
+                with mock.patch.object(sys.modules[__name__], "PWSH", host):
+                    keys = {k.lower() for k in base_env()}
+                    self.assertEqual("psmodulepath" in keys, kept, host)
+
+    def test_every_powershell_launch_uses_the_prepared_environment(self):
+        source = Path(__file__).read_text(encoding="utf-8")
+        needle = "os." + "environ"
+        users = [line.strip() for line in source.splitlines() if needle in line]
+        allowed = [u for u in users if u == "env = dict(" + needle + ")" or u.startswith(("PWSH = ", "with mock.patch.dict("))]
+        self.assertEqual(users, allowed)
+
+    def test_said_ignores_wrapping(self):
+        proc = subprocess.CompletedProcess([], 1, "no limit has be\nen ru", "led here")
+        self.assertIn("nolimithasbeenruled", said(proc))
 
 
 @unittest.skipUnless(PWSH, "pwsh is not installed")
@@ -168,7 +206,7 @@ class DryRunTests(unittest.TestCase):
         self.assertEqual(v2["docker_argv"][v2["docker_argv"].index("--paging-max-train-refaults-per-s") + 1], "25")
         refused = run("-Run", "-DryRun", "-FakeAvailableBytes", str(22 * GIB), "-PagingRule", "v2")
         self.assertNotEqual(refused.returncode, 0)
-        self.assertIn("no limit has been ruled", refused.stdout + refused.stderr)
+        self.assertIn("nolimithasbeenruled", said(refused))
         for bad in ("NaN", "Infinity", "-5"):
             with self.subTest(limit=bad):
                 proc = run("-Run", "-DryRun", "-FakeAvailableBytes", str(22 * GIB), "-PagingRule", "v2",
@@ -205,7 +243,7 @@ class DryRunTests(unittest.TestCase):
     def test_fake_bytes_are_refused_outside_dry_run(self):
         proc = run("-Preflight", "-FakeAvailableBytes", str(22 * GIB))
         self.assertNotEqual(proc.returncode, 0)
-        self.assertIn("only allowed with -DryRun", proc.stdout + proc.stderr)
+        self.assertIn("onlyallowedwith-DryRun", said(proc))
 
     def test_cleanup_mode_is_a_distinct_mode(self):
         proc = run("-Cleanup", "-DryRun", "-FakeAvailableBytes", str(22 * GIB), "-RunId", "t1")
@@ -264,7 +302,7 @@ class HostIsolationTests(unittest.TestCase):
         script = shadow + f" . '{HOST_OPS}'; " + " ".join(
             f"try {{ {c} | Out-Null; 'RAN {c.split()[0]}' }} catch {{ if ($_ -match 'refused') {{ 'ok' }} else {{ 'OTHER ' + $_ }} }};" for c in calls)
         proc = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True, text=True,
-                              timeout=120, env=dict(os.environ, LADDER_TEST_NO_HOST="1"))
+                              timeout=120, env=dict(base_env(), LADDER_TEST_NO_HOST="1"))
         self.assertEqual(proc.stdout.split(), ["ok"] * len(calls), proc.stdout + proc.stderr)
 
 
@@ -285,7 +323,7 @@ class HostIsolationTests(unittest.TestCase):
             argv = " ".join(f"'{a}'" if not a.startswith("-") else a for a in wanted[4:])
             script = (f"$env:PATH = '{tmp}' + [IO.Path]::PathSeparator + $env:PATH; . '{HOST_OPS}'; $Distro = 'NoSuchDistro'; "
                       f"{line}; Invoke-Docker {argv}")
-            env = {k: v for k, v in os.environ.items() if k != "LADDER_TEST_NO_HOST"}
+            env = {k: v for k, v in base_env().items() if k != "LADDER_TEST_NO_HOST"}
             proc = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True, text=True,
                                   timeout=120, env=env)
         self.assertEqual(proc.stdout.split(), wanted, proc.stdout + proc.stderr)
@@ -311,7 +349,7 @@ class HostIsolationTests(unittest.TestCase):
                 "$j = Start-Job -ArgumentList $env:HOST_OPS_PATH, 'NoSuchDistro', $argv, $log -ScriptBlock $code; "
                 "Wait-Job $j | Out-Null; 'state ' + $j.State; 'exit ' + (@(Receive-Job $j) | Where-Object { $_ -is [int] } | Select-Object -Last 1); "
                 "Get-Content $log")
-            env = {k: v for k, v in os.environ.items() if k != "LADDER_TEST_NO_HOST"}
+            env = {k: v for k, v in base_env().items() if k != "LADDER_TEST_NO_HOST"}
             env.update(FAKE_DIR=str(tmp), LADDER_SCRIPT=str(SCRIPT), HOST_OPS_PATH=str(HOST_OPS))
             proc = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True, text=True,
                                   timeout=120, env=env)
@@ -423,7 +461,7 @@ class RunFlowWithStubsTests(unittest.TestCase):
         self.out = self.tmp / "out"
 
     def launch(self, *args, **stub):
-        env = dict(os.environ, LADDER_TEST_NO_HOST="1", STUB_LOG=str(self.log), STUB_DESKTOP=str(self.tmp), STUB_COMPLETE="true")
+        env = dict(base_env(), LADDER_TEST_NO_HOST="1", STUB_LOG=str(self.log), STUB_DESKTOP=str(self.tmp), STUB_COMPLETE="true")
         env.update(stub)
         return subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-File", str(self.script), *args, "-OutRoot", str(self.out),
                                "-RepoDir", str(HERE.parent.parent)], capture_output=True, text=True, timeout=180, env=env)
@@ -640,7 +678,7 @@ class RunFlowWithStubsTests(unittest.TestCase):
             "-and $n.Name -in 'Read-Samples', 'Get-CoverageProblems' }, $true)) { Invoke-Expression $f.Extent.Text }; "
             f"Get-CoverageProblems $env:LADDER_CSV {start} {end} 1000 10")
         proc = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True, text=True, timeout=120,
-                              env=dict(os.environ, LADDER_SCRIPT=str(SCRIPT), LADDER_CSV=str(csv), LADDER_TEST_NO_HOST="1"))
+                              env=dict(base_env(), LADDER_SCRIPT=str(SCRIPT), LADDER_CSV=str(csv), LADDER_TEST_NO_HOST="1"))
         self.assertEqual(proc.returncode, 0, proc.stderr)
         return proc.stdout
 

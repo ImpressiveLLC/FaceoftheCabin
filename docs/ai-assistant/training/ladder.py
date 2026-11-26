@@ -10,7 +10,8 @@ writes every later rung as NOT_RUN; it never retries and never continues to a lo
       Prints the rung list and the fixed stop thresholds. Runs nothing.
   python ladder.py run    --budget-bytes N --out DIR [--model pinned|synthetic] [--steps 3] [--rung-timeout 1200]
       Runs the ladder. `pinned` loads the pinned 3B base model (fp32, CPU); `synthetic` uses a tiny random model and is
-      only for proving the mechanics. The summary says which one ran; a synthetic summary is never qualification.
+      only for proving the mechanics. The summary says which one ran (`pinned_model`). No summary is a qualification
+      decision: `complete` says only that every rung passed these rules.
 
 Stop rules (any one stops the ladder at that rung): OOM (child killed by the kernel or memory.events oom/oom_kill > 0),
 nonfinite loss or gradient norm, failed adapter save or reload, memory above 90 percent of the effective budget (the
@@ -38,6 +39,7 @@ STAGE2_PEAK_BYTES = round(14.21 * 1024 ** 3)   # measured Stage 2 peak; a real r
 CEILING_POLICY = "90 percent of the lower of the fixed usable budget and the container memory limit (Codex 7096272556)"
 CGROUP_MEMORY_MAX = Path("/sys/fs/cgroup/memory.max")
 HOST_WINDOW = "sampler lines added while the rung ran, plus the last one before it; chosen by position, not by clock"
+NO_QUALIFICATION_DECISION = "none: this file records rung results; qualification is decided by review, never by this file"
 CGROUP_PAGE_SLACK_BYTES = 64 * 1024   # the kernel rounds a memory limit down to a whole page
 RUNG_TIMEOUT_SECONDS = 20 * 60
 HOST_START_MIN_BYTES = 6 * 1024 ** 3     # Windows available before the first rung
@@ -396,7 +398,8 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     effective = effective_budget(budget_bytes, container_memory_bytes, cgroup_memory_max)
-    summary = {"kind": "length_ladder", "model": model, "synthetic_only": True, "qualification": model == "pinned",
+    summary = {"kind": "length_ladder", "model": model, "synthetic_only": True, "pinned_model": model == "pinned",
+               "qualification_decision": NO_QUALIFICATION_DECISION,
                "budget_bytes": budget_bytes, "effective_budget_bytes": effective, "ceiling_bytes": ceiling_bytes(effective),
                "ceiling_policy": CEILING_POLICY, "cgroup_memory_max_bytes": cgroup_memory_max, "steps": steps,
                "configuration": {"ceiling_metric": ceiling_metric, "container_cap": container_cap,
@@ -408,7 +411,6 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
     if require_cgroup_evidence:
         summary["host_start_gate"] += cap_gate(budget_bytes, container_memory_bytes, cgroup_memory_max)
     if model != "pinned":
-        summary["qualification"] = False
         summary["note"] = "synthetic tiny model: mechanics only, never host qualification"
     stopped = bool(summary["host_start_gate"])
     if stopped:
@@ -568,7 +570,7 @@ def main(argv=None):
         container_cap=args.container_cap, container_memory_bytes=args.container_memory_bytes,
         paging_rule=args.paging_rule, paging_limit=args.paging_max_train_refaults_per_s,
         cgroup_memory_max=read_cgroup_max(), require_cgroup_evidence=args.model == "pinned")
-    print(json.dumps({k: summary[k] for k in ("model", "qualification", "configuration", "stopped_at", "complete")}, indent=2))
+    print(json.dumps({k: summary[k] for k in ("model", "pinned_model", "qualification_decision", "configuration", "stopped_at", "complete")}, indent=2))
     return 0 if summary["complete"] else 1
 
 
