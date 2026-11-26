@@ -213,6 +213,22 @@ class DryRunTests(unittest.TestCase):
                            "-PagingMaxTrainRefaultsPerSecond", bad)
                 self.assertNotEqual(proc.returncode, 0)
 
+    def test_evidence_mode_is_off_unless_asked_and_changes_one_argument(self):
+        _, off = plan(22)
+        _, on = plan(22, "-Run", "-EvidenceMode")
+        self.assertNotIn("evidence_mode", off)
+        self.assertNotIn("--evidence-mode", off["docker_argv"])
+        self.assertIn("not a qualification", on["evidence_mode"])
+        extra = list(on["docker_argv"])
+        extra.remove("--evidence-mode")
+        strip = lambda argv: [a for a in argv if not a.startswith("--host-available-start")]  # noqa: E731
+        self.assertEqual(strip(extra), strip(off["docker_argv"]))
+        self.assertEqual({k for k in on} - {k for k in off}, {"evidence_mode"})
+        refused = run("-Run", "-DryRun", "-FakeAvailableBytes", str(22 * GIB), "-EvidenceMode", "-PagingRule", "v2",
+                      "-PagingMaxTrainRefaultsPerSecond", "1")
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn("v1pagingfailureonly", said(refused))
+
     def test_six_gib_start_minimum_is_named_when_below_it(self):
         _, p = plan(5)
         self.assertTrue(any("start minimum" in r for r in p["gate_reasons"]))
@@ -650,6 +666,30 @@ class RunFlowWithStubsTests(unittest.TestCase):
         text = self.assertStopped(proc, "the abort kill timed out")
         self.assertIn("did not end within 60 s", text)
         self.assertIn("container exit code unknown", text)
+
+    def test_evidence_mode_says_so_everywhere_and_never_turns_a_failure_into_done(self):
+        notice = "EVIDENCE MODE: a paging-only (v1) failure does not stop the ladder; not a qualification"
+        proc = self.launch("-Run", "-EvidenceMode", STUB_COMPLETE="false", STUB_EXIT="1")
+        text = self.assertStopped(proc, "ladder not complete")
+        self.assertIn(notice, text)
+        self.assertIn(notice, proc.stdout)
+        self.assertIn(notice, (self.run_dir() / "launcher.log").read_text(encoding="utf-8-sig"))
+        self.assertIn(notice, (self.tmp / "LADDER-FINISHED.txt").read_text(encoding="utf-8-sig"))
+        [line] = self.launched()
+        self.assertIn("--evidence-mode", line)
+
+    def test_evidence_mode_keeps_the_memory_host_guard(self):
+        proc = self.launch("-Run", "-EvidenceMode", STUB_BAD="low", STUB_BAD_FROM="9", STUB_RUN_SECONDS="40")
+        self.assertStopped(proc, "host floor breach")
+
+    def test_without_evidence_mode_nothing_mentions_it(self):
+        proc = self.launch("-Run")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        everything = proc.stdout + "".join(p.read_text(encoding="utf-8-sig", errors="replace")
+                                          for p in self.run_dir().rglob("*") if p.is_file())
+        self.assertNotIn("EVIDENCE MODE", everything)
+        self.assertNotIn("--evidence-mode", everything)
+        self.assertEqual((self.run_dir() / "DONE").read_text(encoding="utf-8-sig").splitlines()[1:], ["all rungs PASS"])
 
     def test_coverage_is_checked_after_the_run_too(self):
         # a bad line written as the container ends; this wording comes only from the after-run coverage check

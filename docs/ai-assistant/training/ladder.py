@@ -22,6 +22,10 @@ shrinking free RAM. Host (Windows) available memory is not visible inside the co
 before and after each rung with --host-available-file (one integer of bytes per line, appended by the operator), and the
 parent applies the host reserve rules to the numbers it is given.
 
+`--evidence-mode` (off unless given; rule v1 only) changes one thing: a rung whose ONLY failing reason is the v1 paging
+rule stays FAILURE but the ladder goes on to the next rung, to collect evidence. Every other failure stops it as above,
+the ladder is still not complete, and the result is not a qualification.
+
 An OOM or any other stop is FAILURE EVIDENCE for that rung. It is never a pass and never a host qualification.
 """
 import argparse
@@ -39,6 +43,8 @@ STAGE2_PEAK_BYTES = round(14.21 * 1024 ** 3)   # measured Stage 2 peak; a real r
 CEILING_POLICY = "90 percent of the lower of the fixed usable budget and the container memory limit (Codex 7096272556)"
 CGROUP_MEMORY_MAX = Path("/sys/fs/cgroup/memory.max")
 HOST_WINDOW = "sampler lines added while the rung ran, plus the last one before it; chosen by position, not by clock"
+EVIDENCE_MODE_ON = "evidence mode on; not a qualification"
+EVIDENCE_MODE_CONTINUED = "evidence mode, paging-only failure continued; not a qualification"
 NO_QUALIFICATION_DECISION = "none: this file records rung results; qualification is decided by review, never by this file"
 CGROUP_PAGE_SLACK_BYTES = 64 * 1024   # the kernel rounds a memory limit down to a whole page
 RUNG_TIMEOUT_SECONDS = 20 * 60
@@ -349,6 +355,17 @@ def cap_gate(budget_bytes, container_memory_bytes, cgroup_memory_max) -> list:
     return reasons
 
 
+def v1_paging_reason(faults) -> str:
+    return f"sustained paging: {faults} major faults"
+
+
+def only_v1_paging_failed(record: dict, reasons: list) -> bool:
+    """True when the single reason a rung failed is a valid major-fault count over the v1 limit. Missing or invalid
+    paging evidence is a different reason and never matches."""
+    faults = record.get("major_fault_delta") if isinstance(record, dict) else None
+    return is_count(faults) and faults > MAJOR_FAULT_DELTA_LIMIT and reasons == [v1_paging_reason(faults)]
+
+
 def judge_rung(record: dict, *, budget_bytes: int, host_before=None, host_after=None, host_min_seen=None,
                paging_rule="v1", paging_limit=None, container_memory_bytes=None) -> dict:
     """Applies the stop rules to one rung's record. Returns {"status": "PASS"|"FAILURE", "reasons": [...]}.
@@ -437,7 +454,7 @@ def judge_rung(record: dict, *, budget_bytes: int, host_before=None, host_after=
         if not is_count(faults):
             reasons.append("paging evidence missing or invalid: major_fault_delta")
         elif faults > MAJOR_FAULT_DELTA_LIMIT:
-            reasons.append(f"sustained paging: {faults} major faults")
+            reasons.append(v1_paging_reason(faults))
     if record.get("wall_seconds") is not None and record["wall_seconds"] > RUNG_TIMEOUT_SECONDS:
         reasons.append(f"rung took {record['wall_seconds']:.0f}s, over {RUNG_TIMEOUT_SECONDS}s")
     seen = [v for v in (host_before, host_after, host_min_seen) if v is not None]
@@ -457,13 +474,15 @@ def host_start_gate(host_available_bytes) -> list:
 # ---------------------------------------------------------------- parent runner
 def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, rung_timeout=RUNG_TIMEOUT_SECONDS,
                host_available_start=None, host_available_end_of_rung=None, host_log=None, ceiling_metric="original", container_cap="fixed", container_memory_bytes=None, paging_rule="v1", paging_limit=None, cgroup_memory_max=None, require_cgroup_evidence=False,
-               child_command=None) -> dict:
+               child_command=None, evidence_mode=False) -> dict:
     """Runs rungs in order in separate processes. `child_command(rung, rung_dir)` -> argv list (tests inject a stub).
     `host_available_end_of_rung(rung)` -> bytes or None, supplied by the operator's host reader.
     `host_log()` -> the Windows-available readings the launcher's sampler has written so far (see read_host_log). A rung is
     judged on the readings appended while it ran, plus the last one before it, chosen by their position in the file. No
     clock is used: the WSL wall clock is ahead of Windows and steps (seen: 65 s ahead; one sample 61 s early). With a
     `host_log`, no new reading during a rung, an unreadable one or a file that shrank is a failure, never a pass."""
+    if evidence_mode and paging_rule != "v1":
+        raise ValueError("evidence mode continues past a v1 paging failure only; it cannot be used with another paging rule")
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     effective = effective_budget(budget_bytes, container_memory_bytes, cgroup_memory_max)
@@ -477,6 +496,9 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
                                  "label": CONFIG_LABELS[(ceiling_metric, container_cap)], "metric_label": CEILING_METRICS[ceiling_metric]},
                "rungs": [], "stopped_at": None, "host_window": HOST_WINDOW if host_log else None, "host_start_gate": host_start_gate(host_available_start),
                "host_available_start": host_available_start}
+    continued = []
+    if evidence_mode:
+        summary["evidence_mode"] = {"enabled": True, "notice": EVIDENCE_MODE_ON, "continued_rungs": continued}
     if require_cgroup_evidence:
         summary["host_start_gate"] += cap_gate(budget_bytes, container_memory_bytes, cgroup_memory_max)
     if model != "pinned":
@@ -532,10 +554,19 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
                      memory_trace=summarize_trace(rung_dir / "memory-trace.csv"),
                      paging=record.get("paging") or paging_from_trace(rung_dir / "memory-trace.csv"),
                      pressure=record.get("pressure"))   # evidence only; the verdict above is already decided
+        if continued:
+            # a later rung runs on a warm page cache after an earlier failure: its result is not comparable to a first rung
+            entry["after_continued_failure"] = True
         summary["rungs"].append(entry)
         if verdict["status"] != "PASS":
-            summary["stopped_at"] = rung
-            stopped = True
+            if evidence_mode and only_v1_paging_failed(record, verdict["reasons"]):
+                entry["continued_in_evidence_mode"] = True
+                continued.append(rung)
+                summary["evidence_mode"]["notice"] = EVIDENCE_MODE_CONTINUED
+                print(f"rung {rung}: FAILURE (v1 paging only). {EVIDENCE_MODE_CONTINUED}", flush=True)
+            else:
+                summary["stopped_at"] = rung
+                stopped = True
     summary["complete"] = all(r["status"] == "PASS" for r in summary["rungs"])
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return summary
@@ -608,6 +639,8 @@ def main(argv=None):
     run.add_argument("--out", type=Path, required=True)
     run.add_argument("--model", choices=("pinned", "synthetic"), default="pinned")
     run.add_argument("--steps", type=int, default=3)
+    run.add_argument("--evidence-mode", action="store_true",
+                     help="continue past a rung whose only failure is the v1 paging rule (it stays FAILURE); not a qualification")
     run.add_argument("--rung-timeout", type=int, default=RUNG_TIMEOUT_SECONDS)
     run.add_argument("--host-available-start", type=int, default=None, help="Windows available bytes, measured just before")
     run.add_argument("--host-csv", type=Path, default=None,
@@ -617,6 +650,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.command == "run" and args.paging_rule == "v2" and args.paging_max_train_refaults_per_s is None:
         parser.error("--paging-rule v2 needs --paging-max-train-refaults-per-s (no limit has been ruled, so there is no default)")
+    if args.command == "run" and args.evidence_mode and args.paging_rule != "v1":
+        parser.error("--evidence-mode continues past a v1 paging failure only; use it with --paging-rule v1")
     rungs = [int(r) for r in args.rungs.split(",")]
     if args.command == "plan":
         effective = effective_budget(args.budget_bytes, args.container_memory_bytes)
@@ -639,8 +674,9 @@ def main(argv=None):
         host_log=(lambda: read_host_log(args.host_csv)) if args.host_csv else None, ceiling_metric=args.ceiling_metric,
         container_cap=args.container_cap, container_memory_bytes=args.container_memory_bytes,
         paging_rule=args.paging_rule, paging_limit=args.paging_max_train_refaults_per_s,
-        cgroup_memory_max=read_cgroup_max(), require_cgroup_evidence=args.model == "pinned")
-    print(json.dumps({k: summary[k] for k in ("model", "pinned_model", "qualification_decision", "configuration", "stopped_at", "complete")}, indent=2))
+        cgroup_memory_max=read_cgroup_max(), require_cgroup_evidence=args.model == "pinned", evidence_mode=args.evidence_mode)
+    shown = ("model", "pinned_model", "qualification_decision", "configuration", "stopped_at", "complete", "evidence_mode")
+    print(json.dumps({k: summary[k] for k in shown if k in summary}, indent=2))
     return 0 if summary["complete"] else 1
 
 
