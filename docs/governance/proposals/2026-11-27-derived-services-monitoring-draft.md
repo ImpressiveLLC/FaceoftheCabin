@@ -1,5 +1,7 @@
 # Draft contracts for derived services and optional Monitoring
 
+Decision update: [B2 and Cabin enrollment ratification](../decisions/2026-11-27-b2-and-cabin-enrollment-ratification.md) supersedes the pending B2 and off-at-Cabin-enrollment assumptions below. B2 is ratified; aurora defaults ON at Cabin enrollment in the C2 slice. External-source verification and remaining implementation/live gates still apply.
+
 Status: **draft for peer review, not implementation approval**. Baseline: main `d52c06b2`, 2026-11-27. Scope: W-168 B1/B3 and W-167 C1/C2 from [Cowork's handover](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/244#issuecomment-7212314949), resumed by [7219040361](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/244#issuecomment-7219040361). No ontology YAML, schema, registry, device, threshold or runtime changes.
 
 ## Decision boundaries
