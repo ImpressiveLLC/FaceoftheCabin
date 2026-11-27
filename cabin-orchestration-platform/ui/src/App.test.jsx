@@ -8,7 +8,7 @@ PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
 StorageTrimWidget, trimPreview, formatTrimBytes, keepForFreeing, MonitoringPanel,
 formatPresenceAge, presenceBadgeModel, PresenceBadge,
-mergeStatusCheckItems, silencedStatusChecks, readStoredLocation, ACTIVE_LOCATION_KEY, AlertHistoryLog, alertRulesTarget, ZigbeePairingFlow, pairingRefusedMessage } from "./App.jsx";
+mergeStatusCheckItems, silencedStatusChecks, readStoredLocation, ACTIVE_LOCATION_KEY, AlertHistoryLog, alertRulesTarget, ZigbeePairingFlow, pairingRefusedMessage, zonedTime, todaysPeak, SENSOR_HISTORY_TABLE_LIMIT } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // The toolbar's Cabin / Home / Both choice is remembered per browser (2026-10-10:
@@ -664,9 +664,146 @@ describe("SensorHistoryPanel", () => {
     // previous calendar day.
     const day1 = new Date("2026-08-24T00:00:00Z").toLocaleDateString();
     const day2 = new Date("2026-08-25T00:00:00Z").toLocaleDateString();
-    expect(lines[0]).toBe("date,device,avg,count,partial");
-    expect(lines).toContain(`${day1},"Mech Room",70.00,12,no`);
-    expect(lines).toContain(`${day2},"Kitchen",75.20,8,no`);
+    expect(lines[0]).toBe("date,device,avg,count,partial,unit");
+    expect(lines).toContain(`${day1},"Mech Room",70.00,12,no,%`);
+    expect(lines).toContain(`${day2},"Kitchen",75.20,8,no,%`);
+  });
+
+  it("reads an instant on the named zone's clock and picks the earliest of today's highest readings", () => {
+    expect(zonedTime("2026-11-27T20:37:12Z", "America/Chicago")).toMatchObject({ date: "2026-11-27", time: "14:37:12", offset: "-06:00" });
+    expect(zonedTime("2026-11-01T06:30:00Z", "America/Chicago")).toMatchObject({ time: "01:30:00", offset: "-05:00" });
+    expect(zonedTime("2026-11-01T07:30:00Z", "America/Chicago")).toMatchObject({ time: "01:30:00", offset: "-06:00" });
+    expect(zonedTime("2026-11-27T00:00:00Z", "UTC")).toMatchObject({ time: "00:00:00", offset: "+00:00" });
+    // 05:59Z is still the 26th in Chicago, so it is not today's reading.
+    const points = [
+      { max: 5000, maxAt: "2026-11-27T05:59:00Z" },
+      { max: 2400, maxAt: "2026-11-27T20:37:12Z" },
+      { max: 2400, maxAt: "2026-11-27T20:50:00Z" },
+    ];
+    expect(todaysPeak(points, "America/Chicago", new Date("2026-11-27T21:00:00Z"))).toBe(points[1]);
+    expect(todaysPeak(points, "America/Chicago", new Date("2026-11-29T21:00:00Z"))).toBeNull();
+  });
+
+  // W-173: intraday resolution. Times are relative to now, so "today" is today in the property's zone.
+  describe("intraday resolution", () => {
+    const co2 = kiddeCo2();
+    function kiddeCo2() {
+      return { deviceId: "ha-cabin-sensor-kidde-co2", name: "Kidde CO2 Level", type: "CO2_SENSOR", state: "ONLINE",
+        location: "cabin", attributes: { enabled: true, reportsFields: ["co2"] } };
+    }
+    const zone = "America/Chicago";
+    function spikeFixture() {
+      const spikeAt = new Date(Math.floor(Date.now() / 1000) * 1000);
+      const start = new Date(Math.floor(spikeAt.getTime() / 300000) * 300000);
+      const earlier = new Date(start.getTime() - 2 * 86400000);
+      return {
+        spikeAt, start,
+        points: [
+          { day: earlier.toISOString(), avg: 3000, min: 3000, max: 3000, sampleCount: 1, partial: true, maxAt: earlier.toISOString() },
+          { day: start.toISOString(), avg: 900, min: 600, max: 2400, sampleCount: 6, partial: false, maxAt: spikeAt.toISOString() },
+        ],
+      };
+    }
+    const dayPoints = [{ day: "2026-08-25T00:00:00Z", avg: 620, min: 590, max: 650, sampleCount: 40, partial: false }];
+    const intradayFetch = (points) => reportedFieldsFetch([co2], (url) => url.includes("bucket=") ? points : dayPoints,
+      (pts) => pts === dayPoints
+        ? { requestedDays: 30, effectiveDays: 30, clamped: false, points: pts }
+        : { requestedDays: 30, effectiveDays: 30, clamped: false, bucket: "5m", timezone: zone, points: pts });
+    const choose = async (value) => fireEvent.change(await screen.findByLabelText(/^resolution$/i), { target: { value } });
+    const readBlob = (blob) => new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.readAsText(blob);
+    });
+
+    it("defaults to 1 day and sends the same request as before", async () => {
+      const fetchMock = intradayFetch([]);
+      vi.stubGlobal("fetch", fetchMock);
+      render(<SensorHistoryPanel devices={[co2]} apiBase="http://cabin" tempUnit="F" />);
+
+      expect(await screen.findByText("620.0 ppm (n=40)")).toBeTruthy();
+      expect(screen.getByLabelText(/^resolution$/i).value).toBe("1d");
+      expect(fetchMock.mock.calls.some(c => c[0].includes("bucket"))).toBe(false);
+      expect(screen.queryByRole("list", { name: /today's peak/i })).toBeNull();
+    });
+
+    it("shows today's same-day spike and its time in the named zone", async () => {
+      const { points, spikeAt, start } = spikeFixture();
+      const fetchMock = intradayFetch(points);
+      vi.stubGlobal("fetch", fetchMock);
+      render(<SensorHistoryPanel devices={[co2]} apiBase="http://cabin" tempUnit="F" />);
+      await choose("5m");
+
+      const peaks = await screen.findByRole("list", { name: /today's peak/i });
+      expect(fetchMock.mock.calls.at(-1)[0]).toContain("bucket=5m");
+      // The higher reading two days ago is not today's.
+      expect(peaks.textContent).toBe(`Kidde CO2 Level: today's peak 2400.0 ppm at ${zonedTime(spikeAt, zone).label}`);
+      expect(screen.getByText("900.0 ppm (max 2400.0 ppm, n=6)")).toBeTruthy();
+      expect(screen.getByText(zonedTime(start, zone).label)).toBeTruthy();
+      expect(screen.getByTestId(`peak-marker-${co2.deviceId}`).textContent).toContain("2400.0 ppm");
+      expect(screen.getByText(new RegExp(`Times are ${zone} time`))).toBeTruthy();
+    });
+
+    it("exports the intraday series shown, with peak time, zone and unit", async () => {
+      const { points, spikeAt, start } = spikeFixture();
+      vi.stubGlobal("fetch", intradayFetch(points));
+      const createObjectURL = vi.fn().mockReturnValue("blob:mock");
+      vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
+      render(<SensorHistoryPanel devices={[co2]} apiBase="http://cabin" tempUnit="F" />);
+      await choose("5m");
+      await screen.findByRole("list", { name: /today's peak/i });
+
+      fireEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+
+      const lines = (await readBlob(createObjectURL.mock.calls[0][0])).split("\n");
+      expect(lines[0]).toBe("time,utc_offset,timezone,resolution,device,avg,min,max,max_time,count,partial,unit");
+      expect(lines).toHaveLength(3);
+      const at = zonedTime(start, zone);
+      const peakAt = zonedTime(spikeAt, zone);
+      expect(lines[2]).toBe(`${at.date} ${at.time},${at.offset},${zone},5m,"Kidde CO2 Level",900.00,600.00,2400.00,${peakAt.date} ${peakAt.time},6,no,ppm`);
+    });
+
+    it("says so instead of showing an empty chart when intraday needs a sign-in", async () => {
+      vi.stubGlobal("fetch", vi.fn((url) => {
+        if (url.includes("/reported-fields")) return Promise.resolve({ ok: true, json: async () => ({ [co2.deviceId]: ["co2"] }) });
+        if (url.includes("bucket=")) return Promise.resolve({ ok: false, status: 401, json: async () => ({}) });
+        return Promise.resolve({ ok: true, json: async () => ({ requestedDays: 30, effectiveDays: 30, clamped: false, points: dayPoints }) });
+      }));
+      render(<SensorHistoryPanel devices={[co2]} apiBase="http://cabin" tempUnit="F" />);
+      await choose("15m");
+
+      expect(await screen.findByText(/sign in to see them/i)).toBeTruthy();
+      expect(screen.queryByText(/no co2 history/i)).toBeNull();
+      expect(screen.getByRole("button", { name: "Download CSV" }).disabled).toBe(true);
+    });
+
+    it("never labels a day answer as intraday (demo links)", async () => {
+      vi.stubGlobal("fetch", reportedFieldsFetch([co2], () => dayPoints));
+      render(<SensorHistoryPanel devices={[co2]} apiBase="http://cabin" tempUnit="F" />);
+      await choose("5m");
+
+      expect(await screen.findByText(/shows 1 day values only/i)).toBeTruthy();
+      expect(screen.getByText("620.0 ppm (n=40)")).toBeTruthy();
+      expect(screen.queryByRole("list", { name: /today's peak/i })).toBeNull();
+    });
+
+    it("limits the table to the newest times and says so, while the CSV keeps every one", async () => {
+      const base = Math.floor(Date.now() / 300000) * 300000;
+      const many = Array.from({ length: SENSOR_HISTORY_TABLE_LIMIT + 20 }, (_, i) => {
+        const day = new Date(base - (SENSOR_HISTORY_TABLE_LIMIT + 19 - i) * 300000).toISOString();
+        return { day, avg: 600, min: 600, max: 600, sampleCount: 1, partial: false, maxAt: day };
+      });
+      vi.stubGlobal("fetch", intradayFetch(many));
+      const createObjectURL = vi.fn().mockReturnValue("blob:mock");
+      vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
+      render(<SensorHistoryPanel devices={[co2]} apiBase="http://cabin" tempUnit="F" />);
+      await choose("5m");
+
+      expect(await screen.findByText(new RegExp(`newest ${SENSOR_HISTORY_TABLE_LIMIT} of ${many.length} times`))).toBeTruthy();
+      expect(document.querySelectorAll(".sensor-history-table tbody tr")).toHaveLength(SENSOR_HISTORY_TABLE_LIMIT);
+      fireEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+      expect((await readBlob(createObjectURL.mock.calls[0][0])).split("\n")).toHaveLength(many.length + 1);
+    }, 20000);
   });
 
   // The user reported not knowing what "(n=…)" meant at all until asking --

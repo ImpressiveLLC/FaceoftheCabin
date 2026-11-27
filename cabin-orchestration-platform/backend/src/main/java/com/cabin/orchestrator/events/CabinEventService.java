@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 
@@ -290,6 +291,61 @@ public class CabinEventService implements DeviceEventLookup {
         args.addAll(List.of(payloadField, payloadField, java.sql.Timestamp.from(since)));
         return jdbc.queryForList(sql, args.toArray())
             .stream().map(row -> toDailyPoint(row, sinceDayStart, sinceIsMidExactly)).toList();
+    }
+
+    /**
+     * W-173: min/avg/max per intraday bucket for the same rows {@link #dailyAggregates} reads, so a spike
+     * inside one day can be seen and timed. Buckets are the wall clock of {@code zone} (see
+     * {@link HistoryBucket#startOf}); the zone is a parameter of the query, so neither the JVM default nor
+     * the database session's zone moves a boundary. Read only.
+     */
+    public List<TelemetryDailyPoint> intradayAggregates(List<String> deviceIds, String payloadField, int days,
+                                                        HistoryBucket bucket, ZoneId zone) {
+        return intradayAggregates(deviceIds, payloadField, days, bucket, zone, Instant.now());
+    }
+
+    /** As above with the end of the window given, for fixtures at fixed dates. */
+    List<TelemetryDailyPoint> intradayAggregates(List<String> deviceIds, String payloadField, int days,
+                                                 HistoryBucket bucket, ZoneId zone, Instant now) {
+        if (!bucket.intraday()) throw new IllegalArgumentException("not an intraday bucket: " + bucket.code());
+        if (deviceIds.isEmpty()) return List.of();
+        int cappedDays = Math.min(Math.max(days, 1), 366);
+        Instant since = now.minus(java.time.Duration.ofDays(cappedDays));
+        String sql = """
+            SELECT to_timestamp(floor((EXTRACT(EPOCH FROM time) + utc_offset) / ?) * ? - utc_offset) AS bucket_start,
+                   AVG(val) AS avg_val,
+                   MIN(val) AS min_val,
+                   MAX(val) AS max_val,
+                   COUNT(*) AS sample_count,
+                   (array_agg(time ORDER BY val DESC, time ASC))[1] AS max_at
+            FROM (
+              SELECT time,
+                     (payload->>?)::numeric AS val,
+                     EXTRACT(EPOCH FROM ((time AT TIME ZONE ?) - (time AT TIME ZONE 'UTC'))) AS utc_offset
+              FROM cabin_event
+              WHERE device_id IN (%s)
+                AND jsonb_exists(payload, ?)
+                AND payload->>? ~ '^-?[0-9]+\\.?[0-9]*$'
+                AND time >= ?
+            ) readings
+            GROUP BY 1 ORDER BY 1
+            """.formatted(String.join(",", java.util.Collections.nCopies(deviceIds.size(), "?")));
+        List<Object> args = new java.util.ArrayList<>(
+            List.of(bucket.seconds(), bucket.seconds(), payloadField, zone.getId()));
+        args.addAll(deviceIds);
+        args.addAll(List.of(payloadField, payloadField, java.sql.Timestamp.from(since)));
+        Instant firstBucket = bucket.startOf(since, zone);
+        boolean sinceIsBoundary = since.equals(firstBucket);
+        return jdbc.queryForList(sql, args.toArray()).stream().map(row -> {
+            Instant start = ((java.sql.Timestamp) row.get("bucket_start")).toInstant();
+            return new TelemetryDailyPoint(start,
+                ((Number) row.get("avg_val")).doubleValue(),
+                ((Number) row.get("min_val")).doubleValue(),
+                ((Number) row.get("max_val")).doubleValue(),
+                ((Number) row.get("sample_count")).longValue(),
+                !sinceIsBoundary && start.equals(firstBucket),
+                ((java.sql.Timestamp) row.get("max_at")).toInstant());
+        }).toList();
     }
 
     /**

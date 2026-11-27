@@ -80,7 +80,7 @@ class DemoNormalHistoryParityTest {
 
     @Test
     void normalAndDemoViewsReturnIdenticalRowsForANonPresenceDevice() throws Exception {
-        TelemetryHistoryResponse direct = controller.telemetryHistory("z2m-temp_kitchen", "temperature", 30);
+        TelemetryHistoryResponse direct = controller.telemetryHistory("z2m-temp_kitchen", "temperature", 30, null);
 
         MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/events/telemetry-history");
         req.setRequestURI("/api/events/telemetry-history");
@@ -94,7 +94,7 @@ class DemoNormalHistoryParityTest {
         assertNotNull(wrapped, "a non-presence device on an ALLOW_REDACT route must reach the controller");
         int demoDays = Integer.parseInt(wrapped.getParameter("days"));
 
-        TelemetryHistoryResponse viaDemo = controller.telemetryHistory("z2m-temp_kitchen", "temperature", demoDays);
+        TelemetryHistoryResponse viaDemo = controller.telemetryHistory("z2m-temp_kitchen", "temperature", demoDays, null);
 
         assertEquals(direct.points(), viaDemo.points(),
             "non-presence device history must match between the normal and demo views (D22 Q-DM-2)");

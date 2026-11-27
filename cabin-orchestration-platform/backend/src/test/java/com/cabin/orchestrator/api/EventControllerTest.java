@@ -140,7 +140,7 @@ class EventControllerTest {
             "INFO", Instant.now(), Map.of("humidity", 75)));
 
         com.cabin.orchestrator.events.TelemetryHistoryResponse response =
-            controller.telemetryHistory("z2m-humid_mech", "humidity", 30);
+            controller.telemetryHistory("z2m-humid_mech", "humidity", 30, null);
 
         assertEquals(30, response.requestedDays());
         assertEquals(30, response.effectiveDays());
@@ -161,7 +161,7 @@ class EventControllerTest {
             "INFO", Instant.now(), Map.of("humidity", 75)));
 
         com.cabin.orchestrator.events.TelemetryHistoryResponse response =
-            controller.telemetryHistory("z2m-humid_mech", "humidity", 90);
+            controller.telemetryHistory("z2m-humid_mech", "humidity", 90, null);
 
         assertEquals(90, response.requestedDays());
         assertEquals(60, response.effectiveDays());
@@ -186,7 +186,7 @@ class EventControllerTest {
         rawEventService.save(new CabinEvent("evt-new-native", "z2m-temp_outside_lowest", "TELEMETRY",
             "INFO", Instant.now(), Map.of("temperature", 14)));
 
-        var response = controller.telemetryHistory("z2m-temp_outside_lowest", "temperature", 30);
+        var response = controller.telemetryHistory("z2m-temp_outside_lowest", "temperature", 30, null);
 
         assertEquals(1, response.points().size());
         assertEquals(2L, response.points().get(0).sampleCount());
@@ -195,6 +195,50 @@ class EventControllerTest {
         var fields = controller.reportedFields();
         assertTrue(fields.containsKey("z2m-temp_outside_lowest"));
         assertFalse(fields.containsKey("ha-cabin-sensor-temp-outside-lowest-temperature"));
+    }
+
+    // W-173: intraday resolution -- wiring; the bucketing itself is covered in CabinEventServiceTest.
+    @Test
+    void anIntradayRequestNamesItsBucketAndZoneAndKeepsTheClampFields() throws Exception {
+        CabinEventService rawEventService = new CabinEventService(
+            new JdbcTemplate(new SimpleDriverDataSource(
+                new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())));
+        Instant spikeAt = Instant.now().minusSeconds(60);
+        rawEventService.save(new CabinEvent("evt-co2", "kidde-co2", "TELEMETRY", "INFO", spikeAt, Map.of("co2", 2400)));
+
+        var response = controller.telemetryHistory("kidde-co2", "co2", 90, "5m");
+
+        assertEquals("5m", response.bucket());
+        assertEquals("America/Chicago", response.timezone());
+        assertEquals(60, response.effectiveDays());
+        assertTrue(response.clamped());
+        assertEquals(2400.0, response.points().get(0).max());
+        assertEquals(spikeAt.truncatedTo(java.time.temporal.ChronoUnit.MILLIS),
+            response.points().get(0).maxAt().truncatedTo(java.time.temporal.ChronoUnit.MILLIS));
+    }
+
+    @Test
+    void theDayAnswerCarriesNoNewFieldsWithOrWithoutTheBucketParameter() throws Exception {
+        CabinEventService rawEventService = new CabinEventService(
+            new JdbcTemplate(new SimpleDriverDataSource(
+                new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())));
+        rawEventService.save(new CabinEvent("evt-day", "kidde-co2", "TELEMETRY", "INFO", Instant.now(), Map.of("co2", 600)));
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules();
+
+        for (String bucket : new String[] { null, "1d" }) {
+            var json = mapper.valueToTree(controller.telemetryHistory("kidde-co2", "co2", 30, bucket));
+            assertFalse(json.has("bucket"));
+            assertFalse(json.has("timezone"));
+            assertFalse(json.get("points").get(0).has("maxAt"));
+        }
+    }
+
+    @Test
+    void anUnknownBucketIsABadRequest() {
+        var error = org.junit.jupiter.api.Assertions.assertThrows(
+            org.springframework.web.server.ResponseStatusException.class,
+            () -> controller.telemetryHistory("kidde-co2", "co2", 7, "1m"));
+        assertEquals(400, error.getStatusCode().value());
     }
 
     // 2026-08-27: /reported-fields -- wiring only, reportedFieldsByDevice()'s

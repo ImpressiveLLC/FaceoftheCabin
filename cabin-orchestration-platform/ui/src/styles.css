@@ -795,6 +795,8 @@ body {
 .sensor-history-table--fixed td { white-space: nowrap; }
 .sensor-history-table--fixed th { white-space: normal; overflow-wrap: anywhere; vertical-align: bottom; }
 .sensor-history-table--fixed td.sh-cell-outdoor { white-space: normal; overflow-wrap: anywhere; }
+/* An intraday cell carries average, high and count: it wraps so the high is never cut off. */
+.sensor-history-table--fixed.sensor-history-table--intraday td { white-space: normal; }
 .sensor-history-table-wrap { overflow-x: auto; }
 .sensor-history-table th {
   color: var(--table-head, var(--text-dim));
@@ -3219,3 +3221,4 @@ select option { background: var(--bg-secondary); color: var(--text); }
   .dm-l1-nav .dm-l1-btn { justify-content: center; min-width: 0; min-height: 40px; padding: 8px 4px; gap: 4px; font-size: 12px; }
   .dm-l1-nav .mn-profile-hint { grid-column: 1 / -1; margin-left: 0; }
 }
+.sensor-history-peaks { list-style: none; margin: 0; padding: 0; }

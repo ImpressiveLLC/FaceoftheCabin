@@ -1,5 +1,7 @@
 package com.cabin.orchestrator.events;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.util.List;
 
 /**
@@ -12,6 +14,18 @@ import java.util.List;
  * with no explanation. {@code effectiveDays} is always the actual number
  * of days the query covered; {@code clamped} is true whenever that is
  * less than {@code requestedDays}.
+ *
+ * W-173: an intraday answer also names its {@code bucket} ("5m", "15m", "1h") and the {@code timezone} its
+ * bucket boundaries are aligned to. A day answer carries neither, so it is unchanged (the day boundary is
+ * still the database session's, backlog W-30).
  */
 public record TelemetryHistoryResponse(int requestedDays, int effectiveDays, boolean clamped,
-                                        List<TelemetryDailyPoint> points) {}
+                                        List<TelemetryDailyPoint> points,
+                                        @JsonInclude(JsonInclude.Include.NON_NULL) String bucket,
+                                        @JsonInclude(JsonInclude.Include.NON_NULL) String timezone) {
+
+    public TelemetryHistoryResponse(int requestedDays, int effectiveDays, boolean clamped,
+                                    List<TelemetryDailyPoint> points) {
+        this(requestedDays, effectiveDays, clamped, points, null, null);
+    }
+}

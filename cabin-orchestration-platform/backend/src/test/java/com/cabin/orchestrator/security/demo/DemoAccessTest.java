@@ -268,6 +268,25 @@ class DemoAccessTest {
         assertEquals("1", ((HttpServletRequest) chain2.getRequest()).getParameter("days"));
     }
 
+    // W-173: demo links keep the day resolution, whatever they ask for.
+    @Test
+    void aDemoRequestForAFinerBucketReachesTheControllerAsTheDayRequest() throws Exception {
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/events/telemetry-history");
+        req.setRequestURI("/api/events/telemetry-history");
+        req.addHeader("Authorization", "CabinToken " + demoToken());
+        req.setParameter("deviceId", "temp.living");
+        req.setParameter("field", "temperature");
+        req.setParameter("bucket", "5m");
+        MockFilterChain chain = new MockFilterChain();
+        filter.doFilter(req, new MockHttpServletResponse(), chain);
+        HttpServletRequest wrapped = (HttpServletRequest) chain.getRequest();
+        assertNull(wrapped.getParameter("bucket"));
+        assertNull(wrapped.getParameterValues("bucket"));
+        assertFalse(wrapped.getParameterMap().containsKey("bucket"));
+        assertFalse(java.util.Collections.list(wrapped.getParameterNames()).contains("bucket"));
+        assertEquals("temperature", wrapped.getParameter("field"));
+    }
+
     // ── 6. Creation rules ───────────────────────────────────────────────────
 
     @Test

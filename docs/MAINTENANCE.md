@@ -482,6 +482,15 @@ network path to a Tailscale-only host. Full setup/recovery runbook:
   Only covers the hot tier — once a month is archived, it drops out
   (see the retention entry above).
 
+  **Intraday resolution (W-173, 2026-11-27):** the same route takes
+  `bucket=5m|15m|1h|1d` (default `1d`, unchanged). The finer ones return
+  min, average, max, count and the time of the max per bucket, aligned to
+  `cabin.timezone` (named in the response), capped at the same 60 days.
+  They need a signed-in session or an `observations_read` guest link;
+  anonymous callers get 401 and demo links get day values. Any other
+  value is a 400. Example, today's CO2 at 5 minutes:
+  `GET /api/events/telemetry-history?deviceId=<id>&field=co2&days=1&bucket=5m`.
+
   **Why Grafana was dropped for this, not just fixed again (2026-08-25):**
   three real incidents in one evening — a datasource-provisioning crash-
   loop, a stale-panel-uid "no data" bug, and then a login wall blocking

@@ -329,6 +329,112 @@ class CabinEventServiceTest {
         assertThat(points.get(points.size() - 1).partial()).isFalse();
     }
 
+    // W-173: intraday resolution. Fixed instants and a fixed window end, so none of these depend on when
+    // they run.
+    private static final java.time.ZoneId CENTRAL = java.time.ZoneId.of("America/Chicago");
+    private static final Instant FIXTURE_NOW = Instant.parse("2026-11-27T21:00:00Z"); // 15:00 CST
+    private static final Instant SPIKE_AT = Instant.parse("2026-11-27T20:37:12Z");    // 14:37:12 CST
+
+    private void saveSameDaySpike() {
+        // Six hours of quiet readings every 10 minutes, one short spike inside them.
+        for (int i = 0; i < 36; i++) {
+            saveTelemetry("quiet-" + i, "kidde-co2",
+                Instant.parse("2026-11-27T15:00:00Z").plusSeconds(i * 600L), Map.of("co2", 600));
+        }
+        saveTelemetry("spike", "kidde-co2", SPIKE_AT, Map.of("co2", 2400));
+    }
+
+    private List<TelemetryDailyPoint> intraday(CabinEventService svc, HistoryBucket bucket, java.time.ZoneId zone,
+                                               Instant now, int days) {
+        return svc.intradayAggregates(List.of("kidde-co2"), "co2", days, bucket, zone, now);
+    }
+
+    @Test
+    void aSameDaySpikeKeepsItsPeakAndItsTimeAtEveryIntradayResolution() {
+        saveSameDaySpike();
+        Map<HistoryBucket, Instant> expectedStart = Map.of(
+            HistoryBucket.FIVE_MINUTES, Instant.parse("2026-11-27T20:35:00Z"),
+            HistoryBucket.FIFTEEN_MINUTES, Instant.parse("2026-11-27T20:30:00Z"),
+            HistoryBucket.ONE_HOUR, Instant.parse("2026-11-27T20:00:00Z"));
+
+        expectedStart.forEach((bucket, start) -> {
+            List<TelemetryDailyPoint> points = intraday(service, bucket, CENTRAL, FIXTURE_NOW, 1);
+            TelemetryDailyPoint peak = points.stream()
+                .max(java.util.Comparator.comparingDouble(TelemetryDailyPoint::max)).orElseThrow();
+            assertThat(peak.max()).isEqualTo(2400.0);
+            assertThat(peak.maxAt()).isEqualTo(SPIKE_AT);
+            assertThat(peak.day()).isEqualTo(start);
+            assertThat(peak.min()).isEqualTo(600.0);
+            assertThat(points).filteredOn(p -> p.max() > 600).hasSize(1);
+            assertThat(points.stream().mapToLong(TelemetryDailyPoint::sampleCount).sum()).isEqualTo(37);
+        });
+    }
+
+    @Test
+    void intradayBucketsDoNotMoveWithTheJvmOrDatabaseSessionZone() {
+        saveSameDaySpike();
+        java.util.TimeZone original = java.util.TimeZone.getDefault();
+        try {
+            List<List<TelemetryDailyPoint>> answers = new java.util.ArrayList<>();
+            for (String jvmZone : List.of("UTC", "Pacific/Auckland", "Asia/Kathmandu")) {
+                java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone(jvmZone));
+                // A new connection takes the new JVM default as its database session zone.
+                CabinEventService fresh = new CabinEventService(new JdbcTemplate(new SimpleDriverDataSource(
+                    new org.postgresql.Driver(), postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())));
+                answers.add(intraday(fresh, HistoryBucket.ONE_HOUR, CENTRAL, FIXTURE_NOW, 1));
+            }
+            assertThat(answers.get(1)).isEqualTo(answers.get(0));
+            assertThat(answers.get(2)).isEqualTo(answers.get(0));
+        } finally {
+            java.util.TimeZone.setDefault(original);
+        }
+        // The named zone is what decides: at +05:45 the same readings fall in hours that start at :15 UTC.
+        assertThat(intraday(service, HistoryBucket.ONE_HOUR, java.time.ZoneId.of("Asia/Kathmandu"), FIXTURE_NOW, 1))
+            .allSatisfy(p -> assertThat(p.day().atZone(java.time.ZoneOffset.UTC).getMinute()).isEqualTo(15));
+    }
+
+    @Test
+    void theRepeatedFallBackHourIsTwoIntradayBuckets() {
+        saveTelemetry("cdt", "kidde-co2", Instant.parse("2026-11-01T06:30:00Z"), Map.of("co2", 500)); // 01:30 CDT
+        saveTelemetry("cst", "kidde-co2", Instant.parse("2026-11-01T07:30:00Z"), Map.of("co2", 900)); // 01:30 CST
+
+        List<TelemetryDailyPoint> points = intraday(service, HistoryBucket.ONE_HOUR, CENTRAL,
+            Instant.parse("2026-11-02T00:00:00Z"), 7);
+
+        assertThat(points).extracting(TelemetryDailyPoint::day).containsExactly(
+            Instant.parse("2026-11-01T06:00:00Z"), Instant.parse("2026-11-01T07:00:00Z"));
+        assertThat(points).extracting(TelemetryDailyPoint::max).containsExactly(500.0, 900.0);
+    }
+
+    @Test
+    void onlyTheEarliestIntradayBucketCutByTheWindowStartIsPartial() {
+        Instant now = Instant.parse("2026-11-27T21:02:00Z"); // window starts 21:02 the day before
+        saveTelemetry("cut-off", "kidde-co2", Instant.parse("2026-11-26T21:01:00Z"), Map.of("co2", 999));
+        saveTelemetry("edge", "kidde-co2", Instant.parse("2026-11-26T21:03:00Z"), Map.of("co2", 500));
+        saveTelemetry("later", "kidde-co2", Instant.parse("2026-11-27T20:00:00Z"), Map.of("co2", 600));
+
+        List<TelemetryDailyPoint> points = intraday(service, HistoryBucket.FIVE_MINUTES, CENTRAL, now, 1);
+
+        assertThat(points).extracting(TelemetryDailyPoint::partial).containsExactly(true, false);
+        assertThat(points.get(0).sampleCount()).isEqualTo(1);
+    }
+
+    @Test
+    void intradayReadsOnlyTheNamedDeviceAndNumericValuesAndLeavesDayPointsWithoutAPeakTime() {
+        saveTelemetry("mine", "kidde-co2", SPIKE_AT, Map.of("co2", 700));
+        saveTelemetry("bad", "kidde-co2", SPIKE_AT.plusSeconds(1), Map.of("co2", "unavailable"));
+        saveTelemetry("other", "another-co2", SPIKE_AT, Map.of("co2", 5000));
+
+        assertThat(intraday(service, HistoryBucket.FIVE_MINUTES, CENTRAL, FIXTURE_NOW, 1))
+            .singleElement().satisfies(p -> {
+                assertThat(p.max()).isEqualTo(700.0);
+                assertThat(p.sampleCount()).isEqualTo(1);
+            });
+        saveTelemetry("today", "z2m-humid_mech", Instant.now(), Map.of("humidity", 40));
+        assertThat(service.dailyAggregates("z2m-humid_mech", "humidity", 7))
+            .singleElement().satisfies(p -> assertThat(p.maxAt()).isNull());
+    }
+
     // 2026-08-27: reportedFieldsByDevice() -- the real, observed-data
     // ground truth for the field/device picker, replacing
     // DeviceType.telemetryFields()'s static per-type guess (see its own

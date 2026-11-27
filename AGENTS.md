@@ -923,6 +923,10 @@ All items below are **complete and pushed to GitHub**:
   `docs/governance/backlog.md`'s W-21 row for the full record, including
   its relationship to PR #106 (which first drafted this same ID and
   scope but shipped no implementation).
+- **Intraday history (W-173, 2026-11-27)**: the same route takes `bucket`
+  (`5m`, `15m`, `1h`; default `1d`, unchanged). Intraday answers carry `bucket` and
+  `timezone` (`cabin.timezone`), and `maxAt` per point. Only the day answer is open
+  without a credential; demo links always get it. See DL-2026-11-27-01.
 - **Status Checks alert flow: silencing safety floor, undo, and a
   reliable "Open device"** (2026-10-12) — review of the See -> Think -> Act
   chain in `StatusChecksCard` found three gaps. (1) **A CRITICAL check
