@@ -1,6 +1,7 @@
 import { electricalMonitoringDevices, electricalValue, monitoringDeviceTarget, valueSegments } from "./electricalMonitoring";
 import { collapseDuplicateZigbeeServices, duplicateOfZigbeeParent } from "./zigbeeServices";
 import { applyMonitoringPreferences, isMonitoringAlarm, useMonitoringPreferences } from "./monitoringPreferences";
+import { MonitoringPreferenceEditor } from "./MonitoringPreferenceEditor";
 import { ExpandableList, COLLAPSED_LIMIT } from "./ExpandableList";
 import { DEVICE_KIND_OPTIONS, batteryLevel, makeKindOf } from "./deviceKinds";
 import { BatteryMaintenanceCard } from "./BatteryMaintenanceCard";
@@ -7216,6 +7217,9 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
         </button>
       </div>
 
+      {sharedPreferencesEnabled && <MonitoringPreferenceEditor
+        entries={kpiEntries.filter(entry => entry.d.location === locCfg.id)}
+        location={locCfg.id} apiBase={locCfg.apiBase} auth={auth} preferences={preferences} />}
       <div className={`kpi-grid ${reorderMode ? "reorder-mode" : ""}`}>
         {preferences?.error && <p role="status">Shared Monitoring preferences unavailable. Showing this browser’s view.</p>}
         <ExpandableList items={visibleEntries} keyOf={e => e.tile.deviceId} noun="tiles" forceOpen={reorderMode}
@@ -7495,7 +7499,7 @@ export function MnSeeView({ devices, activeLocation, active, reorderMode, auth,
     : [LOCATIONS[activeLocation] || LOCATIONS.cabin];
   return (
     <div className={activeLocation === "both" ? "monitoring-split" : ""}>
-      {sharedPreferencesEnabled && reorderMode && <p role="status">Shared order is read-only here. Shared editing is coming next.</p>}
+      {sharedPreferencesEnabled && reorderMode && <p role="status">Use Monitoring visibility and order to save shared order. Tile drag is off in shared mode.</p>}
       {locs.map(loc => (
         <LocationMonitoringSection key={loc.id} locCfg={loc} devices={ordered} active={active}
           reorderMode={reorderMode && !sharedPreferencesEnabled} dragIdx={dragIdx} overIdx={overIdx} pinnedCount={pinnedCount}

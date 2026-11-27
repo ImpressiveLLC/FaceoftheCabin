@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export const isMonitoringAlarm = device => ["ALARM", "CRITICAL"].includes(device.state);
 
@@ -28,6 +28,10 @@ export function applyMonitoringPreferences(items, preferences, idOf = d => d.dev
 /** Read-only and opt-in. Failed or superseded requests never supply a preference snapshot. */
 export function useMonitoringPreferences(enabled, location, apiBase, fetcher) {
   const [result, setResult] = useState(null);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const refresh = useCallback(() => setRefreshVersion(version => version + 1), []);
+  const accept = useCallback(data => setResult({ location, apiBase, fetcher, data:
+    validateMonitoringPreferences(data, location) }), [location, apiBase, fetcher]);
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
@@ -46,7 +50,7 @@ export function useMonitoringPreferences(enabled, location, apiBase, fetcher) {
       .catch(() => { if (!cancelled) setResult({ location, apiBase, fetcher, error: true }); })
       .finally(() => clearTimeout(timer));
     return () => { cancelled = true; clearTimeout(timer); controller.abort(); };
-  }, [enabled, location, apiBase, fetcher]);
+  }, [enabled, location, apiBase, fetcher, refreshVersion]);
   return enabled && result?.location === location && result.apiBase === apiBase && result.fetcher === fetcher
-    ? result : null;
+    ? { ...result, refresh, accept } : { refresh, accept };
 }
