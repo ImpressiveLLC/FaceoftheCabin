@@ -153,6 +153,15 @@ None yet — see Known gaps below.
 
 ---
 
+## Reading precision (W-174)
+
+Automated: `ui/src/readingFormat.test.jsx` (per-field precision, long humidity values, missing and
+non-numeric values, below-zero temperature, nonzero CO never zero, alarm state from the device,
+tile, device detail and Family Hub rows) and the guest and tile cases in `App.test.jsx`.
+
+Manual after deploy: Monitoring humidity tiles show a whole percent on one line. Open a humidity
+device in Devices: the attribute is rounded and hovering it shows the stored value.
+
 ## Alert History (W-64)
 
 Spec: [`docs/PRODUCT_NOTES.md`](PRODUCT_NOTES.md) § "2026-10-12 — Alert History".
