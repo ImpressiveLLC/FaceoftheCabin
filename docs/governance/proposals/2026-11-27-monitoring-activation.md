@@ -19,8 +19,14 @@ After independent exact-head review and the normal deployment completes, verify 
 5. Confirm signed-out/demo/Viewer write controls remain disabled. Report unavailable session classes or absent active alarms as not exercised live, not as a live pass.
 6. Report each location's result and any unavailable evidence on #244. A successful workflow or build alone is not enabled-mode acceptance.
 
+Acceptance edits persist explicit choices for every eligible card. Restoring the original visible state does not restore an empty preference record; retain the resulting records and audit history.
+
 ## Rollback
 
 On a hidden alarm, wrong order or write failure, stop acceptance and roll back immediately under Nate's instruction. Through the normal reviewed config/deployment path, change the production Compose flag default to `false` and rebuild/redeploy the UI; if an explicit host override supplied `true`, the deployment owner must also clear or set that override to `false`. Restarting the old image cannot change a baked Vite flag. Verify the new editor is absent and the previous local-order behavior returns. Retain preference records and audit history; rollback does not delete data or revert the backend schema.
 
 This document is the activation procedure, not a claim that deployment or live acceptance has completed. No agent launches a ladder run or changes local WSL/Docker state for this task.
+
+If the normal revert/deploy path is unavailable, the authorized host operator can set `MONITORING_PREFERENCES_ENABLED=false` in `infra/.env` and use the manual UI rebuild/recreate procedure in [MAINTENANCE.md](../../MAINTENANCE.md). This is a fallback only; record the override so later configuration deployment does not silently re-enable the flag. It does not authorize automated remote host edits.
+
+The production Compose change can trigger UI, backend and production-stack workflows. Watch all triggered workflows and the backend health/rollback outcome; the UI workflow has no equivalent post-start health gate, so report its delivery separately from live acceptance. Report any rollback explicitly.
