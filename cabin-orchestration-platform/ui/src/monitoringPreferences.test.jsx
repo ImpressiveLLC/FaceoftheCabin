@@ -54,7 +54,7 @@ describe("Monitoring read-through contract", () => {
     const view = render(<View devices={[temperature("a"), temperature("b")]} reorderMode />);
     await waitFor(() => expect(labels(view.container)[0]).toContain("a"));
     expect(view.container.querySelector('[draggable="true"]')).toBeNull();
-    expect(within(view.container).getByText(/Shared order is read-only/)).toBeTruthy();
+    expect(within(view.container).getByText(/Tile drag is off in shared mode/)).toBeTruthy();
     expect(fetch.mock.calls.every(([, options]) => !options?.method || options.method === "GET")).toBe(true);
   });
 
