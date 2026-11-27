@@ -217,7 +217,19 @@ function Get-EpochNow { return [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() }
 function Read-Samples([string]$Csv, [switch]$Complete) {
     $samples = @(); $invalid = 0
     if (Test-Path -LiteralPath $Csv) {
-        $stream = [IO.File]::Open($Csv, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+        # A concurrent writer may briefly deny sharing. Bound the wait to 400 ms;
+        # never substitute old samples or retry other IO errors. The caller still
+        # checks the timestamps, missing samples and floor after this read.
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                $stream = [IO.File]::Open($Csv, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+                break
+            } catch [IO.IOException] {
+                $code = $_.Exception.HResult -band 0xffff
+                if ($code -notin 32, 33 -or $attempt -ge 5) { throw }
+                Start-Sleep -Milliseconds 100
+            }
+        }
         try { $text = [IO.StreamReader]::new($stream).ReadToEnd() } finally { $stream.Dispose() }
         if ($Complete -and -not $text.EndsWith("`n")) { $text = $text.Substring(0, $text.LastIndexOf("`n") + 1) }
         foreach ($line in @($text -split "`r?`n" | Select-Object -Skip 1)) {
