@@ -27,6 +27,13 @@ On a hidden alarm, wrong order or write failure, stop acceptance and roll back i
 
 This document is the activation procedure, not a claim that deployment or live acceptance has completed. No agent launches a ladder run or changes local WSL/Docker state for this task.
 
-If the normal revert/deploy path is unavailable, the authorized host operator can set `MONITORING_PREFERENCES_ENABLED=false` in `infra/.env` and use the manual UI rebuild/recreate procedure in [MAINTENANCE.md](../../MAINTENANCE.md). This is a fallback only; record the override so later configuration deployment does not silently re-enable the flag. It does not authorize automated remote host edits.
+If the normal revert/deploy path is unavailable, the authorized host operator can set `MONITORING_PREFERENCES_ENABLED=false` in `infra/.env`. Follow the host/checkouts constraints in [MAINTENANCE.md](../../MAINTENANCE.md); the UI-only rebuild/recreate commands below are scoped from `deploy-family-hub.yml`. From the deployed checkout's `cabin-orchestration-platform/infra` directory, with no deployment running:
+
+```sh
+MONITORING_PREFERENCES_ENABLED=false docker compose -f docker-compose.yml -f docker-compose.m920q.yml build cabin-ui
+docker compose -f docker-compose.yml -f docker-compose.m920q.yml up -d --no-deps cabin-ui
+```
+
+This is a fallback only; record the override so later configuration deployment does not silently re-enable the flag. It does not authorize automated remote host edits.
 
 The production Compose change can trigger UI, backend and production-stack workflows. Watch all triggered workflows and the backend health/rollback outcome; the UI workflow has no equivalent post-start health gate, so report its delivery separately from live acceptance. Report any rollback explicitly.
