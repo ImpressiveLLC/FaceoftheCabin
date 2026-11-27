@@ -5931,9 +5931,11 @@ export function kpiTileFor(device, tempUnit, reportingRelationships = {}, { sign
     case "CO2_SENSOR":
       return { icon: Wind, label: curatedLabel("co2") || device.name, deviceId: device.deviceId,
         value: readingText("co2", device.attributes?.co2, " ppm"), state: device.state };
-    case "AIR_QUALITY_SENSOR":
+    case "AIR_QUALITY_SENSOR": {
+      const unit = airQualitySourceUnit(device);
       return { icon: Wind, label: device.name, deviceId: device.deviceId,
-        value: device.attributes?.airQualityIndex != null ? `${device.attributes.airQualityIndex}` : "—", state: device.state };
+        value: readingText("airQualityIndex", device.attributes?.airQualityIndex, unit ? ` ${unit}` : ""), state: device.state };
+    }
     case "CO_SENSOR":
       return { icon: Wind, label: curatedLabel("co") || device.name, deviceId: device.deviceId,
         value: readingText("co", device.attributes?.co, " ppm"), state: device.state };

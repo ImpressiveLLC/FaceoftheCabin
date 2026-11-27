@@ -291,6 +291,10 @@ Smart-switch tiles retain the reported ON/OFF relay state alongside watts and en
 
 ## How many digits a reading shows
 
+Air quality tiles keep their device names. VOC concentrations show the sensor's reported unit
+(for example, ppb); air quality indices stay unitless. A missing source unit is not guessed.
+Tile values use up to one decimal, retaining small nonzero readings instead of showing zero.
+
 Readings are rounded for reading. Humidity and CO2 are whole numbers, temperature and water
 pressure show up to one decimal, CO up to two, and electrical readings on tiles are shown as the
 device reports them. A small CO or air quality reading that is not zero is never shown as zero.

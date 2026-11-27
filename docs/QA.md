@@ -295,6 +295,14 @@ Door contacts: nothing in code selects by `ACCESS_CONTROL` except the lock resol
 lack) and the two door-contact trigger vocabulary rows' `appliesToCapability`, which is stored but read by no code or UI.
 Removing it from the contacts at re-detect is safe at runtime; the ontology rows still declare `ACCESS_CONTROL`.
 
+## Air quality tile units (W-174 follow-up)
+
+Automated: `ui/src/airQualityTile.test.jsx` covers source-reported VOC units, unitless AQI,
+missing metadata, raw value and alarm-state preservation, invalid readings, zero and tiny values.
+After deploy, compare a Total VOC tile with its source unit and the history view: ppb appears
+only on the VOC sensor; the separate AQI tile stays unitless. Device names remain unchanged.
+Live verification is pending deployment and a working browser session.
+
 ## Sensor History intraday resolution (W-173)
 
 Automated: `HistoryBucketTest`, `CabinEventServiceTest` (same-day spike, zone independence,
