@@ -1,19 +1,28 @@
 # Ladder run 9: prospective paging rule `v2-stall` (proposal)
 
-Status: proposed, docs only. Code, 27 Nov 2026, per Cowork's direction on #244 (7227014902), drafted on Nate's go in Code's chat. This note authorizes no run, no code, no launcher, host, WSL or Docker change and no trainer change. A run needs Nate's separate go.
+Status: **D1 to D4 ratified by Nate on 27 Nov 2026**, recorded by Cowork on #244 ([7229666326](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/244#issuecomment-7229666326)). Docs only. Code, 27 Nov 2026, per Cowork's direction on #244 (7227014902), drafted on Nate's go in Code's chat. This note authorizes no run and no launcher run, host, WSL or Docker change and no trainer change. A run needs Nate's separate go after the harness change is reviewed and merged.
 
 Runs 5 to 8 stay exactly as graded. Nothing here relabels them. Their figures below are evidence for choosing a rule. None of them is a `v2-stall` verdict, and their sealed records lack the trace this rule would judge (section 5).
 
-## 1. Decisions requested
+## 1. Decisions
 
-| # | Question | Code recommends |
+| # | Question | Code recommended |
 |---|---|---|
 | D1 | May kernel stall time (PSI) judge a rung? Today it is evidence only (7202263773, #614). | Yes, in the training phase, under a new labelled rule |
 | D2 | What stall exposure is tolerated? | At most 1 percent of the training phase with at least one cgroup task stalled on memory, and the same for IO, judged separately |
 | D3 | Accept that load and save are not judged for paging? | Yes, with the cost stated in section 4 |
 | D4 | Is one passing run enough to record a qualified rung for this exact configuration? | Yes; a reviewer may require a repeat before any use of it |
 
-Order: Codex peer review, Cowork review, then Nate. Merging this note decides none of D1 to D4.
+**Ruling** ([7229666326](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/244#issuecomment-7229666326), 27 Nov, 16:50 CST, Nate's words in Cowork chat: "I agree to your recommendations", answering Cowork's recommendations in 7229520953):
+
+| # | Ratified |
+|---|---|
+| D1 | Yes. PSI may judge the training phase under the new label `v2-stall`. The evidence-only ruling (7202263773) stays for runs 5 to 8; they are not relabeled. |
+| D2 | Yes. 1 percent of the training phase, memory and IO judged separately. Disclosed as chosen after seeing the data (section 4). |
+| D3 | Yes. Load and save are reported, not judged. |
+| D4 | Yes, with a condition. One pass is recorded for that exact configuration; a repeat is **required** before anyone relies on it. This is stricter than the recommendation in the table above. |
+
+Run 9 is not authorized. Order from here: harness pull request with tests and no run, Codex review, Cowork review, then Nate's separate go for any run.
 
 ## 2. Evidence base
 
@@ -108,6 +117,8 @@ The training evidence is valid only if all of these hold. Otherwise the rung fai
 
 Rung 1024 crossed the memory ceiling in run 8 by 6,271,796 bytes, so a stop there is plausible. A later failure does not remove an earlier rung's PASS.
 
+**Repeat before reliance (D4 as ratified).** One qualifying pass is recorded for that exact configuration. Nothing may rely on it until a repeat is done. A repeat is a further run and needs its own go.
+
 **Run 9 would not establish:** a host maximum; capacity at 1024 or 2048; anything about `train_sft.py` or a trainer without checkpointing; trainer adoption; long training runs, real data or model quality.
 
 ## 7. Configuration
@@ -121,9 +132,9 @@ Same as run 8: configuration C-gc; pinned `unsloth/Llama-3.2-3B-Instruct@006f5dc
 | `pressure-trace.csv` written | Section 5 |
 | Source commit is main after the code change | The rule does not exist in the code today |
 
-## 8. Code change, if D1 to D3 are accepted
+## 8. Code change (D1 to D3 ratified)
 
-A separate PR with tests and no run. This note does not authorize it.
+A separate PR with tests and no run, assigned to Code in [7229666326](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/244#issuecomment-7229666326).
 
 - `ladder.py`: add `v2-stall`; fixed limits of 1 percent (or the ruled figure) with no command-line override; judge from `pressure-trace.csv`; allow gradient checkpointing with `v2-stall` as well as `v1` (it is refused today); keep evidence mode `v1` only.
 - `ladder_rung.py`: write the trace when the rule is selected.
