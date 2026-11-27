@@ -8,7 +8,7 @@ PresenceActivityView, formatActiveTime, formatDaysSince, formatPresenceDay,
 armedWhileOccupiedNotices, ArmedWhileOccupiedBanner,
 StorageTrimWidget, trimPreview, formatTrimBytes, keepForFreeing, MonitoringPanel,
 formatPresenceAge, presenceBadgeModel, PresenceBadge,
-mergeStatusCheckItems, silencedStatusChecks, readStoredLocation, ACTIVE_LOCATION_KEY, AlertHistoryLog, alertRulesTarget, ZigbeePairingFlow, pairingRefusedMessage, zonedTime, todaysPeak, SENSOR_HISTORY_TABLE_LIMIT } from "./App.jsx";
+mergeStatusCheckItems, silencedStatusChecks, readStoredLocation, ACTIVE_LOCATION_KEY, AlertHistoryLog, alertRulesTarget, ZigbeePairingFlow, pairingRefusedMessage, zonedTime, todaysPeak, SENSOR_HISTORY_TABLE_LIMIT, airQualitySourceUnit } from "./App.jsx";
 import { ThemeProvider } from "./ThemeProvider.jsx";
 
 // The toolbar's Cabin / Home / Both choice is remembered per browser (2026-10-10:
@@ -804,6 +804,60 @@ describe("SensorHistoryPanel", () => {
       fireEvent.click(screen.getByRole("button", { name: "Download CSV" }));
       expect((await readBlob(createObjectURL.mock.calls[0][0])).split("\n")).toHaveLength(many.length + 1);
     }, 20000);
+  });
+
+  // W-173: the "airQualityIndex" field holds Total VOC (ppb) and a unitless index. Units come per sensor.
+  describe("air quality units come from each sensor", () => {
+    const sensor = (id, name, attributes) => ({ deviceId: id, name, type: "AIR_QUALITY_SENSOR", state: "ONLINE",
+      location: "cabin", attributes: { enabled: true, reportsFields: ["airQualityIndex"], ...attributes } });
+    const mixed = [
+      sensor("tvoc", "Total VOC", { device_class: "volatile_organic_compounds_parts", unit_of_measurement: "ppb" }),
+      sensor("aqi", "Indoor Air Quality", { device_class: "aqi" }),
+    ];
+    const at = new Date(Math.floor(Date.now() / 1000) * 1000).toISOString();
+    const valueFor = (url) => url.includes("deviceId=tvoc") ? 1453.2 : 101.8;
+    const point = (url) => ({ day: at, avg: valueFor(url), min: valueFor(url), max: valueFor(url), sampleCount: 3, partial: false, maxAt: at });
+
+    it("reads a unit only from a volatile organic compound sensor's own metadata", () => {
+      expect(airQualitySourceUnit(mixed[0])).toBe("ppb");
+      expect(airQualitySourceUnit(mixed[1])).toBe("");
+      expect(airQualitySourceUnit(sensor("a", "a", { device_class: "aqi", unit_of_measurement: "ppb" }))).toBe("");
+      expect(airQualitySourceUnit(sensor("b", "b", { device_class: "volatile_organic_compounds_parts" }))).toBe("");
+      expect(airQualitySourceUnit(sensor("c", "c", {}))).toBe("");
+      expect(airQualitySourceUnit(undefined)).toBe("");
+    });
+
+    for (const [resolution, label] of [["1d", "day"], ["5m", "intraday"]]) {
+      it(`shows and exports ppb on Total VOC only (${label})`, async () => {
+        vi.stubGlobal("fetch", reportedFieldsFetch(mixed, (url) => [point(url)], (pts) => ({
+          requestedDays: 30, effectiveDays: 30, clamped: false, points: pts,
+          ...(resolution === "1d" ? {} : { bucket: resolution, timezone: "America/Chicago" }),
+        })));
+        const createObjectURL = vi.fn().mockReturnValue("blob:mock");
+        vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
+        render(<SensorHistoryPanel devices={mixed} apiBase="http://cabin" tempUnit="F" />);
+        fireEvent.change(await screen.findByLabelText(/^resolution$/i), { target: { value: resolution } });
+
+        const high = (text) => resolution === "1d" ? "" : `max ${text}, `;
+        expect(await screen.findByText(`1453.2 ppb (${high("1453.2 ppb")}n=3)`)).toBeTruthy();
+        expect(screen.getByText(`101.8 (${high("101.8")}n=3)`)).toBeTruthy();
+        if (resolution !== "1d") {
+          const peaks = screen.getByRole("list", { name: /today's peak/i });
+          expect(peaks.textContent).toContain("Total VOC: today's peak 1453.2 ppb at");
+          expect(peaks.textContent).toContain("Indoor Air Quality: today's peak 101.8 at");
+        }
+        fireEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+        const text = await new Promise(resolve => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.readAsText(createObjectURL.mock.calls[0][0]);
+        });
+        const [header, ...rows] = text.split("\n");
+        expect(header.endsWith(",unit")).toBe(true);
+        expect(rows.find(r => r.includes('"Total VOC"')).endsWith(",ppb")).toBe(true);
+        expect(rows.find(r => r.includes('"Indoor Air Quality"')).endsWith(",")).toBe(true);
+      });
+    }
   });
 
   // The user reported not knowing what "(n=…)" meant at all until asking --

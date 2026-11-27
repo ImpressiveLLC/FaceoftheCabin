@@ -6090,6 +6090,14 @@ const SENSOR_FIELD_UNITS = {
   temperature: "°", humidity: "%", co2: " ppm", co: " ppm", airQualityIndex: "",
   power: " W", energy: " kWh", current: " A", voltage: " V",
 };
+// "airQualityIndex" holds two different quantities: a volatile organic compound concentration (HA
+// device_class volatile_organic_compounds*, with a unit such as ppb) and a unitless air quality index (aqi).
+// The unit therefore comes from the sensor's own reported metadata, and is never guessed.
+export function airQualitySourceUnit(device) {
+  const attributes = device?.attributes || {};
+  if (!String(attributes.device_class || "").startsWith("volatile_organic_compounds")) return "";
+  return String(attributes.unit_of_measurement || "").trim();
+}
 // Human labels for DeviceStatus.attributes.reportsFields (DeviceType.telemetryFields()
 // backend-side) -- reuses this same picker's own labels so "Reports: Humidity" in
 // Device Manager's device detail and "Humidity" in the Sensor History field picker
@@ -6872,6 +6880,12 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
   };
 
   const unit = field === "temperature" ? `°${tempUnit}` : (SENSOR_FIELD_UNITS[field] ?? "");
+  // The unit after one device's value: the field's own, except where it depends on the sensor.
+  const unitFor = (deviceId) => {
+    if (field !== "airQualityIndex") return unit;
+    const reported = airQualitySourceUnit(devices.find(d => d.deviceId === deviceId));
+    return reported ? ` ${reported}` : "";
+  };
   // Backend always stores/returns Celsius -- convert for display only,
   // same on-the-fly conversion fmtTemp() already does for current values.
   const toDisplay = (v) => v == null ? null : (field === "temperature" && tempUnit === "F" ? v * 9 / 5 + 32 : v);
@@ -6949,8 +6963,9 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
   // emits a row for a date+device pair that actually has data, same
   // "don't fabricate a value that isn't real" reasoning as the on-screen
   // table's "—" cells -- a pivot built on this can trust every row.
-  // The unit as plain ASCII, so a spreadsheet never mangles the degree sign. Empty where the field has none.
-  const csvUnit = field === "temperature" ? `deg${tempUnit}` : unit.trim();
+  // The unit as plain ASCII with no separators, so a spreadsheet never mangles it. Empty where there is none.
+  const csvUnitFor = (deviceId) => field === "temperature" ? `deg${tempUnit}`
+    : unitFor(deviceId).trim().replace(/[µμ]/g, "u").replace(/³/g, "3").replace(/[",\r\n]/g, "");
   const downloadCsv = () => {
     const header = intraday
       ? "time,utc_offset,timezone,resolution,device,avg,min,max,max_time,count,partial,unit\n"
@@ -6965,15 +6980,15 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
           const peakAt = zonedTime(p.maxAt, intraday.timezone);
           rows.push([`${at.date} ${at.time}`, at.offset, intraday.timezone, intraday.bucket, `"${nameFor(id)}"`,
             shown(p.avg), shown(p.min), shown(p.max),
-            `${peakAt.date} ${peakAt.time}`, p.sampleCount, p.partial ? "yes" : "no", csvUnit].join(","));
+            `${peakAt.date} ${peakAt.time}`, p.sampleCount, p.partial ? "yes" : "no", csvUnitFor(id)].join(","));
         } else {
-          rows.push([new Date(day).toLocaleDateString(), `"${nameFor(id)}"`, shown(p.avg), p.sampleCount, p.partial ? "yes" : "no", csvUnit].join(","));
+          rows.push([new Date(day).toLocaleDateString(), `"${nameFor(id)}"`, shown(p.avg), p.sampleCount, p.partial ? "yes" : "no", csvUnitFor(id)].join(","));
         }
       }
       for (const sr of outdoorSeries) {
         const o = sr.byDay[String(day).slice(0, 10)];
         if (!o) continue;
-        rows.push([new Date(day).toLocaleDateString(), `"${sr.label}"`, shown(o.value), o.n, o.partial ? "yes" : "no", csvUnit].join(","));
+        rows.push([new Date(day).toLocaleDateString(), `"${sr.label}"`, shown(o.value), o.n, o.partial ? "yes" : "no", csvUnitFor(null)].join(","));
       }
     }
     const blob = new Blob([header + rows.join("\n")], { type: "text/csv" });
@@ -7123,7 +7138,7 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
                     {peaks.map(({ deviceId, peak }) => (
                       <li key={deviceId} className="config-hint">
                         {peak
-                          ? `${nameFor(deviceId)}: today's peak ${shown(peak.max)}${unit} at ${zonedTime(peak.maxAt, intraday.timezone).label}`
+                          ? `${nameFor(deviceId)}: today's peak ${shown(peak.max)}${unitFor(deviceId)} at ${zonedTime(peak.maxAt, intraday.timezone).label}`
                           : `${nameFor(deviceId)}: no reading today`}
                       </li>
                     ))}
@@ -7140,7 +7155,7 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
                       <circle key={deviceId} data-testid={`peak-marker-${deviceId}`} r="3.5"
                         cx={xOf(peak.day)} cy={toY(toDisplay(peak.max))}
                         fill={devicePaths.find(p => p.deviceId === deviceId)?.color}>
-                        <title>{`${nameFor(deviceId)}: ${shown(peak.max)}${unit} at ${zonedTime(peak.maxAt, intraday.timezone).label}`}</title>
+                        <title>{`${nameFor(deviceId)}: ${shown(peak.max)}${unitFor(deviceId)} at ${zonedTime(peak.maxAt, intraday.timezone).label}`}</title>
                       </circle>
                     ))}
                     {outdoorPoints.filter(p => p.hasPoints).map(p => (
@@ -7201,8 +7216,8 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
                             // average per cell hides whether a reading came from dozens of
                             // samples or one stray point, which is exactly the kind of
                             // question an insurance inspector would ask.
-                            const high = intraday && p?.max != null ? `max ${shown(p.max)}${unit}, ` : "";
-                            const text = p?.avg != null ? `${shown(p.avg)}${unit} (${high}n=${p.sampleCount})` : "—";
+                            const high = intraday && p?.max != null ? `max ${shown(p.max)}${unitFor(id)}, ` : "";
+                            const text = p?.avg != null ? `${shown(p.avg)}${unitFor(id)} (${high}n=${p.sampleCount})` : "—";
                             return <td key={id} title={text}>{text}</td>;
                           })}
                           {outdoorSeries.map(sr => {
