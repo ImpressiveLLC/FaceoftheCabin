@@ -392,6 +392,8 @@ services:
         # config file this repo can drive). Core device list/status and the
         # Family Hub link both need this to work for a non-Tailscale visitor.
         VITE_CABIN_API_BASE: ${CABIN_API_URL:-https://api.unicornpingpong.com}
+        # Nate activation go: #244 comment 7225748072. Build-time flag; false + rebuild rolls back.
+        VITE_MONITORING_PREFERENCES: ${MONITORING_PREFERENCES_ENABLED:-true}
         # Found 2026-09-12: never wired at all before -- the source
         # default (App.jsx's LOCATIONS.home.apiBase, "http://home-hub:8080")
         # silently pointed every Home-location API call (candidates,
