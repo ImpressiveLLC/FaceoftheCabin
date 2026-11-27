@@ -40,7 +40,7 @@ Draft formula names below identify versions for discussion, not allocated ontolo
 
 Humidity formula basis: [WMO-No. 8, 2008 edition, Annex 4.B, page I.4-29](https://www.weather.gov/media/epz/mesonet/CWOP-WMO8.pdf), and Vaisala's [absolute humidity](https://docs.vaisala.com/r/M211280EN-E/en-US/GUID-6454B70E-2FB0-437D-8D3E-0DA8A5AD35D2) and [vapor pressure](https://docs.vaisala.com/r/M211280EN-E/en-US/GUID-718156BA-B884-494E-9739-D102F69AE5FB) definitions. The selected combination is a proposed approximation, not a claim to reproduce a calibrated instrument's full algorithm.
 
-AQI source review: EPA links to the [May 2026 AirNow technical assistance document](https://document.airnow.gov/technical-assistance-document-for-the-reporting-of-daily-air-quailty.pdf), appendix Equation 1 and Table 6. It distinguishes pollutant windows, concentration truncation and index rounding, and supplies out-of-scale handling. Do not adopt a breakpoint table or NowCast method from an older code fixture without reconciling this revision under W-104. No breakpoint or attention threshold is adopted by this draft.
+AQI source review: EPA links to the [May 2026 AirNow technical assistance document](https://document.airnow.gov/technical-assistance-document-for-the-reporting-of-daily-air-quailty.pdf), Section IV, Equation 1 and Table 6. It distinguishes pollutant windows, concentration truncation and index rounding, and supplies out-of-scale handling. Do not adopt a breakpoint table or NowCast method from an older code fixture without reconciling this revision under W-104. No breakpoint or attention threshold is adopted by this draft.
 
 ### Preserve existing Box calculations
 
