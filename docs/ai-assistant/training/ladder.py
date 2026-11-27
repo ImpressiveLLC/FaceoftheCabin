@@ -26,6 +26,11 @@ parent applies the host reserve rules to the numbers it is given.
 rule stays FAILURE but the ladder goes on to the next rung, to collect evidence. Every other failure stops it as above,
 the ladder is still not complete, and the result is not a qualification.
 
+`--paging-rule v2-stall` replaces the major-fault rule with the training-phase stall exposure rule ratified on #244
+(7229666326): PSI `some` at most 1 percent of the training phase for memory and for IO, judged separately from the rung's
+pressure-trace.csv, no anonymous-page refault, and any missing or invalid evidence is a failure. Load and save are reported,
+not judged. The limit is fixed, and evidence mode is refused with it.
+
 An OOM or any other stop is FAILURE EVIDENCE for that rung. It is never a pass and never a host qualification.
 """
 import argparse
@@ -51,7 +56,17 @@ RUNG_TIMEOUT_SECONDS = 20 * 60
 HOST_START_MIN_BYTES = 6 * 1024 ** 3     # Windows available before the first rung
 HOST_STOP_BELOW_BYTES = 4 * 1024 ** 3    # stop if Windows available falls below this
 MAJOR_FAULT_DELTA_LIMIT = 200            # paging rule v1 (set by Code, never ruled): whole-rung process major faults, cold reads included
-PAGING_RULES = ("v1", "v2")
+PAGING_RULES = ("v1", "v2", "v2-stall")
+# Paging rule v2-stall (D1 to D4 ratified by Nate, #244 7229666326): PSI `some` stall exposure in the training phase, at most
+# 1 percent for memory and for IO, judged separately from pressure-trace.csv. The limit is fixed; nothing overrides it.
+STALL_RULE = "v2-stall"
+STALL_NS_PER_US_AT_LIMIT = 100_000       # pass only if numerator_us * this <= denominator_ns (1 percent, integers only)
+STALL_MIN_TRAIN_NS = 5_000_000_000
+STALL_MAX_GAP_NS = 5_000_000_000
+STALL_TOTALS = ("memory_some_us", "memory_full_us", "io_some_us", "io_full_us")
+STALL_TRACE_COLUMNS = ("read_start_ns", "phase", *STALL_TOTALS, "read_end_ns")
+STALL_LABEL = ("paging rule v2-stall: training-phase PSI some at most 1 percent, memory and IO separately; one pass is recorded "
+               "for this exact configuration and a repeat is required before anyone relies on it")
 TRACE_COLUMNS_V2 = ("epoch", "current", "rss", "anon", "file", "shmem", "metric", "phase", "majflt", "pgmajfault", "refault_file", "refault_anon")
 PAGING_COUNTERS = ("majflt", "pgmajfault", "refault_file", "refault_anon")
 PAGING_WINDOW_SECONDS = 5.0
@@ -205,12 +220,15 @@ def paging_from_trace(path):
             "note": "counters are cumulative; train includes the intervals across both of its boundaries"}
 
 
-# ---------------------------------------------------------------- kernel stall time (PSI): evidence only, nothing judges it
+# ---------------------------------------------------------------- kernel stall time (PSI): judged only by rule v2-stall
 PRESSURE_RESOURCES = ("memory", "io")
 PRESSURE_KINDS = ("some", "full")
-PRESSURE_NOTE = ("EVIDENCE ONLY: no verdict, gate or stop rule reads this. total= stall time from the cgroup's pressure files. "
-                 "'some' = at least one task stalled, 'full' = all non-idle tasks stalled at once. Stall time is not the "
-                 "slowdown against an unconstrained run, and memory/io and some/full are never added together.")
+PRESSURE_MEANING = ("total= stall time from the cgroup's pressure files. "
+                    "'some' = at least one task stalled, 'full' = all non-idle tasks stalled at once. Stall time is not the "
+                    "slowdown against an unconstrained run, and memory/io and some/full are never added together.")
+PRESSURE_NOTE = "EVIDENCE ONLY: no verdict, gate or stop rule reads this. " + PRESSURE_MEANING
+PRESSURE_NOTE_STALL = ("Rule v2-stall judges the training phase from pressure-trace.csv; the training start and end totals here "
+                       "must agree with that file. Load, save and 'full' are reported, not judged. " + PRESSURE_MEANING)
 PRESSURE_SCOPE = "the rung container's cgroup, which holds the ladder parent and the rung process"
 
 
@@ -238,7 +256,7 @@ def read_pressure(path):
     return totals, None
 
 
-def pressure_summary(samples):
+def pressure_summary(samples, judged=False):
     """Per phase and resource, the cumulative totals at the phase's first and last sample and their difference, with the
     monotonic time between them. `samples` is [(phase, monotonic_seconds, {resource: (totals, reason)})] in order. A phase
     with an unreadable sample, a counter that went backwards, or only one sample is "unavailable" with the reason."""
@@ -271,7 +289,114 @@ def pressure_summary(samples):
             entry[resource] = {"status": "ok", **{k: {"start_us": start[k], "end_us": end[k], "delta_us": end[k] - start[k]}
                                                   for k in PRESSURE_KINDS}}
         out[phase] = entry
-    return {"evidence_only": True, "note": PRESSURE_NOTE, "scope": PRESSURE_SCOPE, "unit": "microseconds", "phases": out}
+    return {"evidence_only": not judged, "note": PRESSURE_NOTE_STALL if judged else PRESSURE_NOTE,
+            "scope": PRESSURE_SCOPE, "unit": "microseconds", "phases": out}
+
+
+# ---------------------------------------------------------------- rule v2-stall: the judged trace
+def stall_from_trace(path):
+    """The training phase of a rung's pressure-trace.csv, for rule v2-stall. Returns {"problems": [...], ...}; any problem
+    means the evidence is invalid. Numerator and denominator come from the same two rows: S, the first row labelled train,
+    and E, the last. The denominator is E's read_start_ns minus S's read_end_ns, the shortest the interval can have been,
+    so reading time can only overstate the share. Every row of every phase must be well formed."""
+    found = {"problems": [], "rows": 0, "train_rows": 0, "denominator_ns": None, "train": None}
+    problems = found["problems"]
+    try:
+        text = Path(path).read_bytes().decode("ascii")
+    except FileNotFoundError:
+        problems.append("no pressure-trace.csv")
+        return found
+    except (OSError, UnicodeError) as error:
+        problems.append(f"pressure-trace.csv not readable: {type(error).__name__}")
+        return found
+    lines = text.split("\n")
+    if lines.pop() != "":
+        problems.append("the last line is cut: no line end")
+    if not lines or lines[0] != ",".join(STALL_TRACE_COLUMNS):
+        problems.append("header is not the expected columns")
+        return found
+    rows = []
+    for number, line in enumerate(lines[1:], start=2):
+        parts = line.split(",")
+        if len(parts) != len(STALL_TRACE_COLUMNS):
+            problems.append(f"line {number}: {len(parts)} columns, not {len(STALL_TRACE_COLUMNS)}")
+            continue
+        row = dict(zip(STALL_TRACE_COLUMNS, parts))
+        # plain ASCII digits only: no sign, point, exponent, NaN, infinity or blank (the length bound keeps int() safe)
+        bad = [name for name in STALL_TRACE_COLUMNS if name != "phase" and not (row[name].isdigit() and len(row[name]) <= 20)]
+        if bad:
+            problems.append(f"line {number}: not a nonnegative whole number: {', '.join(bad)}")
+            continue
+        rows.append({name: value if name == "phase" else int(value) for name, value in row.items()})
+    found["rows"] = len(rows)
+    for previous, row in zip([None] + rows, rows):
+        if row["read_end_ns"] < row["read_start_ns"]:
+            problems.append("time runs backwards inside a row")
+        if previous is None:
+            continue
+        if row["read_start_ns"] < previous["read_end_ns"]:
+            problems.append("a row starts before the previous row ends")
+        if row["read_end_ns"] - previous["read_start_ns"] > STALL_MAX_GAP_NS:
+            problems.append(f"gap over {STALL_MAX_GAP_NS} ns between rows")
+        lower = [name for name in STALL_TOTALS if row[name] < previous[name]]
+        if lower:
+            problems.append(f"a total went backwards: {', '.join(lower)}")
+    order = [row["phase"] for previous, row in zip([None] + rows, rows) if previous is None or previous["phase"] != row["phase"]]
+    if order != ["load", "train", "save"]:
+        problems.append(f"phases are not load, train, save once each: {', '.join(order) or 'none'}")
+    train = [row for row in rows if row["phase"] == "train"]
+    found["train_rows"] = len(train)
+    if len(train) < 2:
+        problems.append("fewer than two training rows")
+    else:
+        first, last = train[0], train[-1]
+        found["denominator_ns"] = last["read_start_ns"] - first["read_end_ns"]
+        found["train"] = {name: {"start_us": first[name], "end_us": last[name], "delta_us": last[name] - first[name]}
+                          for name in STALL_TOTALS}
+        if found["denominator_ns"] < STALL_MIN_TRAIN_NS:
+            problems.append(f"training interval {found['denominator_ns']} ns is under {STALL_MIN_TRAIN_NS} ns")
+    found["problems"] = list(dict.fromkeys(problems))
+    return found
+
+
+def stall_reasons(record: dict, stall) -> list:
+    """Why a rung fails the paging rule v2-stall ([] when it passes). Written as conditions to pass, so a missing or
+    unusable value cannot pass. `stall` is stall_from_trace's result."""
+    if not isinstance(stall, dict) or stall.get("problems") != []:
+        problems = stall.get("problems") if isinstance(stall, dict) else None
+        return [f"stall evidence invalid (v2-stall): {'; '.join(problems) if problems else 'no trace was judged'}"]
+    reasons = []
+    summary = record.get("pressure")
+    try:
+        reported = summary["phases"]["train"]
+        agrees = all(reported[resource]["status"] == "ok" and all(
+            type(reported[resource][kind][end]) is int
+            and reported[resource][kind][end] == stall["train"][f"{resource}_{kind}_us"][end]
+            for kind in PRESSURE_KINDS for end in ("start_us", "end_us")) for resource in PRESSURE_RESOURCES)
+    except (KeyError, TypeError):
+        agrees = False
+    if not agrees:
+        reasons.append("stall evidence invalid (v2-stall): the training totals in rung.json do not agree with pressure-trace.csv")
+    for resource in PRESSURE_RESOURCES:
+        numerator, denominator = stall["train"][f"{resource}_some_us"]["delta_us"], stall["denominator_ns"]
+        if not (is_count(numerator) and is_count(denominator) and denominator >= STALL_MIN_TRAIN_NS
+                and numerator * STALL_NS_PER_US_AT_LIMIT <= denominator):
+            reasons.append(f"sustained paging (v2-stall): {resource} stall {numerator} us is over 1 percent of the "
+                           f"{denominator} ns training interval")
+    train = ((record.get("paging") or {}).get("phases") or {}).get("train")
+    if not train:
+        return reasons + ["paging evidence missing: no training-phase counters in the rung record"]
+    if train.get("invalid_samples") != 0 or train.get("reset") != []:
+        reasons.append("paging evidence incomplete: unreadable or reset counter samples in the training phase")
+    if train.get("coverage_ok") is not True:
+        reasons.append("paging evidence incomplete: the samples do not cover the training phase (both boundaries, "
+                       f"two training samples spanning at least {PAGING_WINDOW_SECONDS} s, no gap longer than that)")
+    anon = train.get("refault_anon_delta")
+    if not is_count(anon):
+        reasons.append("paging evidence missing: no valid anonymous-page refault count in the training phase")
+    elif anon > 0:
+        reasons.append(f"sustained paging (v2-stall): {anon} anonymous-page refaults in training (swap-ins)")
+    return reasons
 
 
 FILLER = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel"]
@@ -370,10 +495,10 @@ def only_v1_paging_failed(record: dict, reasons: list) -> bool:
 
 def checkpointing_config_problem(ceiling_metric, container_cap, paging_rule) -> str:
     """Why gradient checkpointing cannot be requested with this configuration ('' when it can): it is C plus one change."""
-    if (ceiling_metric, container_cap, paging_rule) == ("anon_shmem", "budget", "v1"):
+    if (ceiling_metric, container_cap) == ("anon_shmem", "budget") and paging_rule in ("v1", STALL_RULE):
         return ""
     return ("gradient checkpointing is configuration C plus one change: use it with ceiling metric anon_shmem, "
-            "container cap budget and paging rule v1")
+            "container cap budget and paging rule v1 or v2-stall")
 
 
 def checkpointing_reason(record) -> str:
@@ -387,9 +512,10 @@ def checkpointing_reason(record) -> str:
 
 
 def judge_rung(record: dict, *, budget_bytes: int, host_before=None, host_after=None, host_min_seen=None,
-               paging_rule="v1", paging_limit=None, container_memory_bytes=None) -> dict:
+               paging_rule="v1", paging_limit=None, container_memory_bytes=None, stall=None) -> dict:
     """Applies the stop rules to one rung's record. Returns {"status": "PASS"|"FAILURE", "reasons": [...]}.
-    Missing evidence is a failure, never a pass. The record keys are those ladder_rung.py writes."""
+    Missing evidence is a failure, never a pass. The record keys are those ladder_rung.py writes. `stall` is
+    stall_from_trace's result and is read only under rule v2-stall."""
     reasons = []
     if not isinstance(record, dict) or not record:
         return {"status": "FAILURE", "reasons": ["no rung record was written"]}
@@ -442,7 +568,9 @@ def judge_rung(record: dict, *, budget_bytes: int, host_before=None, host_after=
     for name, entry in phases.items():
         if entry.get("reset"):
             reasons.append(f"paging evidence invalid: counter went backwards in the {name} phase ({', '.join(entry['reset'])})")
-    if paging_rule == "v2":
+    if paging_rule == STALL_RULE:
+        reasons += stall_reasons(record, stall)
+    elif paging_rule == "v2":
         # v2 judges file-page refaults in the TRAINING phase only (cold reads while loading are not paging pressure). The
         # limit is explicit: nobody has ruled a number, so there is no default.
         if paging_limit is None:
@@ -469,6 +597,8 @@ def judge_rung(record: dict, *, budget_bytes: int, host_before=None, host_after=
                     reasons.append("paging evidence missing: no valid anonymous-page refault count in the training phase")
                 elif anon > 0:
                     reasons.append(f"sustained paging (v2): {anon} anonymous-page refaults in training (swap-ins)")
+    elif paging_rule != "v1":
+        reasons.append(f"unknown paging rule {paging_rule}")
     else:
         faults = record.get("major_fault_delta")
         if not is_count(faults):
@@ -506,6 +636,11 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
     problem = checkpointing_config_problem(ceiling_metric, container_cap, paging_rule) if gradient_checkpointing else ""
     if problem:
         raise ValueError(problem)
+    if paging_rule not in PAGING_RULES:
+        raise ValueError(f"unknown paging rule {paging_rule}")
+    stall_rule = paging_rule == STALL_RULE
+    if stall_rule and paging_limit is not None:
+        raise ValueError("paging rule v2-stall has a fixed limit; it takes no limit argument")
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     effective = effective_budget(budget_bytes, container_memory_bytes, cgroup_memory_max)
@@ -522,6 +657,9 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
     continued = []
     if gradient_checkpointing:
         summary["configuration"].update(label=CHECKPOINTING_LABEL, gradient_checkpointing=True)
+    if stall_rule:
+        summary["configuration"].update(label=f"{summary['configuration']['label']}; {STALL_LABEL}",
+                                        paging_max_train_stall_percent={resource: 1 for resource in PRESSURE_RESOURCES})
     if evidence_mode:
         summary["evidence_mode"] = {"enabled": True, "notice": EVIDENCE_MODE_ON, "continued_rungs": continued}
     if require_cgroup_evidence:
@@ -540,7 +678,8 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
         rung_dir = out_dir / f"rung-{rung}"
         rung_dir.mkdir(parents=True, exist_ok=True)
         argv = (child_command or (lambda r, d: default_child_command(r, d, model, steps, budget_bytes, ceiling_metric, effective,
-                                                                    *((True,) if gradient_checkpointing else ()))))(rung, rung_dir)
+                                                                    *((True,) if gradient_checkpointing else ()),
+                                                                    **({"pressure_trace": True} if stall_rule else {}))))(rung, rung_dir)
         started = time.monotonic()
         host_rows_before = len(host_log()) if host_log else 0
         reasons = []
@@ -565,8 +704,9 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
         record.setdefault("wall_seconds", wall)
         host_after = host_available_end_of_rung(rung) if host_available_end_of_rung else None
         host_min, host_problems = host_window(host_rows_before, host_log()) if host_log else (None, [])
+        stall = stall_from_trace(rung_dir / "pressure-trace.csv") if stall_rule else None
         verdict = judge_rung(record, budget_bytes=budget_bytes, host_after=host_after, host_min_seen=host_min,
-                             paging_rule=paging_rule, paging_limit=paging_limit,
+                             paging_rule=paging_rule, paging_limit=paging_limit, stall=stall,
                              container_memory_bytes=effective_budget(container_memory_bytes, cgroup_memory_max) or None)
         if require_cgroup_evidence and record.get("cgroup_memory_max") is None:
             verdict["reasons"].append("the rung record has no cgroup memory.max reading")
@@ -581,7 +721,9 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
                      wall_seconds=round(record.get("wall_seconds", wall), 1),
                      memory_trace=summarize_trace(rung_dir / "memory-trace.csv"),
                      paging=record.get("paging") or paging_from_trace(rung_dir / "memory-trace.csv"),
-                     pressure=record.get("pressure"))   # evidence only; the verdict above is already decided
+                     pressure=record.get("pressure"))   # recorded after the verdict above is already decided
+        if stall_rule:
+            entry["paging_stall"] = stall
         if gradient_checkpointing:
             entry["gradient_checkpointing"] = record.get("gradient_checkpointing")
         if continued:
@@ -636,11 +778,11 @@ def host_window(rows_before: int, readings: list):
 
 
 def default_child_command(rung, rung_dir, model="pinned", steps=3, budget_bytes=0, ceiling_metric="original",
-                          effective_budget_bytes=0, gradient_checkpointing=False):
+                          effective_budget_bytes=0, gradient_checkpointing=False, pressure_trace=False):
     return [sys.executable, str(HERE / "ladder_rung.py"), "--rung", str(rung), "--out", str(rung_dir),
             "--model", model, "--steps", str(steps), "--budget-bytes", str(budget_bytes),
             "--effective-budget-bytes", str(effective_budget_bytes or budget_bytes), "--ceiling-metric", ceiling_metric] + (
-                ["--gradient-checkpointing"] if gradient_checkpointing else [])
+                ["--gradient-checkpointing"] if gradient_checkpointing else []) + (["--pressure-trace"] if pressure_trace else [])
 
 
 def paging_limit_arg(text):
@@ -658,7 +800,8 @@ def main(argv=None):
         p.add_argument("--budget-bytes", type=int, required=True, help="fixed pre-run usable training budget, bytes")
         p.add_argument("--rungs", default=",".join(str(r) for r in DEFAULT_RUNGS))
         p.add_argument("--paging-rule", choices=PAGING_RULES, default="v1",
-                       help="v1 = whole-rung process major faults (as run 3); v2 = training-phase file-page refaults per second")
+                       help="v1 = whole-rung process major faults (as run 3); v2 = training-phase file-page refaults per second; "
+                            "v2-stall = training-phase PSI some at most 1 percent, memory and IO separately (fixed limit)")
         p.add_argument("--paging-max-train-refaults-per-s", type=paging_limit_arg, default=None,
                        help="the limit for paging rule v2; there is no default because none has been ruled")
         p.add_argument("--container-cap", choices=CONTAINER_CAPS, default="fixed",
@@ -683,6 +826,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.command == "run" and args.paging_rule == "v2" and args.paging_max_train_refaults_per_s is None:
         parser.error("--paging-rule v2 needs --paging-max-train-refaults-per-s (no limit has been ruled, so there is no default)")
+    if args.command == "run" and args.paging_rule == STALL_RULE and args.paging_max_train_refaults_per_s is not None:
+        parser.error("--paging-rule v2-stall has a fixed limit; --paging-max-train-refaults-per-s does not apply to it")
     if args.command == "run" and args.evidence_mode and args.paging_rule != "v1":
         parser.error("--evidence-mode continues past a v1 paging failure only; use it with --paging-rule v1")
     if args.command == "run" and args.gradient_checkpointing:

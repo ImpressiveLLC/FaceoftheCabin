@@ -19,8 +19,12 @@
                but the ladder continues. Every other failure stops it as usual. The result is never DONE for such a run and
                is not a qualification.
   -GradientCheckpointing  Off unless given. Configuration C-gc: C (-CeilingMetric anon_shmem -ContainerCap budget,
-               paging rule v1) plus gradient checkpointing in the rung. A rung that does not show it active is FAILURE.
-               train_sft.py is unchanged, so nothing here says anything about a trainer without checkpointing.
+               paging rule v1 or v2-stall) plus gradient checkpointing in the rung. A rung that does not show it active is
+               FAILURE. train_sft.py is unchanged, so nothing here says anything about a trainer without checkpointing.
+  -PagingRule v2-stall  Training-phase PSI "some" stall exposure at most 1 percent, memory and IO separately, no anonymous
+               refault, judged from each rung's pressure-trace.csv. Fixed limit: -PagingMaxTrainRefaultsPerSecond is
+               refused with it, and so is -EvidenceMode. Budget, ceiling, floor, start gate, timeout and watchdog are
+               the same as under v1.
   -DryRun      With -Run or -Preflight: prints the plan as JSON (gate, budget, the exact docker argv) and executes nothing.
                -FakeAvailableBytes supplies the Windows-available figure for tests; it is refused without -DryRun.
 
@@ -54,7 +58,7 @@ param(
     [string]$Distro = 'Ubuntu-24.04',
     [ValidateSet('original', 'anon_shmem')][string]$CeilingMetric = 'original',
     [ValidateSet('fixed', 'budget')][string]$ContainerCap = 'fixed',
-    [ValidateSet('v1', 'v2')][string]$PagingRule = 'v1',
+    [ValidateSet('v1', 'v2', 'v2-stall')][string]$PagingRule = 'v1',
     [double]$PagingMaxTrainRefaultsPerSecond = -1,
     [string]$Image = 'fotc-dev-sft-r1:stage2',
     [string]$ModelVolume = 'fotc-hf-cache',
@@ -88,8 +92,11 @@ $modes = @($Preflight, $Run, $Stop, $Cleanup, $Verify | Where-Object { $_ }).Cou
 if ($modes -ne 1) { Write-Error 'Choose exactly one of -Preflight, -Run, -Stop, -Cleanup, -Verify.'; exit 2 }
 if ($PagingRule -eq 'v2' -and ([double]::IsNaN($PagingMaxTrainRefaultsPerSecond) -or [double]::IsInfinity($PagingMaxTrainRefaultsPerSecond) -or $PagingMaxTrainRefaultsPerSecond -lt 0)) { [Console]::Error.WriteLine('-PagingRule v2 needs -PagingMaxTrainRefaultsPerSecond (no limit has been ruled, so there is no default).'); exit 2 }
 if ($EvidenceMode -and $PagingRule -ne 'v1') { [Console]::Error.WriteLine('-EvidenceMode continues past a v1 paging failure only; use it with -PagingRule v1.'); exit 2 }
+if ($PagingRule -eq 'v2-stall' -and $PSBoundParameters.ContainsKey('PagingMaxTrainRefaultsPerSecond')) { [Console]::Error.WriteLine('-PagingRule v2-stall has a fixed limit; -PagingMaxTrainRefaultsPerSecond does not apply to it.'); exit 2 }
+# The ladder inside the container matches the rule name case-sensitively.
+if ($PagingRule -eq 'v2-stall') { $PagingRule = 'v2-stall' }
 $EvidenceNotice = 'EVIDENCE MODE: a paging-only (v1) failure does not stop the ladder; not a qualification'
-if ($GradientCheckpointing -and -not ($CeilingMetric -eq 'anon_shmem' -and $ContainerCap -eq 'budget' -and $PagingRule -eq 'v1')) { [Console]::Error.WriteLine('-GradientCheckpointing is configuration C plus one change: use it with -CeilingMetric anon_shmem -ContainerCap budget and -PagingRule v1.'); exit 2 }
+if ($GradientCheckpointing -and -not ($CeilingMetric -eq 'anon_shmem' -and $ContainerCap -eq 'budget' -and $PagingRule -in 'v1', 'v2-stall')) { [Console]::Error.WriteLine('-GradientCheckpointing is configuration C plus one change: use it with -CeilingMetric anon_shmem -ContainerCap budget and -PagingRule v1 or v2-stall.'); exit 2 }
 $CheckpointingNotice = 'C-gc: gradient checkpointing requested; a new labelled configuration, not a qualification of the current trainer'
 # Printed with the result of a run; empty when neither switch is given.
 $Notices = @($(if ($GradientCheckpointing) { $CheckpointingNotice }); $(if ($EvidenceMode) { $EvidenceNotice }))

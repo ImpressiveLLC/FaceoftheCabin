@@ -106,8 +106,16 @@ def _major_faults():
 class Watcher(threading.Thread):
     """Tracks the memory high-water and stops the process above the fixed ceiling."""
 
-    def __init__(self, budget_bytes, ceiling_fraction, on_breach, ceiling_metric="original", trace_path=None):
+    def __init__(self, budget_bytes, ceiling_fraction, on_breach, ceiling_metric="original", trace_path=None,
+                 pressure_trace_path=None):
         super().__init__(daemon=True)
+        self.pressure_trace = None   # pressure-trace.csv, written only under paging rule v2-stall, which judges it
+        self.stall_judged = bool(pressure_trace_path)
+        if pressure_trace_path:
+            import ladder
+            Path(pressure_trace_path).parent.mkdir(parents=True, exist_ok=True)
+            self.pressure_trace = open(pressure_trace_path, "w", encoding="ascii", newline="\n", buffering=1)
+            self.pressure_trace.write(",".join(ladder.STALL_TRACE_COLUMNS) + "\n")
         self.trace = None
         if trace_path:
             Path(trace_path).parent.mkdir(parents=True, exist_ok=True)
@@ -127,7 +135,7 @@ class Watcher(threading.Thread):
         self.peak = 0
         self.swap_peak = None          # None until memory.swap.current has been read: unread is not zero
         self.swap_missing = 0
-        self.pressure_samples = []     # (phase, monotonic time, memory and io stall totals): evidence only
+        self.pressure_samples = []     # (phase, monotonic time, memory and io stall totals)
         self.kernel_peak = None        # the kernel's memory.peak: catches excursions between samples (container-wide)
         self.kernel_peak_start = _read_int(CGROUP / "memory.peak")
         self.stop = threading.Event()
@@ -173,8 +181,15 @@ class Watcher(threading.Thread):
             if value is not None:
                 self.swap_peak = max(self.swap_peak or 0, value)
         import ladder
-        self.pressure_samples.append((PHASE, time.monotonic(), {name: ladder.read_pressure(CGROUP / f"{name}.pressure")
-                                                                for name in ladder.PRESSURE_RESOURCES}))
+        read_start = time.monotonic_ns()
+        readings = {name: ladder.read_pressure(CGROUP / f"{name}.pressure") for name in ladder.PRESSURE_RESOURCES}
+        read_end = time.monotonic_ns()
+        self.pressure_samples.append((PHASE, time.monotonic(), readings))
+        if self.pressure_trace is not None:
+            # an unreadable file leaves its cells blank, which the parent rejects; never zero
+            totals = [str(readings[name][0][kind]) if readings[name][0] else ""
+                      for name in ladder.PRESSURE_RESOURCES for kind in ladder.PRESSURE_KINDS]
+            self.pressure_trace.write(",".join([str(read_start), PHASE, *totals, str(read_end)]) + "\n")
         metric_value = self.peak_now(cur, rss, stat)
         kernel = _read_int(CGROUP / "memory.peak")
         if kernel is not None:
@@ -220,7 +235,7 @@ class Watcher(threading.Thread):
         """Kernel, swap and stall evidence, for both a finished rung and a ceiling breach."""
         import ladder
         with self.lock:
-            pressure = ladder.pressure_summary(list(self.pressure_samples))
+            pressure = ladder.pressure_summary(list(self.pressure_samples), judged=self.stall_judged)
         return {"pressure": pressure, "kernel_memory_peak_bytes": self.kernel_peak, "kernel_memory_peak_at_start_bytes": self.kernel_peak_start,
                 "swap_peak_bytes": self.swap_peak, "swap_missing_samples": self.swap_missing}
 
@@ -236,6 +251,9 @@ class Watcher(threading.Thread):
             if self.trace is not None:
                 self.trace.close()
                 self.trace = None
+            if self.pressure_trace is not None:
+                self.pressure_trace.close()
+                self.pressure_trace = None
         if self.kernel_peak is not None:
             self.peak = max(self.peak, self.kernel_peak)
         faults = _major_faults()
@@ -365,6 +383,8 @@ def main(argv=None):
     parser.add_argument("--ceiling-metric", choices=("original", "anon_shmem"), default="original")
     parser.add_argument("--gradient-checkpointing", action="store_true",
                         help="configuration C-gc; off by default, and train_sft.py is not changed")
+    parser.add_argument("--pressure-trace", action="store_true",
+                        help="write pressure-trace.csv, which paging rule v2-stall judges; off by default")
     args = parser.parse_args(argv)
 
     import ladder
@@ -389,7 +409,8 @@ def main(argv=None):
         write_record(args.out, record)
         os._exit(3)
 
-    watcher = Watcher(effective, ladder.CEILING_FRACTION, breach, args.ceiling_metric, args.out / "memory-trace.csv")
+    watcher = Watcher(effective, ladder.CEILING_FRACTION, breach, args.ceiling_metric, args.out / "memory-trace.csv",
+                      args.out / "pressure-trace.csv" if args.pressure_trace else None)
     watcher.start()
     globals()["WATCHER"] = watcher
     try:
