@@ -158,9 +158,12 @@ None yet — see Known gaps below.
 Automated: `ui/src/readingFormat.test.jsx` (per-field precision, long humidity values, missing and
 non-numeric values, below-zero temperature, nonzero CO never zero, alarm state from the device,
 tile, device detail and Family Hub rows) and the guest and tile cases in `App.test.jsx`.
+`ui/src/readingFormatHistory.test.jsx` covers the Sensor History table, peaks, outdoor cells and
+the chart CSV.
 
 Manual after deploy: Monitoring humidity tiles show a whole percent on one line. Open a humidity
-device in Devices: the attribute is rounded and hovering it shows the stored value.
+device in Devices: the attribute is rounded and hovering it shows the stored value. In Sensor
+History, pick humidity: table, today's peak and Download CSV hold whole percentages.
 
 ## Alert History (W-64)
 
