@@ -291,7 +291,8 @@ Removing it from the contacts at re-detect is safe at runtime; the ontology rows
 Automated: `HistoryBucketTest`, `CabinEventServiceTest` (same-day spike, zone independence,
 fall-back hour, partial bucket), `EventControllerTest` (bucket, zone, clamp, 400, unchanged day
 JSON), `GoogleAuthInterceptorTest` (anonymous day open and intraday 401, guest and viewer),
-`DemoAccessTest` (demo stays at day), `App.test.jsx` "intraday resolution".
+`DemoAccessTest` (demo stays at day), `App.test.jsx` "intraday resolution" and "air quality units
+come from each sensor" (ppb on Total VOC, none on the unitless index).
 
 Manual after deploy: signed in, pick a CO2 sensor, Resolution 5 minutes: today's peak and time
 show and match the live tile history; Download CSV holds the same times with unit `ppm`.
