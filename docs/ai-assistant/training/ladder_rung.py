@@ -329,6 +329,30 @@ def phase_callback():
     return PhaseCallback()
 
 
+def checkpoint_probe(state):
+    """Observes gradient checkpointing instead of trusting the setting: counts the calls the model's layers make to their
+    checkpoint function in training. Wraps that function at the first training step, after the trainer has enabled it."""
+    from transformers import TrainerCallback
+
+    def counted(func):
+        def call(*args, **kwargs):
+            state["calls"] += 1
+            return func(*args, **kwargs)
+        return call
+
+    class CheckpointProbe(TrainerCallback):
+        wrapped = False
+
+        def on_step_begin(self, args, training_state, control, model=None, **kwargs):
+            if self.wrapped:
+                return
+            self.wrapped = True
+            for module in model.modules():
+                if getattr(module, "gradient_checkpointing", False) is True and hasattr(module, "_gradient_checkpointing_func"):
+                    module._gradient_checkpointing_func = counted(module._gradient_checkpointing_func)
+    return CheckpointProbe()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--rung", type=int, required=True)
@@ -339,6 +363,8 @@ def main(argv=None):
     parser.add_argument("--effective-budget-bytes", type=int, default=0,
                         help="the parent's ceiling denominator (usable budget lowered to the container limit)")
     parser.add_argument("--ceiling-metric", choices=("original", "anon_shmem"), default="original")
+    parser.add_argument("--gradient-checkpointing", action="store_true",
+                        help="configuration C-gc; off by default, and train_sft.py is not changed")
     args = parser.parse_args(argv)
 
     import ladder
@@ -347,6 +373,10 @@ def main(argv=None):
               "configuration_label": ladder.CEILING_METRICS[args.ceiling_metric],
               "cgroup_memory_max": _read_int(CGROUP / "memory.max"),
               "oom_events_start": _read_events(CGROUP / "memory.events")}
+    if args.gradient_checkpointing:
+        record["configuration_label"] = ladder.CHECKPOINTING_LABEL
+        record["gradient_checkpointing"] = {"requested": True, "active": False, "calls": 0, "expected_calls": None,
+                                            "layers": None, "use_reentrant": False}
     effective = ladder.effective_budget(args.budget_bytes, args.effective_budget_bytes, record["cgroup_memory_max"])
     record["effective_budget_bytes"] = effective or None
     started = time.monotonic()
@@ -387,9 +417,20 @@ def main(argv=None):
 
         kwargs = train_sft.training_args_kwargs(args.out / "trainer", SEED, False, args.steps)
         kwargs["num_train_epochs"] = 1
+        callbacks = [phase_callback()]
+        if args.gradient_checkpointing:
+            checkpointing = record["gradient_checkpointing"]
+            checkpointing["layers"] = model.config.num_hidden_layers
+            checkpointing["expected_calls"] = checkpointing["layers"] * rows   # one forward per row (batch 1, one epoch)
+            kwargs.update(gradient_checkpointing=True, gradient_checkpointing_kwargs={"use_reentrant": False})
+            callbacks.append(checkpoint_probe(checkpointing))
         trainer = Trainer(model=model, train_dataset=data, data_collator=collate, args=TrainingArguments(**kwargs),
-                          callbacks=[phase_callback()])
+                          callbacks=callbacks)
         trainer.train()
+        if args.gradient_checkpointing:
+            checkpointing["active"] = checkpointing["calls"] == checkpointing["expected_calls"] > 0
+            if not checkpointing["active"]:
+                raise RuntimeError(ladder.checkpointing_reason(record))
         history = trainer.state.log_history
         record["losses"] = [e["loss"] for e in history if "loss" in e]
         record["grad_norms"] = [e["grad_norm"] for e in history if "grad_norm" in e]
