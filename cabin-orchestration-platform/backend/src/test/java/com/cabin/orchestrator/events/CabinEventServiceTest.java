@@ -342,6 +342,8 @@ class CabinEventServiceTest {
                 Instant.parse("2026-11-27T15:00:00Z").plusSeconds(i * 600L), Map.of("co2", 600));
         }
         saveTelemetry("spike", "kidde-co2", SPIKE_AT, Map.of("co2", 2400));
+        // A quiet reading inside the spike's own 5 minute bucket, so min and max differ at every resolution.
+        saveTelemetry("quiet-near", "kidde-co2", SPIKE_AT.minusSeconds(60), Map.of("co2", 600));
     }
 
     private List<TelemetryDailyPoint> intraday(CabinEventService svc, HistoryBucket bucket, java.time.ZoneId zone,
@@ -366,7 +368,7 @@ class CabinEventServiceTest {
             assertThat(peak.day()).isEqualTo(start);
             assertThat(peak.min()).isEqualTo(600.0);
             assertThat(points).filteredOn(p -> p.max() > 600).hasSize(1);
-            assertThat(points.stream().mapToLong(TelemetryDailyPoint::sampleCount).sum()).isEqualTo(37);
+            assertThat(points.stream().mapToLong(TelemetryDailyPoint::sampleCount).sum()).isEqualTo(38);
         });
     }
 
