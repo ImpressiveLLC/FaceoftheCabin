@@ -1,5 +1,6 @@
 import { electricalMonitoringDevices, electricalValue, monitoringDeviceTarget, valueSegments } from "./electricalMonitoring";
 import { collapseDuplicateZigbeeServices, duplicateOfZigbeeParent } from "./zigbeeServices";
+import { applyMonitoringPreferences, isMonitoringAlarm, useMonitoringPreferences } from "./monitoringPreferences";
 import { ExpandableList, COLLAPSED_LIMIT } from "./ExpandableList";
 import { DEVICE_KIND_OPTIONS, batteryLevel, makeKindOf } from "./deviceKinds";
 import { BatteryMaintenanceCard } from "./BatteryMaintenanceCard";
@@ -7155,7 +7156,10 @@ export function LiveEventLog({ locCfg, active, cabinSession, accessToken }) {
 // separate list nothing else reads. reorderMode/dragIdx/overIdx/onDrag*
 // are undefined outside reorder mode, same as KpiTile's own defaults.
 function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragIdx, overIdx, pinnedCount,
-    onDragStart, onDragOver, onDrop, onDragEnd, auth }) {
+    onDragStart, onDragOver, onDrop, onDragEnd, auth, sharedPreferencesEnabled = false, projectedDevices }) {
+  const preferences = useMonitoringPreferences(sharedPreferencesEnabled, locCfg.id, locCfg.apiBase,
+    auth?.authedFetch || trustedApiFetch);
+  const shared = preferences?.data;
   const [tempUnit, toggleTempUnit] = useTempUnit();
   // One array per (devices, location) so the memoized SensorHistoryPanel below sees an unchanged prop on every render
   // that did not change this location's devices. A bare `devices.filter(...)` in the JSX was a new array every render.
@@ -7190,12 +7194,18 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
   // to true when absent (native Zigbee devices don't always set it
   // explicitly) so this only ever narrows the view, never hides
   // something that isn't actually disabled.
-  const kpiEntries = devices
+  const kpiEntries = (shared ? projectedDevices : devices)
     .map((d, globalIdx) => ({ d, globalIdx }))
     .filter(({ d }) => !d.location || d.location === locCfg.id)
     .filter(({ d }) => d.attributes?.enabled !== false || d.attributes?.monitoringGroup)
-    .map(({ d, globalIdx }) => ({ globalIdx, tile: kpiTileFor(d, tempUnit, reportingRelationships, { signedIn: !!auth?.signedIn }) }))
+    .map(({ d, globalIdx }) => ({ d, globalIdx, tile: kpiTileFor(d, tempUnit, reportingRelationships, { signedIn: !!auth?.signedIn }) }))
     .filter(({ tile }) => tile !== null);
+  const locatedIds = new Set(kpiEntries.filter(entry => entry.d.location === locCfg.id).map(entry => entry.tile.deviceId));
+  const scopedPreferences = shared && { ...shared, cards: shared.cards.filter(card => locatedIds.has(card.deviceId)) };
+  const visibleEntries = shared ? applyMonitoringPreferences(kpiEntries, scopedPreferences,
+    entry => entry.tile.deviceId, entry => isMonitoringAlarm(entry.tile)) : kpiEntries;
+  const entryPinned = entry => shared ? isMonitoringAlarm(entry.tile)
+    : pinnedCount != null && entry.globalIdx < pinnedCount;
 
   return (
     <div className="location-section">
@@ -7207,10 +7217,12 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
       </div>
 
       <div className={`kpi-grid ${reorderMode ? "reorder-mode" : ""}`}>
-        <ExpandableList items={kpiEntries} keyOf={e => e.tile.deviceId} noun="tiles" forceOpen={reorderMode}
-          isPinned={e => pinnedCount != null && e.globalIdx < pinnedCount}
-          renderItem={({ globalIdx, tile }) => {
-          const isPinned = pinnedCount != null && globalIdx < pinnedCount;
+        {preferences?.error && <p role="status">Shared Monitoring preferences unavailable. Showing this browser’s view.</p>}
+        <ExpandableList items={visibleEntries} keyOf={e => e.tile.deviceId} noun="tiles" forceOpen={reorderMode}
+          isPinned={entryPinned}
+          renderItem={(entry) => {
+          const { globalIdx, tile } = entry;
+          const isPinned = entryPinned(entry);
           return (
             <KpiTile key={tile.deviceId} {...tile}
               reorderMode={reorderMode}
@@ -7449,7 +7461,8 @@ export function MonitoringPanel({ active, auth }) { // exported for src/App.test
 // grid position. This view always renders the same location-split grid;
 // reorderMode only toggles whether drag handlers are attached, matching
 // how KpiTile/LocationMonitoringSection already gate on it.
-export function MnSeeView({ devices, activeLocation, active, reorderMode, auth }) { // exported for src/App.test.jsx's Monitoring reorder tests
+export function MnSeeView({ devices, activeLocation, active, reorderMode, auth,
+    sharedPreferencesEnabled = import.meta.env.VITE_MONITORING_PREFERENCES === "true" }) { // default-off C1 read-through
   const [dragIdx, setDragIdx] = useState(null);
   const [overIdx, setOverIdx] = useState(null);
 
@@ -7482,11 +7495,12 @@ export function MnSeeView({ devices, activeLocation, active, reorderMode, auth }
     : [LOCATIONS[activeLocation] || LOCATIONS.cabin];
   return (
     <div className={activeLocation === "both" ? "monitoring-split" : ""}>
+      {sharedPreferencesEnabled && reorderMode && <p role="status">Shared order is read-only here. Shared editing is coming next.</p>}
       {locs.map(loc => (
         <LocationMonitoringSection key={loc.id} locCfg={loc} devices={ordered} active={active}
-          reorderMode={reorderMode} dragIdx={dragIdx} overIdx={overIdx} pinnedCount={pinnedCount}
+          reorderMode={reorderMode && !sharedPreferencesEnabled} dragIdx={dragIdx} overIdx={overIdx} pinnedCount={pinnedCount}
           onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={onDragEnd}
-          auth={auth}
+          auth={auth} sharedPreferencesEnabled={sharedPreferencesEnabled} projectedDevices={locDevices}
         />
       ))}
       {reorderMode && ordered.length === 0 && (
