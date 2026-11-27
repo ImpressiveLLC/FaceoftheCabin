@@ -16,9 +16,9 @@ describe("formatReading (W-174)", () => {
   });
 
   it("rounds each listed field to its own precision", () => {
-    expect(formatReading("co2", 1017.97)).toBe("1018");
-    expect(formatReading("airQualityIndex", 1453.2000122070312)).toBe("1453.2");
-    expect(formatReading("airQualityIndex", 101.8)).toBe("101.8");
+    expect(formatReading("co2", 812.97)).toBe("813");
+    expect(formatReading("airQualityIndex", 1234.2000122070312)).toBe("1234.2");
+    expect(formatReading("airQualityIndex", 57.8)).toBe("57.8");
     expect(formatReading("psi", 52.000000762939453)).toBe("52");
     expect(formatReading("power", 263.26)).toBe("263.26");
     expect(formatReading("energy", 119.97000122)).toBe("119.97");
@@ -79,7 +79,7 @@ describe("Monitoring tiles show rounded readings (W-174)", () => {
   });
 
   it("rounds CO2 and water pressure", () => {
-    expect(kpiTileFor(device("CO2_SENSOR", { co2: 1017.97 }), "F").value).toBe("1018 ppm");
+    expect(kpiTileFor(device("CO2_SENSOR", { co2: 812.97 }), "F").value).toBe("813 ppm");
     expect(kpiTileFor(device("WATER_PRESSURE_SENSOR", { psi: 51.9999999 }), "F").value).toBe("52 PSI");
   });
 
