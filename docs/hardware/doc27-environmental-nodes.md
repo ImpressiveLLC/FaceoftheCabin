@@ -119,7 +119,7 @@ Naming is owned by [D28](../governance/decisions/ontology-decisions.md) (amended
 | S61SZBTPB | Verify actual converter exposes, model string and ratings on arrival | Candidate on/off; energy channels only if discovered |
 | SNZB-02P | Temperature, RH, battery/link/availability as actually exposed | Read only |
 | Midea Cube | Candidate humidity reading, target RH, on/off, mode/fan and bucket/pump diagnostics **only if this unit exposes them** | Dehumidification control through verified HA entities; do not invent pump or drain-state services |
-| CLOUDLINE S6 | Power W, A, V, kWh and on/off through box 4 relay A (MINI-ZB1GSP); speed level (10 steps) once W-78's speed path exists; manual speed via the supplied controller until then | On/off after commissioning; `set_level` only after W-78 is built and verified (D28 A1). Commanded speed, reported level and actual airflow stay distinct |
+| CLOUDLINE S6 | Power W, A, V, kWh and on/off through box 4 relay A (MINI-ZB1GSP) or, as the fallback power path, a S61SZBTPB plug (current per dial level measured 2026-11-23, see [variable-speed-appliance-control.md](variable-speed-appliance-control.md); the plug's `power` field was unreliable at low load); speed level (10 steps) once W-78's speed path exists; manual speed via the supplied controller until then | On/off after commissioning; `set_level` only after W-78 is built and verified (D28 A1). Commanded speed, reported level and actual airflow stay distinct |
 
 SEN66 is not a CO, oxygen, radon, mold or smoke-alarm sensor. VOC/NOx indexes are
 dimensionless indexes, not ppm concentrations or a universal AQI. Keep SEN66 and
@@ -210,7 +210,7 @@ before unattended operation. Exact MAD50PS1QGR support remains an arrival test.
 Amended by D28 A1 (Nate, 2026-10-19: power monitoring and speed control are not mutually exclusive). Two coexisting paths:
 
 - **Power, energy and on/off:** box 4 relay A (MINI-ZB1GSP) on the S6 supply, **only after** motor-load rating and restart tests. One purchased Zigbee outlet is the fallback if a suitable relay installation cannot be made; select one power path, never both in series. The supplied controller keeps its last speed through a power cut, so relay on/off does not lose the set speed.
-- **Speed:** W-78. Preferred: an opto-isolated ESPHome PWM node on the fan's control port, reached through HA. Fallback: a UIS Wi-Fi controller with the community HA integration, which depends on AC Infinity's cloud. First step: photograph and meter the shipped S6's connector, because revisions differ and the manufacturer's PWM motor description is not a documented pinout. No speed claim before it is real.
+- **Speed:** W-78. Preferred: an opto-isolated ESPHome PWM node on the fan's control port, reached through HA. Fallback: a UIS Wi-Fi controller with the community HA integration, which depends on AC Infinity's cloud. First step (amended 2026-11-23): photograph the shipped S6's connector, because revisions differ and the manufacturer's PWM motor description is not a documented pinout. Learning how the ten speed levels behave does **not** need a meter: a metered Zigbee plug on the S6 supply gives the load current per level (measured ladder in [variable-speed-appliance-control.md](variable-speed-appliance-control.md)), and the W-78 duty-cycle calibration reuses the same plug. A meter is only a possible safety check on the control port before the ESP32 is connected. No speed claim before it is real.
 
 Keep desired/commanded speed, reported level and actual airflow distinct; no airflow sensor was ordered.
 

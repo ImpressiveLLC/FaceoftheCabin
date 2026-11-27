@@ -2865,6 +2865,26 @@ built for.
 
 ---
 
+### Variable-speed appliance control: characterize, calibrate, replace (recorded 2026-11-23)
+
+The CLOUDLINE S6 speed path (W-78) needs the platform to know what each speed level does. The full pattern, measured table, setup steps, use cases and the generic recipe live in [`docs/hardware/variable-speed-appliance-control.md`](hardware/variable-speed-appliance-control.md). This section is the maintenance summary.
+
+**What exists.** A SONOFF S61SZBTPB plug (`s6_fan_switch_home`, IEEE `0xa4c1381f38eaffff`, Home bridge `home_z2m`) powers the S6. Its `current` reading at a known supply voltage identifies the dial level: 0.03, 0.04, 0.09, 0.13, 0.18, 0.25, 0.34, 0.50, 0.66, 0.86 A for levels 1 to 10 (bench, about 121 V). Levels 1 and 2 cannot be told apart at the plug's 0.01 A resolution. No airflow was measured.
+
+**When to repeat the ladder.** Fan or controller replaced, duct, filter or mounting changed, plug replaced with a different model, or the plug moved from Home to the cabin (repeat levels 1 and 10 at least, installed and ducted). Once a year read level 10 and compare; more than 10% drift is a prompt to inspect, not a conclusion.
+
+**Replacing the plug.** Pair the new plug, close the pairing window with `{"time": 0}` (not `{"value": false}`, which this Zigbee2MQTT rejects), and give it the same friendly name so the platform device id and any automation that names it stay valid. If the model differs, confirm it exposes `current` and `voltage` and repeat one level.
+
+**Pitfalls found while doing it.**
+- `mosquitto_sub` writing to a file through `docker exec` buffers and writes nothing; use `docker exec -t` and strip carriage returns.
+- `pkill -f` with a pattern that is also in your own `ssh` command line kills your own shell. Use explicit PIDs.
+- Do not kill process 1 inside the `mosquitto` container: it is the broker.
+- Log an explicit start and end mark per level; marks written after the person changes level pull the next level's readings into the previous window.
+- The plug's `power` field showed 0 W at 0.11 A and then sat unrefreshed at 4.38 W. Request it explicitly and compare with current times voltage before relying on it.
+- The platform device list does not yet contain this plug (checked 2026-11-23). Registering it is a signed-in Device Manager action at location Home. Do not confuse it with the cabin dehumidifier switch (`0xa4c1381f3884ffff`).
+
+---
+
 ## Monitoring
 
 Uptime Kuma + Homepage on the M920q (`http://192.168.2.46:3001` /
