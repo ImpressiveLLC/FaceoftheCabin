@@ -41,6 +41,7 @@ import {
 import "./styles.css";
 import KioskControls from "./KioskControls.jsx";
 import { RoofSpecPage } from "./RoofSpecPage.jsx";
+import { formatAttribute, formatReading, readingNumber, readingText } from "./readingFormat";
 
 // ─── Temperature unit ──────────────────────────────────────────────────────
 function useTempUnit() {
@@ -49,9 +50,9 @@ function useTempUnit() {
   return [unit, toggle];
 }
 function fmtTemp(celsius, unit) {
-  if (celsius == null) return "—";
-  const val = unit === "F" ? (celsius * 9/5 + 32).toFixed(1) : celsius;
-  return `${val}°${unit}`;
+  const c = readingNumber(celsius);
+  if (c === null) return "—";
+  return readingText("temperature", unit === "F" ? c * 9/5 + 32 : c, `°${unit}`);
 }
 
 // ─── Location config ───────────────────────────────────────────────────────
@@ -1826,7 +1827,7 @@ function FamilyHubLocationCard({ locId, locCfg, devices }) {
                   <span className="fh-temp-name">{s.name}</span>
                   <span className="fh-temp-val">
                     {fmtTemp(s.attributes?.temperature, tempUnit)}
-                    {s.attributes?.humidity != null && ` · ${s.attributes.humidity}%`}
+                    {formatReading("humidity", s.attributes?.humidity) !== null && ` · ${readingText("humidity", s.attributes.humidity, "%")}`}
                   </span>
                 </div>
               ))}
@@ -5269,7 +5270,8 @@ export function DmDeviceDetail({ device, checkinStatus, checkinDetail, onConfigu
             .map(([k, v]) => v != null && (
               <div key={k} className="attr-row">
                 <span className="attr-key">{k}</span>
-                <span className="attr-val">{String(v)}</span>
+                {/* Readings are rounded for reading; the tooltip keeps the stored value. */}
+                <span className="attr-val" title={String(v)}>{formatAttribute(k, v)}</span>
               </div>
             ))}
         </>
@@ -5900,14 +5902,15 @@ export function kpiTileFor(device, tempUnit, reportingRelationships = {}, { sign
   switch (device.type) {
     case "WATER_PRESSURE_SENSOR":
       return { icon: Droplets, label: "Water Pressure", deviceId: device.deviceId,
-        value: device.attributes?.psi != null ? `${device.attributes.psi} PSI` : "—", state: device.state };
+        value: readingText("psi", device.attributes?.psi, " PSI"), state: device.state };
     case "THERMOSTAT":
       return { icon: Thermometer, label: device.name, deviceId: device.deviceId,
         value: fmtTemp(device.attributes?.current_temperature, tempUnit), state: device.state };
     case "TEMPERATURE_SENSOR": {
       const temp = device.attributes?.temperature;
       const hum  = device.attributes?.humidity;
-      const val  = [fmtTemp(temp, tempUnit), hum != null && `${hum}%`].filter(Boolean).join(" · ") || "—";
+      const val  = [fmtTemp(temp, tempUnit), formatReading("humidity", hum) !== null && readingText("humidity", hum, "%")]
+        .filter(Boolean).join(" · ") || "—";
       const outdoor = isOutdoorDevice(device);
       return { icon: outdoor ? CloudSun : Thermometer, label: device.name, deviceId: device.deviceId, value: val, state: device.state, outdoor };
     }
@@ -5923,17 +5926,17 @@ export function kpiTileFor(device, tempUnit, reportingRelationships = {}, { sign
     // sibling `temperature` attribute to pair it with.
     case "HUMIDITY_SENSOR":
       return { icon: Droplets, label: curatedLabel("humidity") || device.name, deviceId: device.deviceId,
-        value: device.attributes?.humidity != null ? `${device.attributes.humidity}%` : "—", state: device.state,
+        value: readingText("humidity", device.attributes?.humidity, "%"), state: device.state,
         outdoor: isOutdoorDevice(device) };
     case "CO2_SENSOR":
       return { icon: Wind, label: curatedLabel("co2") || device.name, deviceId: device.deviceId,
-        value: device.attributes?.co2 != null ? `${device.attributes.co2} ppm` : "—", state: device.state };
+        value: readingText("co2", device.attributes?.co2, " ppm"), state: device.state };
     case "AIR_QUALITY_SENSOR":
       return { icon: Wind, label: device.name, deviceId: device.deviceId,
         value: device.attributes?.airQualityIndex != null ? `${device.attributes.airQualityIndex}` : "—", state: device.state };
     case "CO_SENSOR":
       return { icon: Wind, label: curatedLabel("co") || device.name, deviceId: device.deviceId,
-        value: device.attributes?.co != null ? `${device.attributes.co} ppm` : "—", state: device.state };
+        value: readingText("co", device.attributes?.co, " ppm"), state: device.state };
     case "SMOKE_ALARM":
     case "CO_ALARM":
       return { icon: ShieldAlert, label: device.name || "Smoke/CO Alarm", deviceId: device.deviceId,
@@ -11079,7 +11082,7 @@ export function GuestDashboard({ token }) { // exported for src/App.test.jsx
             return (
               <div key={`${deviceId}-${field}`} className="guest-device-row">
                 <span>{deviceId} — {field}</span>
-                <span className="config-hint">{latest ? `avg ${latest.avg.toFixed(1)} on ${new Date(latest.day).toLocaleDateString()}` : "no data yet"}</span>
+                <span className="config-hint">{latest ? `avg ${formatReading(field, latest.avg)} on ${new Date(latest.day).toLocaleDateString()}` : "no data yet"}</span>
               </div>
             );
           })}

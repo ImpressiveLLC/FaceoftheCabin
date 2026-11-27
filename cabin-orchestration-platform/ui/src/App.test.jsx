@@ -119,7 +119,7 @@ describe("kpiTileFor", () => {
   it("combines temperature and humidity into one value", () => {
     const sensor = { deviceId: "t1", name: "Kitchen", type: "TEMPERATURE_SENSOR", state: "ONLINE",
       attributes: { temperature: 20, humidity: 45 } };
-    expect(kpiTileFor(sensor, "C").value).toBe("20°C · 45%");
+    expect(kpiTileFor(sensor, "C").value).toBe("20.0°C · 45%");
   });
 
   it("returns null for a device type with no KPI tile -- unchanged from before this fix", () => {
@@ -5694,7 +5694,7 @@ describe("GuestDashboard (Tier 1 share links, /view/{token})", () => {
     render(<GuestDashboard token="secret-abc" />);
 
     expect(await screen.findByText(/z2m-temp_kitchen — humidity/)).toBeTruthy();
-    expect(screen.getByText(/avg 47.5/)).toBeTruthy();
+    expect(screen.getByText(/avg 48 on/)).toBeTruthy();
   });
 
   it("a fresh token appends the token to every request regardless of scope", async () => {
