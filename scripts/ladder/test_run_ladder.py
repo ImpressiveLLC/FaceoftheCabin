@@ -57,6 +57,64 @@ def plan(avail_gib, mode="-Run", *extra):
         raise AssertionError("no JSON plan; exit %s | STDOUT: %s | STDERR: %s" % (proc.returncode, proc.stdout, proc.stderr))
 
 
+@unittest.skipUnless(PWSH and sys.platform == "win32", "Windows file-sharing semantics required")
+class SampleReadContentionTests(unittest.TestCase):
+    def read_locked(self, release, samples=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            csv = Path(tmp) / "host.csv"
+            csv.write_text(samples if samples is not None else "epoch,bytes\n100,5000\n101,5000\n102,", encoding="utf-8")
+            code = r"""
+$ErrorActionPreference = 'Stop'
+$ast = [Management.Automation.Language.Parser]::ParseFile($env:LADDER_SCRIPT, [ref]$null, [ref]$null)
+foreach ($f in $ast.FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -in 'Read-Samples', 'Get-SamplerProblem' }, $true)) { Invoke-Expression $f.Extent.Text }
+function Get-EpochNow { return 200 }
+$script:held = [IO.File]::Open($env:LADDER_CSV, 'Open', 'Read', 'None')
+$script:delays = @()
+function Start-Sleep([int]$Milliseconds) {
+    $script:delays += $Milliseconds
+    if ($env:RELEASE_LOCK -eq 'yes') { $script:held.Dispose() }
+}
+try {
+    if ($env:CHECK_GUARD -eq 'yes') {
+        $problem = Get-SamplerProblem ([pscustomobject]@{ State = 'Running' }) $env:LADDER_CSV ($env:LADDER_CSV + '.breach') 1000 10
+        @{ problem = $problem; delays = $script:delays } | ConvertTo-Json -Compress
+    } else {
+        $read = Read-Samples $env:LADDER_CSV -Complete
+        @{ rows = $read.samples.Count; invalid = $read.invalid; delays = $script:delays } | ConvertTo-Json -Compress
+    }
+} catch {
+    @{ error = $_.Exception.Message; delays = $script:delays } | ConvertTo-Json -Compress
+} finally { $script:held.Dispose() }
+"""
+            proc = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", code],
+                                  capture_output=True, text=True, timeout=30,
+                                  env=dict(base_env(), LADDER_SCRIPT=str(SCRIPT), LADDER_CSV=str(csv),
+                                           RELEASE_LOCK="yes" if release else "no", CHECK_GUARD="yes" if samples is not None else "no",
+                                           LADDER_TEST_NO_HOST="1"))
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            return json.loads(proc.stdout)
+
+    def test_transient_sharing_lock_recovers_and_still_drops_partial_line(self):
+        result = self.read_locked(release=True)
+        self.assertEqual(result, {"rows": 2, "invalid": 0, "delays": [100]})
+
+    def test_persistent_sharing_lock_has_bounded_retries_and_no_cached_samples(self):
+        result = self.read_locked(release=False)
+        self.assertIn("error", result)
+        self.assertNotIn("rows", result)
+        self.assertEqual(result["delays"], [100] * 4)
+
+    def test_recovered_read_does_not_waive_stale_low_missing_or_invalid_samples(self):
+        for rows, expected in (("100,5000\n", "no host reading for 100 s (limit 10)"),
+                               ("200,999\n", "below the 1000 floor"),
+                               ("", "no host reading yet"),
+                               ("bad\n", "unreadable host reading line")):
+            with self.subTest(rows=rows):
+                result = self.read_locked(True, "epoch,bytes\n" + rows)
+                self.assertEqual(result["delays"], [100])
+                self.assertIn(expected, result["problem"])
+
+
 class TestHarnessTests(unittest.TestCase):
     def test_windows_powershell_does_not_inherit_a_module_path_and_pwsh_does(self):
         with mock.patch.dict(os.environ, {"PSModulePath": "C:/pwsh7/Modules"}):
@@ -536,6 +594,24 @@ class RunFlowWithStubsTests(unittest.TestCase):
         calls = self.calls()
         for needed in ("keep-awake True", "stop-docker-desktop", "wsl --shutdown", "keep-awake False", "beep"):
             self.assertIn(needed, calls)
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows file-sharing semantics required")
+    def test_monitor_sharing_exception_cleans_up_and_seals_explicit_stop(self):
+        # Lock the fixture only after launch; release it as cleanup begins so sealing can read it.
+        source = self.script.read_text(encoding="utf-8")
+        source = source.replace("function Read-Samples([string]$Csv, [switch]$Complete) {", """
+function Read-Samples([string]$Csv, [switch]$Complete) {
+    if ($runJob -and -not $script:testLock) {
+        $script:testLock = [IO.File]::Open($Csv, 'Open', 'Read', 'None')
+    }
+""")
+        source = source.replace("'stop the sampler' = {", "'stop the sampler' = {\n                if ($script:testLock) { $script:testLock.Dispose() }")
+        self.script.write_text(source, encoding="utf-8")
+        proc = self.launch("-Run", STUB_COMPLETE="", STUB_RUN_SECONDS="40", STUB_LEFTOVER="once")
+        self.assertStopped(proc, "launcher error:", code=4)
+        self.assertTrue(any(" kill abc123" in c for c in self.calls()))
+        self.assertFalse((self.run_dir() / "ladder" / "summary.json").exists())
+        self.assertIn("STOPPED", self.read(self.tmp / "LADDER-FINISHED.txt"))
 
     def test_stopped_and_missing_summary_bundles_verify(self):
         for complete in ("false", ""):
