@@ -86,5 +86,54 @@ tile is removed. This design grants no notification or actuator behavior.
    state. Report numerical correctness, freshness and location independently; unrun checks
    remain NOT_RUN. No live feed is claimed delivered by merging this design.
 
-Open: live binding and timestamp evidence; adapter selection; approved freshness policy;
-closed-vocabulary naming; implementation and live acceptance. No new ID or threshold allocated.
+## Live evidence and implementation handoff, 2026-11-27
+
+[Cowork's 17:10 CST read and disposition](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/244#issuecomment-7229926758)
+answers the inventory question above. This is peer-observed evidence, not a direct Codex
+live check. The read used `/api/devices?location=cabin` at 17:09 CST.
+
+| Existing stable device ID | Source entity | Observed state |
+|---|---|---|
+| `ha-cabin-sensor-aurora-visibility-visibility` | `sensor.aurora_visibility_visibility` | `HOME_ASSISTANT_ENTITY`; unit `%`; state_class `measurement`; no device_class; value `"0"`; ONLINE; ASSIGNED; enabled true; Cabin |
+| `ha-cabin-binary-sensor-aurora-visibility-visibility-alert` | `binary_sensor.aurora_visibility_visibility_alert` | No unit/device_class; ONLINE; CANDIDATE; enabled false |
+
+Both report HA discovery through `ha_rest` and NOAA attribution. Only discovery poll
+`lastSeen` (`2026-11-27T23:09:45Z`) was exposed; neither provider observation nor
+forecast-valid time was available. The numeric zero is a reported value with unknown
+forecast freshness, not proof of a fresh zero-probability forecast. The binary state
+value was not supplied in this evidence and must not be guessed from ONLINE.
+
+Cowork proposes the existing HA bridge for both source roles, subject to Nate override:
+no second NOAA poller; freshness remains unknown and no current-forecast claim is made
+until a separate reviewed provenance step supplies provider times. This is the working
+adapter direction, not a newly ratified freshness interval or alert threshold.
+
+**Code implementation handoff:** follow [the PMO assignment](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/244#issuecomment-7230025694)
+with one bounded PR using the existing percentage entity and stable identity. Bind source
+integration, entity and Cabin explicitly; `%` alone does not establish aurora semantics.
+Retain the two source roles separately. Preserve the binary entity's CANDIDATE/disabled
+state; a direction to map it is not permission to enable or emit its alerts. Preserve
+other locations and all existing preferences. Cabin's first Monitoring enrollment initializes
+ON only after typed eligibility is supported; later explicit user choices win.
+
+Present the reported percentage with source attribution and an explicit unknown-freshness
+status, not "current" or a synthesized forecast-valid time. Do not claim usable fresh
+forecast history from discovery poll times. Missing, invalid or unavailable remains distinct
+from numeric zero. If the chosen contract requires provider times for eligibility, keep
+the feed unavailable until that gate is met rather than fabricating times to make it appear.
+The PR must state which presentation it implements and expose the missing provenance.
+
+Include controlled-vocabulary/catalog/schema/Java parity and C1 projection tests together;
+keep the implementation's metadata reusable for a separately configured location. Add tests
+for this exact synthetic source shape, an unrelated `%` sensor, Daikin Aurora name, missing
+metadata, zero versus unavailable, two locations, unknown freshness, preserved disabled binary
+entity, initial ON versus explicit removal, and signed-out/demo restrictions. Link the existing
+history/CSV unit behavior if those surfaces are included. No implicit numeric threshold.
+
+Post full-SHA READY for Codex and Cowork review. Runtime deployment follows its existing
+authorization and health gates; implementation is not a live enrollment claim. Setup and
+maintenance docs must identify this bridge and the unknown-provenance limitation. Verify the
+actual tile and persistence after deployment before declaring C2 released.
+
+Remaining open: provider timestamp evidence; approved freshness policy; closed-vocabulary
+naming and parity; implementation and live acceptance. No new ID or threshold allocated.
