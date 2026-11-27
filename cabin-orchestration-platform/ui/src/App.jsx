@@ -6192,8 +6192,8 @@ export function outdoorBaselineSeries(field, outdoor) {
   });
 }
 // "mean (low–high)" for a table cell; just the mean when the day has no extremes.
-export function outdoorCellText(o, toDisplay, unit) {
-  const f = v => `${toDisplay(v).toFixed(1)}${unit}`;
+export function outdoorCellText(o, toDisplay, unit, field = "temperature") {
+  const f = v => `${formatReading(field, toDisplay(v))}${unit}`;
   const spread = o.min != null && o.max != null ? ` (low ${f(o.min)}, high ${f(o.max)})` : "";
   return `${f(o.value)}${spread} (n=${o.n})${o.partial ? " (partial)" : ""}`;
 }
@@ -6891,6 +6891,8 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
   // Backend always stores/returns Celsius -- convert for display only,
   // same on-the-fly conversion fmtTemp() already does for current values.
   const toDisplay = (v) => v == null ? null : (field === "temperature" && tempUnit === "F" ? v * 9 / 5 + 32 : v);
+  // W-174: table, peaks and CSV round each field the same way; the series and the chart line keep full precision.
+  const shown = (v) => formatReading(field, toDisplay(v)) ?? "";
 
   // Shared date axis and value scale across every selected device, so
   // multiple lines/columns line up and compare on one chart/table instead
@@ -6979,16 +6981,16 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
         if (intraday) {
           const peakAt = zonedTime(p.maxAt, intraday.timezone);
           rows.push([`${at.date} ${at.time}`, at.offset, intraday.timezone, intraday.bucket, `"${nameFor(id)}"`,
-            toDisplay(p.avg).toFixed(2), toDisplay(p.min).toFixed(2), toDisplay(p.max).toFixed(2),
+            shown(p.avg), shown(p.min), shown(p.max),
             `${peakAt.date} ${peakAt.time}`, p.sampleCount, p.partial ? "yes" : "no", csvUnitFor(id)].join(","));
         } else {
-          rows.push([new Date(day).toLocaleDateString(), `"${nameFor(id)}"`, toDisplay(p.avg).toFixed(2), p.sampleCount, p.partial ? "yes" : "no", csvUnitFor(id)].join(","));
+          rows.push([new Date(day).toLocaleDateString(), `"${nameFor(id)}"`, shown(p.avg), p.sampleCount, p.partial ? "yes" : "no", csvUnitFor(id)].join(","));
         }
       }
       for (const sr of outdoorSeries) {
         const o = sr.byDay[String(day).slice(0, 10)];
         if (!o) continue;
-        rows.push([new Date(day).toLocaleDateString(), `"${sr.label}"`, toDisplay(o.value).toFixed(2), o.n, o.partial ? "yes" : "no", csvUnitFor(null)].join(","));
+        rows.push([new Date(day).toLocaleDateString(), `"${sr.label}"`, shown(o.value), o.n, o.partial ? "yes" : "no", csvUnitFor(null)].join(","));
       }
     }
     const blob = new Blob([header + rows.join("\n")], { type: "text/csv" });
@@ -7138,7 +7140,7 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
                     {peaks.map(({ deviceId, peak }) => (
                       <li key={deviceId} className="config-hint">
                         {peak
-                          ? `${nameFor(deviceId)}: today's peak ${toDisplay(peak.max).toFixed(1)}${unitFor(deviceId)} at ${zonedTime(peak.maxAt, intraday.timezone).label}`
+                          ? `${nameFor(deviceId)}: today's peak ${shown(peak.max)}${unitFor(deviceId)} at ${zonedTime(peak.maxAt, intraday.timezone).label}`
                           : `${nameFor(deviceId)}: no reading today`}
                       </li>
                     ))}
@@ -7155,7 +7157,7 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
                       <circle key={deviceId} data-testid={`peak-marker-${deviceId}`} r="3.5"
                         cx={xOf(peak.day)} cy={toY(toDisplay(peak.max))}
                         fill={devicePaths.find(p => p.deviceId === deviceId)?.color}>
-                        <title>{`${nameFor(deviceId)}: ${toDisplay(peak.max).toFixed(1)}${unitFor(deviceId)} at ${zonedTime(peak.maxAt, intraday.timezone).label}`}</title>
+                        <title>{`${nameFor(deviceId)}: ${shown(peak.max)}${unitFor(deviceId)} at ${zonedTime(peak.maxAt, intraday.timezone).label}`}</title>
                       </circle>
                     ))}
                     {outdoorPoints.filter(p => p.hasPoints).map(p => (
@@ -7216,13 +7218,13 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
                             // average per cell hides whether a reading came from dozens of
                             // samples or one stray point, which is exactly the kind of
                             // question an insurance inspector would ask.
-                            const high = intraday && p?.max != null ? `max ${toDisplay(p.max).toFixed(1)}${unitFor(id)}, ` : "";
-                            const text = p?.avg != null ? `${toDisplay(p.avg).toFixed(1)}${unitFor(id)} (${high}n=${p.sampleCount})` : "—";
+                            const high = intraday && p?.max != null ? `max ${shown(p.max)}${unitFor(id)}, ` : "";
+                            const text = p?.avg != null ? `${shown(p.avg)}${unitFor(id)} (${high}n=${p.sampleCount})` : "—";
                             return <td key={id} title={text}>{text}</td>;
                           })}
                           {outdoorSeries.map(sr => {
                             const o = sr.byDay[String(day).slice(0, 10)];
-                            const text = o ? outdoorCellText(o, toDisplay, unit) : "—";
+                            const text = o ? outdoorCellText(o, toDisplay, unit, field) : "—";
                             return <td key={sr.key} className="sh-cell-outdoor" title={text}>{text}</td>;
                           })}
                         </tr>

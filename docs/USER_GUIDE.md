@@ -299,4 +299,5 @@ Readings are rounded for reading. Humidity and CO2 are whole numbers, temperatur
 pressure show up to one decimal, CO up to two, and electrical readings on tiles are shown as the
 device reports them. A small CO or air quality reading that is not zero is never shown as zero.
 The system still stores, checks and alerts on the full value; hover a reading in a device's
-detail view to see it.
+detail view to see it. Sensor History and its Download CSV round the same way, except that
+electrical averages there show up to two or three decimals.

@@ -414,8 +414,8 @@ describe("SensorHistoryPanel", () => {
     const rows = await screen.findAllByRole("row");
     // header row + 2 data rows, most recent (8/25) first
     expect(rows).toHaveLength(3);
-    expect(within(rows[1]).getByText("75.2% (n=8)")).toBeTruthy();
-    expect(within(rows[2]).getByText("70.0% (n=12)")).toBeTruthy();
+    expect(within(rows[1]).getByText("75% (n=8)")).toBeTruthy();
+    expect(within(rows[2]).getByText("70% (n=12)")).toBeTruthy();
   });
 
   // W-21: `since` ("N days ago from right now") almost never lands on an
@@ -448,8 +448,8 @@ describe("SensorHistoryPanel", () => {
     vi.stubGlobal("fetch", reportedFieldsFetch([sensors[0]]));
     render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
 
-    expect(await screen.findByText("75.2% (n=8)")).toBeTruthy();
-    expect(screen.getByText("70.0% (n=12)")).toBeTruthy();
+    expect(await screen.findByText("75% (n=8)")).toBeTruthy();
+    expect(screen.getByText("70% (n=12)")).toBeTruthy();
   });
 
   it("converts Celsius to Fahrenheit for display when the field is temperature and unit is F", async () => {
@@ -629,7 +629,7 @@ describe("SensorHistoryPanel", () => {
       () => [{ day: "2026-08-25T00:00:00Z", avg: 620, min: 590, max: 650, sampleCount: 40 }]));
     render(<SensorHistoryPanel devices={kiddeSensors} apiBase="http://cabin" tempUnit="F" />);
 
-    expect(await screen.findByText("620.0 ppm (n=40)")).toBeTruthy();
+    expect(await screen.findByText("620 ppm (n=40)")).toBeTruthy();
   });
 
   // 2026-08-27: the user asked for the reading count to be its own real
@@ -643,7 +643,7 @@ describe("SensorHistoryPanel", () => {
     const createObjectURL = vi.fn().mockReturnValue("blob:mock");
     vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
     render(<SensorHistoryPanel devices={sensors} apiBase="http://cabin" tempUnit="F" />);
-    await screen.findAllByText("75.2% (n=8)");
+    await screen.findAllByText("75% (n=8)");
 
     fireEvent.click(screen.getByRole("button", { name: "Download CSV" }));
 
@@ -665,8 +665,8 @@ describe("SensorHistoryPanel", () => {
     const day1 = new Date("2026-08-24T00:00:00Z").toLocaleDateString();
     const day2 = new Date("2026-08-25T00:00:00Z").toLocaleDateString();
     expect(lines[0]).toBe("date,device,avg,count,partial,unit");
-    expect(lines).toContain(`${day1},"Mech Room",70.00,12,no,%`);
-    expect(lines).toContain(`${day2},"Kitchen",75.20,8,no,%`);
+    expect(lines).toContain(`${day1},"Mech Room",70,12,no,%`);
+    expect(lines).toContain(`${day2},"Kitchen",75,8,no,%`);
   });
 
   it("reads an instant on the named zone's clock and picks the earliest of today's highest readings", () => {
@@ -721,7 +721,7 @@ describe("SensorHistoryPanel", () => {
       vi.stubGlobal("fetch", fetchMock);
       render(<SensorHistoryPanel devices={[co2]} apiBase="http://cabin" tempUnit="F" />);
 
-      expect(await screen.findByText("620.0 ppm (n=40)")).toBeTruthy();
+      expect(await screen.findByText("620 ppm (n=40)")).toBeTruthy();
       expect(screen.getByLabelText(/^resolution$/i).value).toBe("1d");
       expect(fetchMock.mock.calls.some(c => c[0].includes("bucket"))).toBe(false);
       expect(screen.queryByRole("list", { name: /today's peak/i })).toBeNull();
@@ -737,10 +737,10 @@ describe("SensorHistoryPanel", () => {
       const peaks = await screen.findByRole("list", { name: /today's peak/i });
       expect(fetchMock.mock.calls.at(-1)[0]).toContain("bucket=5m");
       // The higher reading two days ago is not today's.
-      expect(peaks.textContent).toBe(`Kidde CO2 Level: today's peak 2400.0 ppm at ${zonedTime(spikeAt, zone).label}`);
-      expect(screen.getByText("900.0 ppm (max 2400.0 ppm, n=6)")).toBeTruthy();
+      expect(peaks.textContent).toBe(`Kidde CO2 Level: today's peak 2400 ppm at ${zonedTime(spikeAt, zone).label}`);
+      expect(screen.getByText("900 ppm (max 2400 ppm, n=6)")).toBeTruthy();
       expect(screen.getByText(zonedTime(start, zone).label)).toBeTruthy();
-      expect(screen.getByTestId(`peak-marker-${co2.deviceId}`).textContent).toContain("2400.0 ppm");
+      expect(screen.getByTestId(`peak-marker-${co2.deviceId}`).textContent).toContain("2400 ppm");
       expect(screen.getByText(new RegExp(`Times are ${zone} time`))).toBeTruthy();
     });
 
@@ -760,7 +760,7 @@ describe("SensorHistoryPanel", () => {
       expect(lines).toHaveLength(3);
       const at = zonedTime(start, zone);
       const peakAt = zonedTime(spikeAt, zone);
-      expect(lines[2]).toBe(`${at.date} ${at.time},${at.offset},${zone},5m,"Kidde CO2 Level",900.00,600.00,2400.00,${peakAt.date} ${peakAt.time},6,no,ppm`);
+      expect(lines[2]).toBe(`${at.date} ${at.time},${at.offset},${zone},5m,"Kidde CO2 Level",900,600,2400,${peakAt.date} ${peakAt.time},6,no,ppm`);
     });
 
     it("says so instead of showing an empty chart when intraday needs a sign-in", async () => {
@@ -783,7 +783,7 @@ describe("SensorHistoryPanel", () => {
       await choose("5m");
 
       expect(await screen.findByText(/shows 1 day values only/i)).toBeTruthy();
-      expect(screen.getByText("620.0 ppm (n=40)")).toBeTruthy();
+      expect(screen.getByText("620 ppm (n=40)")).toBeTruthy();
       expect(screen.queryByRole("list", { name: /today's peak/i })).toBeNull();
     });
 
