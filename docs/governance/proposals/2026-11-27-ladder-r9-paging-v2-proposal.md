@@ -9,7 +9,7 @@ Runs 5 to 8 stay exactly as graded. Nothing here relabels them. Their figures be
 | # | Question | Code recommends |
 |---|---|---|
 | D1 | May kernel stall time (PSI) judge a rung? Today it is evidence only (7202263773, #614). | Yes, in the training phase, under a new labelled rule |
-| D2 | What limit? | 1 percent of training time for memory and 1 percent for IO, judged separately |
+| D2 | What stall exposure is tolerated? | At most 1 percent of the training phase with at least one cgroup task stalled on memory, and the same for IO, judged separately |
 | D3 | Accept that load and save are not judged for paging? | Yes, with the cost stated in section 4 |
 | D4 | Is one passing run enough to record a qualified rung for this exact configuration? | Yes; a reviewer may require a repeat before any use of it |
 
@@ -47,7 +47,7 @@ Rungs stopped by the memory ceiling had short training phases with higher shares
 
 The label differs from `v2` so that no reader confuses it with the refault-rate rule.
 
-**What it protects:** training wall time lost to waiting for memory or storage.
+**What it limits:** the fraction of the training phase with at least one cgroup task stalled on memory, or on IO. Other tasks may still make useful progress during that time, so the figure is not lost training time.
 
 A rung fails the paging rule if any of these holds in its **training** phase:
 
@@ -62,23 +62,37 @@ Reported and not judged: major faults, refault rates, PSI `full`, and load and s
 
 **Why `some` and not `full`.** `some` is the time during which at least one task waited on the resource; `full` is the time during which all non-idle tasks waited at once ([kernel documentation](https://docs.kernel.org/accounting/psi.html)). Training uses several threads, and one waiting thread can hold up the others without counting in `full`. `some` is never smaller than `full`, so it is the stricter choice. The two are nearly equal in the table's runs.
 
-**Where 1 percent comes from.** It is a tolerance, not a measured constant: a qualified rung may spend at most 1 percent of its training phase with a task waiting on memory, and at most 1 percent on IO. For a training phase as long as the 20-minute rung limit, 1 percent is 12 s. **Disclosure:** it is proposed after seeing the data. The highest completed-rung figures are about 12 times (memory) and 29 times (IO) below it. A limit of 0.5 percent or 5 percent would also sit above every completed rung, so the recorded data cannot choose among the three. The choice is how much lost time is acceptable.
+**Where 1 percent comes from.** It is an exposure tolerance, not a measured constant: in a qualified rung, at least one cgroup task was stalled on memory for at most 1 percent of the training phase, and on IO for at most 1 percent. For a training phase as long as the 20-minute rung limit, 1 percent is 12 s of such time. **Disclosure:** it is proposed after seeing the data. The highest completed-rung figures are about 12 times (memory) and 29 times (IO) below it. A limit of 0.5 percent or 5 percent would also sit above every completed rung, so the recorded data cannot choose among the three. The choice is how much stall exposure is acceptable.
 
-**Limitations.** A share over the whole phase can hide a short burst. Start-of-training stalls weigh more in a short phase (see the stopped rungs in section 2). PSI share is not a measured slowdown against an unconstrained run. Three optimizer steps say nothing about a long training job.
+**Limitations.** A share over the whole phase can hide a short burst. Start-of-training stalls weigh more in a short phase (see the stopped rungs in section 2). PSI share is neither lost training time nor a measured slowdown against an unconstrained run. Three optimizer steps say nothing about a long training job.
 
 **Cost of not judging load and save (D3).** Across the completed rungs of runs 6 to 8, load stalls were 5.9 to 12.0 percent (memory) and 14.4 to 22.5 percent (IO), and save IO stalls 2.0 to 2.8 percent. Both phases would exceed 1 percent if judged. The proposal excludes them because each happens once per job, and the memory ceiling, host floor, swap rule and rung timeout still cover them. A reviewer who wants load protected needs a separate limit with its own reason.
 
 ## 5. Valid samples, freshness and coverage
 
-**Harness change needed.** PSI totals reach `rung.json` only as a summary written by the rung process, so a grader cannot recompute them as it can for memory peaks and paging. Under `v2-stall` the rung writes `pressure-trace.csv` (time, phase, memory `some` and `full` totals, IO `some` and `full` totals), one row per watcher sample including both samples at each phase boundary. The parent judges from that file, and the manifest seals it.
+**Harness change needed.** PSI totals reach `rung.json` only as a summary written by the rung process, so a grader cannot recompute them as it can for memory peaks and paging. Under `v2-stall` the rung writes `pressure-trace.csv`, one row per watcher sample including both samples at each phase boundary, and the manifest seals it. The parent judges from that file. Its columns:
+
+| Column | Content |
+|---|---|
+| `read_start_ns` | The rung process's monotonic clock, read immediately before the two pressure files |
+| `phase` | `load`, `train` or `save` |
+| `memory_some_us`, `memory_full_us`, `io_some_us`, `io_full_us` | The kernel's cumulative `total=` values |
+| `read_end_ns` | The same clock, read immediately after the two files |
+
+**One interval for numerator and denominator.** Let S be the first row labelled `train` and E the last. Both are boundary samples taken at the phase change. For each resource, the numerator is E's `some` total minus S's. The denominator is E's `read_start_ns` minus S's `read_end_ns`. Both come from those two rows only: no row from load or save is borrowed, and no duration is taken from `rung.json` or another clock. The counters were each read somewhere inside their row's two timestamps, so this denominator is the shortest the interval can have been. The share can only be overstated, never understated, by the time spent reading.
+
+A rung passes rules 1 and 2 only if every check below holds and, for each resource, `numerator_us * 100000 <= denominator_ns`, in integer arithmetic. The verdict is written as a condition to pass, never as "fail if over", so a missing or unusable value cannot pass.
 
 The training evidence is valid only if all of these hold. Otherwise the rung fails.
 
-- Phases appear once each, in the order load, train, save.
-- At least two training samples, spanning at least 5 s.
-- No gap over 5 s between consecutive samples, including across both boundaries. Samples are normally about 0.5 s apart.
-- Every training sample has readable memory and IO totals. An absent or malformed pressure file is a failure, never zero.
+- Every line has exactly these columns. A cut or extra line invalidates the trace.
+- Every timestamp and every total is a nonnegative whole number in plain digits. Empty, NaN, infinite, negative, decimal or non-numeric values are invalid.
+- Time runs forward: in each row `read_end_ns` is not before `read_start_ns`, and no row starts before the previous row ends.
 - No total goes backwards.
+- Phases appear once each, in the order load, train, save.
+- At least two training rows, and a denominator that is positive and at least 5 s.
+- No gap over 5 s, measured from one row's start to the next row's end, including across both boundaries. Samples are normally about 0.5 s apart.
+- Both pressure files were readable for every training row. An absent or malformed file is a failure, never zero.
 - The trace and the `rung.json` pressure summary agree on the training start and end totals.
 - The existing refault-counter coverage checks pass, because rule 3 depends on them.
 
@@ -114,6 +128,6 @@ A separate PR with tests and no run. This note does not authorize it.
 - `ladder.py`: add `v2-stall`; fixed limits of 1 percent (or the ruled figure) with no command-line override; judge from `pressure-trace.csv`; allow gradient checkpointing with `v2-stall` as well as `v1` (it is refused today); keep evidence mode `v1` only.
 - `ladder_rung.py`: write the trace when the rule is selected.
 - `run_ladder.ps1`: accept `-PagingRule v2-stall`, including with `-GradientCheckpointing`. No change to budget, ceiling, floor, start gate, timeout or watchdog.
-- Tests: exactly at the limit passes and one microsecond over fails; each invalid-evidence case fails; a trace and summary mismatch fails; `v1` and `v2` outputs unchanged byte for byte; evidence mode with `v2-stall` refused; launcher tests on Windows PowerShell 5.1 and PowerShell 7. Synthetic fixtures only; the new rule is not applied to any recorded run.
+- Tests: exactly at the limit passes and one microsecond over fails; each invalid-evidence case in section 5 fails, including empty, NaN, infinite, negative and decimal values, time running backwards, a zero, negative or under 5 s denominator, and a decreasing total; load and save rows and the `rung.json` duration do not change the result; a trace and summary mismatch fails; `v1` and `v2` outputs unchanged byte for byte; evidence mode with `v2-stall` refused; launcher tests on Windows PowerShell 5.1 and PowerShell 7. Synthetic fixtures only; the new rule is not applied to any recorded run.
 
 The unused refault-rate `v2` stays as it is; removing it is separate work.
