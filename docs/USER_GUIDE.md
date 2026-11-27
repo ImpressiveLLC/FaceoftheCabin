@@ -261,6 +261,17 @@ open it and it then asks you to log in, that's expected too as of
 
 ---
 
+## Sensor History: seeing a spike inside one day
+
+Monitoring > Sensor History has a **Resolution** control: 1 day (the default), 1 hour,
+15 minutes or 5 minutes. The finer ones need you to be signed in. Below 1 day the panel
+shows today's highest reading for each selected sensor with its time, and each row shows
+the average, the highest reading and the number of readings. Times are the property's
+timezone. **Download CSV** saves what is shown, with the unit in its own column. The table
+lists the newest 500 times; the chart and the CSV have all of them. The panel loads when
+you change a selection, so reload the page to pick up newer readings. The outdoor weather
+baseline is daily and appears only at 1 day.
+
 ## Who to ask
 
 For anything below the day-to-day feature level — adding a new camera,

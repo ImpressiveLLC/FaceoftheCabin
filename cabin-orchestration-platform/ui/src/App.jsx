@@ -6090,11 +6090,58 @@ const SENSOR_FIELD_UNITS = {
   temperature: "°", humidity: "%", co2: " ppm", co: " ppm", airQualityIndex: "",
   power: " W", energy: " kWh", current: " A", voltage: " V",
 };
+// "airQualityIndex" holds two different quantities: a volatile organic compound concentration (HA
+// device_class volatile_organic_compounds*, with a unit such as ppb) and a unitless air quality index (aqi).
+// The unit therefore comes from the sensor's own reported metadata, and is never guessed.
+export function airQualitySourceUnit(device) {
+  const attributes = device?.attributes || {};
+  if (!String(attributes.device_class || "").startsWith("volatile_organic_compounds")) return "";
+  return String(attributes.unit_of_measurement || "").trim();
+}
 // Human labels for DeviceStatus.attributes.reportsFields (DeviceType.telemetryFields()
 // backend-side) -- reuses this same picker's own labels so "Reports: Humidity" in
 // Device Manager's device detail and "Humidity" in the Sensor History field picker
 // never say the same field two different ways.
 const SENSOR_FIELD_LABELS = Object.fromEntries(SENSOR_FIELD_OPTIONS.map(o => [o.value, o.label]));
+// W-173: the resolutions GET /api/events/telemetry-history answers in. "1d" is the default and is never
+// sent, so the day request is the same one as before. The finer ones need a signed-in session.
+const SENSOR_HISTORY_RESOLUTIONS = [
+  { value: "1d", label: "1 day" },
+  { value: "1h", label: "1 hour" },
+  { value: "15m", label: "15 minutes" },
+  { value: "5m", label: "5 minutes" },
+];
+// 60 days at 5 minutes is over 17,000 times: the table draws the newest ones, the chart and CSV all of them.
+export const SENSOR_HISTORY_TABLE_LIMIT = 500;
+const zonedFormatters = new Map();
+// An instant on the wall clock of a named zone (the one the server aligned its buckets to), never the
+// viewer's: { date: "2026-11-27", time: "14:35:00", offset: "-06:00", label: "Nov 27, 2:35 PM CST" }.
+export function zonedTime(instant, timeZone) {
+  let f = zonedFormatters.get(timeZone);
+  if (!f) {
+    f = {
+      parts: new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit",
+        day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", timeZoneName: "longOffset" }),
+      label: new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric", hour: "numeric",
+        minute: "2-digit", timeZoneName: "short" }),
+    };
+    zonedFormatters.set(timeZone, f);
+  }
+  const date = new Date(instant);
+  const p = Object.fromEntries(f.parts.formatToParts(date).map(x => [x.type, x.value]));
+  return {
+    date: `${p.year}-${p.month}-${p.day}`,
+    time: `${p.hour}:${p.minute}:${p.second}`,
+    offset: p.timeZoneName.replace("GMT", "") || "+00:00",
+    label: f.label.format(date),
+  };
+}
+// Today's highest reading in the property's zone, the earliest one if the same value came twice.
+export function todaysPeak(points, timeZone, now = new Date()) {
+  const today = zonedTime(now, timeZone).date;
+  return points.reduce((best, p) =>
+    p.max != null && p.maxAt && (!best || p.max > best.max) && zonedTime(p.maxAt, timeZone).date === today ? p : best, null);
+}
 // Cycled by selection order for the multi-device chart/legend below --
 // picked for contrast against this panel's dark background, not tied to
 // any device's own identity (a device can move between colors across
@@ -6708,8 +6755,14 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
   }, [field]);
 
   const [days, setDays] = useState(30);
+  const [bucket, setBucket] = useState("1d");
   const [seriesByDevice, setSeriesByDevice] = useState({});
   const [loading, setLoading] = useState(false);
+  // W-173: what the series on screen actually are, from the server's own answer: null for day points,
+  // else the bucket and the zone it was aligned to. Never inferred from the Resolution selection, so a
+  // day answer (a demo link) is never labeled as finer.
+  const [intraday, setIntraday] = useState(null);
+  const [intradayDenied, setIntradayDenied] = useState(false);
   // W-21: the server's own answer to "how much of what you asked for did
   // you actually get" (TelemetryHistoryResponse), not derived from `days`
   // itself -- a demo token's own ceiling (or a future divergence from the
@@ -6726,7 +6779,9 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
   // screen: switching from Cabin to Home (or another range) must not keep drawing the previous
   // location's line and station label while the next response loads.
   const [outdoorState, setOutdoorState] = useState({ key: null, data: null });
-  const outdoorEligible = topic === "comfort_air" && OUTDOOR_BASELINE_FIELDS.has(field) && !!location;
+  const outdoorApplies = topic === "comfort_air" && OUTDOOR_BASELINE_FIELDS.has(field) && !!location;
+  // The baseline is one value per day, so it is only drawn over day points.
+  const outdoorEligible = outdoorApplies && !intraday;
   const outdoorWanted = outdoorEligible && showOutdoor;
   const outdoorKey = outdoorWanted ? `${apiBase}|${location}|${days}` : null;
   const outdoor = outdoorKey !== null && outdoorState.key === outdoorKey ? outdoorState.data : null;
@@ -6769,12 +6824,14 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
     // then also skips setLoading(false) because of that same flag, and
     // this early-return branch never touched loading at all. Must reset
     // it explicitly here, not just the series.
-    if (selectedIds.length === 0) { setSeriesByDevice({}); setLoading(false); setRangeInfo(null); return; }
+    if (selectedIds.length === 0) {
+      setSeriesByDevice({}); setLoading(false); setRangeInfo(null); setIntraday(null); setIntradayDenied(false); return;
+    }
     let cancelled = false;
     setLoading(true);
     Promise.all(selectedIds.map(id =>
-      authedFetch(`${apiBase}/api/events/telemetry-history?deviceId=${encodeURIComponent(id)}&field=${field}&days=${days}`)
-        .then(r => r.json())
+      authedFetch(`${apiBase}/api/events/telemetry-history?deviceId=${encodeURIComponent(id)}&field=${field}&days=${days}${bucket === "1d" ? "" : `&bucket=${bucket}`}`)
+        .then(r => r.status === 401 || r.status === 403 ? { denied: true } : r.json())
         .then(data => [id, data])
         .catch(() => [id, null])
     )).then(entries => {
@@ -6789,6 +6846,9 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
       setRangeInfo(withRange
         ? { requestedDays: withRange.requestedDays, effectiveDays: withRange.effectiveDays, clamped: withRange.clamped }
         : null);
+      const finer = entries.map(([, data]) => data).find(d => d?.bucket && d?.timezone);
+      setIntraday(finer ? { bucket: finer.bucket, timezone: finer.timezone } : null);
+      setIntradayDenied(entries.some(([, data]) => data?.denied));
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // `field` deliberately omitted -- a field change always cascades through
@@ -6799,7 +6859,7 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
     // hasn't caught up yet, fetching the new field for the OLD (wrong)
     // set of devices before the correct fetch right behind it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBase, days, selectedIds, authedFetch]);
+  }, [apiBase, days, bucket, selectedIds, authedFetch]);
 
   if (sensors.length === 0) return null;
 
@@ -6820,6 +6880,12 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
   };
 
   const unit = field === "temperature" ? `°${tempUnit}` : (SENSOR_FIELD_UNITS[field] ?? "");
+  // The unit after one device's value: the field's own, except where it depends on the sensor.
+  const unitFor = (deviceId) => {
+    if (field !== "airQualityIndex") return unit;
+    const reported = airQualitySourceUnit(devices.find(d => d.deviceId === deviceId));
+    return reported ? ` ${reported}` : "";
+  };
   // Backend always stores/returns Celsius -- convert for display only,
   // same on-the-fly conversion fmtTemp() already does for current values.
   const toDisplay = (v) => v == null ? null : (field === "temperature" && tempUnit === "F" ? v * 9 / 5 + 32 : v);
@@ -6833,23 +6899,38 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
   // this is just which of allDates that ever was, not a per-device fact.
   const partialDates = new Set(selectedIds.flatMap(id => (seriesByDevice[id] || []).filter(p => p.partial).map(p => p.day)));
   const dateKeys = allDates.map(d => String(d).slice(0, 10));
+  // Looked up per cell and per CSV row, so indexed once: an intraday range runs to thousands of times.
+  const dateIndex = new Map(allDates.map((d, i) => [d, i]));
+  const pointsByTime = Object.fromEntries(selectedIds.map(id =>
+    [id, new Map((seriesByDevice[id] || []).map(p => [p.day, p]))]));
+  const peaks = intraday
+    ? selectedIds.map(id => ({ deviceId: id, peak: todaysPeak(seriesByDevice[id] || [], intraday.timezone) }))
+    : [];
   const outdoorSeries = outdoorWanted ? outdoorBaselineSeries(field, outdoor) : [];
   const allDisplayValues = [
     ...selectedIds.flatMap(id =>
       (seriesByDevice[id] || []).filter(p => p.avg != null).map(p => toDisplay(p.avg))),
     ...outdoorSeries.flatMap(sr => dateKeys.map(k => sr.byDay[k]).filter(Boolean)
       .flatMap(o => [o.value, o.min, o.max]).filter(v => v != null).map(toDisplay)),
+    ...peaks.filter(p => p.peak).map(p => toDisplay(p.peak.max)),
   ];
-  const chartMin = allDisplayValues.length ? Math.min(...allDisplayValues) : 0;
-  const chartMax = allDisplayValues.length ? Math.max(...allDisplayValues) : 1;
+  // reduce, not Math.min(...values): spreading tens of thousands of values overflows the call stack.
+  const chartMin = allDisplayValues.length ? allDisplayValues.reduce((a, b) => Math.min(a, b)) : 0;
+  const chartMax = allDisplayValues.length ? allDisplayValues.reduce((a, b) => Math.max(a, b)) : 1;
   const range = chartMax - chartMin || 1;
   const chartW = 560, chartH = 120, pad = 8;
   const toX = (i) => allDates.length > 1 ? pad + (i / (allDates.length - 1)) * (chartW - pad * 2) : chartW / 2;
   const toY = (v) => chartH - pad - ((v - chartMin) / range) * (chartH - pad * 2);
+  // Intraday points sit at their time, so a stretch with no readings shows as a stretch.
+  const firstMs = Date.parse(allDates[0]);
+  const spanMs = Date.parse(allDates[allDates.length - 1]) - firstMs || 1;
+  const xOf = (day) => intraday && allDates.length > 1
+    ? pad + ((Date.parse(day) - firstMs) / spanMs) * (chartW - pad * 2)
+    : toX(dateIndex.get(day));
   const devicePaths = selectedIds.map((deviceId, idx) => {
     const pts = (seriesByDevice[deviceId] || []).filter(p => p.avg != null);
     const d = pts.map((p, i) => {
-      const x = toX(allDates.indexOf(p.day));
+      const x = xOf(p.day);
       const y = toY(toDisplay(p.avg));
       return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(" ");
@@ -6880,26 +6961,39 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
   // emits a row for a date+device pair that actually has data, same
   // "don't fabricate a value that isn't real" reasoning as the on-screen
   // table's "—" cells -- a pivot built on this can trust every row.
+  // The unit as plain ASCII with no separators, so a spreadsheet never mangles it. Empty where there is none.
+  const csvUnitFor = (deviceId) => field === "temperature" ? `deg${tempUnit}`
+    : unitFor(deviceId).trim().replace(/[µμ]/g, "u").replace(/³/g, "3").replace(/[",\r\n]/g, "");
   const downloadCsv = () => {
-    const header = "date,device,avg,count,partial\n";
+    const header = intraday
+      ? "time,utc_offset,timezone,resolution,device,avg,min,max,max_time,count,partial,unit\n"
+      : "date,device,avg,count,partial,unit\n";
     const rows = [];
     for (const day of allDates) {
+      const at = intraday ? zonedTime(day, intraday.timezone) : null;
       for (const id of selectedIds) {
-        const p = (seriesByDevice[id] || []).find(pt => pt.day === day);
+        const p = pointsByTime[id].get(day);
         if (p?.avg == null) continue;
-        rows.push([new Date(day).toLocaleDateString(), `"${nameFor(id)}"`, toDisplay(p.avg).toFixed(2), p.sampleCount, p.partial ? "yes" : "no"].join(","));
+        if (intraday) {
+          const peakAt = zonedTime(p.maxAt, intraday.timezone);
+          rows.push([`${at.date} ${at.time}`, at.offset, intraday.timezone, intraday.bucket, `"${nameFor(id)}"`,
+            toDisplay(p.avg).toFixed(2), toDisplay(p.min).toFixed(2), toDisplay(p.max).toFixed(2),
+            `${peakAt.date} ${peakAt.time}`, p.sampleCount, p.partial ? "yes" : "no", csvUnitFor(id)].join(","));
+        } else {
+          rows.push([new Date(day).toLocaleDateString(), `"${nameFor(id)}"`, toDisplay(p.avg).toFixed(2), p.sampleCount, p.partial ? "yes" : "no", csvUnitFor(id)].join(","));
+        }
       }
       for (const sr of outdoorSeries) {
         const o = sr.byDay[String(day).slice(0, 10)];
         if (!o) continue;
-        rows.push([new Date(day).toLocaleDateString(), `"${sr.label}"`, toDisplay(o.value).toFixed(2), o.n, o.partial ? "yes" : "no"].join(","));
+        rows.push([new Date(day).toLocaleDateString(), `"${sr.label}"`, toDisplay(o.value).toFixed(2), o.n, o.partial ? "yes" : "no", csvUnitFor(null)].join(","));
       }
     }
     const blob = new Blob([header + rows.join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${field}-${days}d-${selectedIds.length}-devices.csv`;
+    a.download = `${field}-${days}d${intraday ? `-${intraday.bucket}` : ""}-${selectedIds.length}-devices.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -6976,7 +7070,12 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
                   <option value={60}>60 days</option>
                 </select>
               </label>
-              <button className="btn-ghost" onClick={downloadCsv} disabled={selectedIds.length === 0 || allDates.length === 0}>Download CSV</button>
+              <label className="dm-toolbar-select">Resolution
+                <select value={bucket} onChange={e => setBucket(e.target.value)}>
+                  {SENSOR_HISTORY_RESOLUTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
+              <button className="btn-ghost" onClick={downloadCsv} disabled={loading || selectedIds.length === 0 || allDates.length === 0}>Download CSV</button>
               {outdoorEligible && (
                 <label className="dm-toolbar-select sensor-history-outdoor-toggle">
                   <input type="checkbox" checked={showOutdoor} onChange={e => setShowOutdoor(e.target.checked)} /> Outdoor baseline
@@ -6990,6 +7089,15 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
               <p className="config-hint sensor-history-outdoor-note">
                 Single gray points (▲ high, ● mean, ▼ low per day): nearest airport weather station ({outdoor.stations.join(", ")}), summarized from its hourly reports. Days are UTC days, so a day can differ slightly from the local calendar day.
               </p>
+            )}
+            {outdoorApplies && intraday && (
+              <p className="config-hint sensor-history-outdoor-note">The outdoor weather baseline is one value per day, so it is shown at the 1 day resolution only.</p>
+            )}
+            {!loading && intradayDenied && (
+              <p className="config-hint">Readings finer than 1 day can show when rooms were in use. Sign in to see them, or choose the 1 day resolution.</p>
+            )}
+            {!loading && bucket !== "1d" && !intraday && !intradayDenied && allDates.length > 0 && (
+              <p className="config-hint">This view shows 1 day values only.</p>
             )}
             {devicePaths.some(p => p.outdoor) && (
               <p className="config-hint sensor-history-outdoor-note">
@@ -7018,17 +7126,35 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
             {!loading && selectedIds.length === 0 && (
               <p className="config-hint">Select at least one device above to chart {SENSOR_FIELD_LABELS[field] || field}.</p>
             )}
-            {!loading && selectedIds.length > 0 && allDates.length === 0 && (
+            {!loading && !intradayDenied && selectedIds.length > 0 && allDates.length === 0 && (
               <p className="config-hint">No {field} history for the selected devices in the last {rangeInfo?.effectiveDays ?? days} days.</p>
             )}
             {!loading && allDates.length > 0 && (
               <>
+                {peaks.length > 0 && (
+                  <ul className="sensor-history-peaks" aria-label="Today's peak">
+                    {peaks.map(({ deviceId, peak }) => (
+                      <li key={deviceId} className="config-hint">
+                        {peak
+                          ? `${nameFor(deviceId)}: today's peak ${toDisplay(peak.max).toFixed(1)}${unitFor(deviceId)} at ${zonedTime(peak.maxAt, intraday.timezone).label}`
+                          : `${nameFor(deviceId)}: no reading today`}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {allDates.length > 1 && (
                   <svg viewBox={`0 0 ${chartW} ${chartH}`} className="sensor-history-chart">
                     {devicePaths.filter(p => p.hasPoints).map(p => (
                       <path key={p.deviceId} d={p.d} fill="none" stroke={p.color} strokeWidth="2"
                         strokeDasharray={p.outdoor ? "6 3" : undefined}
                         data-testid={p.outdoor ? `outdoor-device-line-${p.deviceId}` : undefined}/>
+                    ))}
+                    {peaks.filter(p => p.peak).map(({ deviceId, peak }) => (
+                      <circle key={deviceId} data-testid={`peak-marker-${deviceId}`} r="3.5"
+                        cx={xOf(peak.day)} cy={toY(toDisplay(peak.max))}
+                        fill={devicePaths.find(p => p.deviceId === deviceId)?.color}>
+                        <title>{`${nameFor(deviceId)}: ${toDisplay(peak.max).toFixed(1)}${unitFor(deviceId)} at ${zonedTime(peak.maxAt, intraday.timezone).label}`}</title>
+                      </circle>
                     ))}
                     {outdoorPoints.filter(p => p.hasPoints).map(p => (
                       <g key={p.key} fill={p.color} data-testid={`outdoor-points-${p.key}`}>
@@ -7059,30 +7185,37 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
                   </div>
                 )}
                 <p className="config-hint sensor-history-count-note">
-                  Each value is that day's average; (n=…) is how many individual readings were averaged into it — the CSV export has the count as its own column.
-                  {partialDates.size > 0 && " A day marked (partial) covers less than a full 24 hours -- its average is over fewer hours than the other rows, not a stronger or weaker reading."}
+                  {intraday ? (<>
+                    Each value is the average over that time bucket, with its highest reading (max); (n=…) is how many individual readings it holds. Times are {intraday.timezone} time. The CSV export has the average, low, high, time of the high, count and unit as their own columns.
+                    {partialDates.size > 0 && " A time marked (partial) is the first bucket of the range, cut off by the range start."}
+                    {allDates.length > SENSOR_HISTORY_TABLE_LIMIT && ` The table lists the newest ${SENSOR_HISTORY_TABLE_LIMIT} of ${allDates.length} times; the chart and the CSV export have all of them.`}
+                  </>) : (<>
+                    Each value is that day's average; (n=…) is how many individual readings were averaged into it — the CSV export has the count as its own column.
+                    {partialDates.size > 0 && " A day marked (partial) covers less than a full 24 hours -- its average is over fewer hours than the other rows, not a stronger or weaker reading."}
+                  </>)}
                 </p>
                 <div className="sensor-history-table-wrap">
-                  <table className="sensor-history-table sensor-history-table--fixed"
+                  <table className={`sensor-history-table sensor-history-table--fixed${intraday ? " sensor-history-table--intraday" : ""}`}
                     style={{ minWidth: `calc(13em + ${selectedIds.length} * 11em + ${outdoorSeries.length} * 30em)` }}>
                     <colgroup>
                       <col className="sh-col-date" />
                       {selectedIds.map(id => <col key={id} className="sh-col-device" />)}
                       {outdoorSeries.map(sr => <col key={sr.key} className="sh-col-outdoor" />)}
                     </colgroup>
-                    <thead><tr><th>Date</th>{selectedIds.map(id => <th key={id}>{nameFor(id)}</th>)}{outdoorSeries.map(sr => <th key={sr.key}>{sr.label}</th>)}</tr></thead>
+                    <thead><tr><th>{intraday ? "Time" : "Date"}</th>{selectedIds.map(id => <th key={id}>{nameFor(id)}</th>)}{outdoorSeries.map(sr => <th key={sr.key}>{sr.label}</th>)}</tr></thead>
                     <tbody>
-                      {[...allDates].reverse().map(day => (
+                      {(intraday ? allDates.slice(-SENSOR_HISTORY_TABLE_LIMIT) : [...allDates]).reverse().map(day => (
                         <tr key={day}>
-                          <td>{new Date(day).toLocaleDateString()}{partialDates.has(day) ? " (partial)" : ""}</td>
+                          <td>{intraday ? zonedTime(day, intraday.timezone).label : new Date(day).toLocaleDateString()}{partialDates.has(day) ? " (partial)" : ""}</td>
                           {selectedIds.map(id => {
-                            const p = (seriesByDevice[id] || []).find(pt => pt.day === day);
+                            const p = pointsByTime[id].get(day);
                             // Sample count matters for credibility, not just decoration --
                             // the user flagged that a wide multi-device table with only an
                             // average per cell hides whether a reading came from dozens of
                             // samples or one stray point, which is exactly the kind of
                             // question an insurance inspector would ask.
-                            const text = p?.avg != null ? `${toDisplay(p.avg).toFixed(1)}${unit} (n=${p.sampleCount})` : "—";
+                            const high = intraday && p?.max != null ? `max ${toDisplay(p.max).toFixed(1)}${unitFor(id)}, ` : "";
+                            const text = p?.avg != null ? `${toDisplay(p.avg).toFixed(1)}${unitFor(id)} (${high}n=${p.sampleCount})` : "—";
                             return <td key={id} title={text}>{text}</td>;
                           })}
                           {outdoorSeries.map(sr => {

@@ -230,6 +230,52 @@ class GoogleAuthInterceptorTest {
         assertEquals(403, otherEventsResponse.getStatus());
     }
 
+    // W-173: only the day answer of telemetry-history is open.
+    private boolean anonymousHistory(MockHttpServletResponse response, String... bucket) throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/events/telemetry-history");
+        if (bucket.length > 0) request.addParameter("bucket", bucket);
+        return interceptor.preHandle(request, response, new Object());
+    }
+
+    @Test
+    void theDayHistoryStaysOpenWithoutACredential() throws Exception {
+        assertTrue(anonymousHistory(new MockHttpServletResponse()));
+        assertTrue(anonymousHistory(new MockHttpServletResponse(), "1d"));
+        assertTrue(anonymousHistory(new MockHttpServletResponse(), ""));
+    }
+
+    @Test
+    void intradayHistoryIsDeniedWithoutACredential() throws Exception {
+        for (String[] bucket : new String[][] {
+            { "5m" }, { "15m" }, { "1h" }, { "1m" }, { "1d", "5m" }, { "5m", "1d" } }) {
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            assertFalse(anonymousHistory(response, bucket), String.join(",", bucket));
+            assertEquals(401, response.getStatus());
+        }
+    }
+
+    @Test
+    void intradayHistoryAcceptsTheCredentialsThatAlreadyCoverTheRoute() throws Exception {
+        CabinAccessToken guest = accessTokens.create("Insurance Claim", List.of("observations_read"), null, "nate@example.com");
+        MockHttpServletRequest asGuest = new MockHttpServletRequest("GET", "/api/events/telemetry-history");
+        asGuest.setParameter("bucket", "5m");
+        asGuest.setParameter("t", guest.token());
+        assertTrue(interceptor.preHandle(asGuest, new MockHttpServletResponse(), new Object()));
+
+        MockHttpServletRequest asViewer = new MockHttpServletRequest("GET", "/api/events/telemetry-history");
+        asViewer.setParameter("bucket", "5m");
+        asViewer.addHeader("Authorization", "ManagedSession " + issueManagedSessionToken(ManagedUserRole.VIEWER));
+        assertTrue(interceptor.preHandle(asViewer, new MockHttpServletResponse(), new Object()));
+
+        CabinAccessToken other = accessTokens.create("Dashboard only", List.of("dashboard"), null, "nate@example.com");
+        MockHttpServletRequest wrongScope = new MockHttpServletRequest("GET", "/api/events/telemetry-history");
+        wrongScope.setParameter("bucket", "5m");
+        wrongScope.setParameter("t", other.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        assertFalse(interceptor.preHandle(wrongScope, response, new Object()));
+        assertEquals(403, response.getStatus());
+    }
+
     // Bug #1 fix: observations_read alone (no device_states) has no way to
     // discover which deviceId/field combos exist without this -- see
     // SCOPE_PATH_PREFIXES's own comment. Deliberately narrow (device->field

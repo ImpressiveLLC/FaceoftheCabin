@@ -294,3 +294,15 @@ S61 energy: the Z2M definition for S61SZBTPB exposes state, power, current, volt
 Door contacts: nothing in code selects by `ACCESS_CONTROL` except the lock resolver (needs `COMMAND` too, which contacts
 lack) and the two door-contact trigger vocabulary rows' `appliesToCapability`, which is stored but read by no code or UI.
 Removing it from the contacts at re-detect is safe at runtime; the ontology rows still declare `ACCESS_CONTROL`.
+
+## Sensor History intraday resolution (W-173)
+
+Automated: `HistoryBucketTest`, `CabinEventServiceTest` (same-day spike, zone independence,
+fall-back hour, partial bucket), `EventControllerTest` (bucket, zone, clamp, 400, unchanged day
+JSON), `GoogleAuthInterceptorTest` (anonymous day open and intraday 401, guest and viewer),
+`DemoAccessTest` (demo stays at day), `App.test.jsx` "intraday resolution" and "air quality units
+come from each sensor" (ppb on Total VOC, none on the unitless index).
+
+Manual after deploy: signed in, pick a CO2 sensor, Resolution 5 minutes: today's peak and time
+show and match the live tile history; Download CSV holds the same times with unit `ppm`.
+Signed out, choose 5 minutes: the panel asks you to sign in. Choose 1 day: unchanged.

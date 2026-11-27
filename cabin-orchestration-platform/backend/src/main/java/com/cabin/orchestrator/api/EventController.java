@@ -4,14 +4,18 @@ import com.cabin.orchestrator.devices.DeviceRegistry;
 import com.cabin.orchestrator.events.CabinEvent;
 import com.cabin.orchestrator.events.CabinEventService;
 import com.cabin.orchestrator.events.EventStreamBroadcaster;
+import com.cabin.orchestrator.events.HistoryBucket;
 import com.cabin.orchestrator.events.ServiceHistory;
 import com.cabin.orchestrator.events.TelemetryHistoryResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -37,6 +41,11 @@ public class EventController {
     // authenticated caller, which had no ceiling before this.
     @Value("${cabin.history.max-days:60}")
     private int maxHistoryDays = 60;
+
+    // W-173: the property's own zone, the one intraday history buckets are aligned to. Same property
+    // PresenceActivityService reads. A zone name that does not exist fails the request, never a fallback.
+    @Value("${cabin.timezone:America/Chicago}")
+    private String timezone = "America/Chicago";
 
     public EventController(CabinEventService eventService, DeviceRegistry registry,
                            EventStreamBroadcaster streamBroadcaster) {
@@ -128,16 +137,31 @@ public class EventController {
      * or zero `days` clamps up to 1 (dailyAggregates()'s own floor), which
      * itself counts as `clamped` -- effectiveDays must always reflect what
      * the query actually covered, not what was asked for.
+     *
+     * W-173: {@code bucket} picks the resolution: 5m, 15m, 1h or 1d (the default, and the day answer is
+     * unchanged). An intraday answer names its bucket and the zone its boundaries are in. It needs a
+     * credential (GoogleAuthInterceptor leaves only the day answer open) and demo links get the day answer
+     * (DemoAccessFilter). Any other value is a 400.
      */
     @GetMapping("/telemetry-history")
     public TelemetryHistoryResponse telemetryHistory(
             @RequestParam(name = "deviceId") String deviceId,
             @RequestParam(name = "field") String field,
-            @RequestParam(name = "days", required = false, defaultValue = "30") int days) {
+            @RequestParam(name = "days", required = false, defaultValue = "30") int days,
+            @RequestParam(name = "bucket", required = false) String bucket) {
+        HistoryBucket resolution = HistoryBucket.parse(bucket).orElseThrow(() ->
+            new ResponseStatusException(HttpStatus.BAD_REQUEST, "bucket must be one of 5m, 15m, 1h, 1d"));
         int effectiveDays = Math.max(1, Math.min(days, maxHistoryDays));
         // D13 A1: a Zigbee device's history includes the readings logged under its linked HA entities.
+        List<String> ids = ServiceHistory.idsFor(deviceId, registry);
+        if (!resolution.intraday()) {
+            return new TelemetryHistoryResponse(days, effectiveDays, effectiveDays != days,
+                eventService.dailyAggregates(ids, field, effectiveDays));
+        }
+        ZoneId zone = ZoneId.of(timezone);
         return new TelemetryHistoryResponse(days, effectiveDays, effectiveDays != days,
-            eventService.dailyAggregates(ServiceHistory.idsFor(deviceId, registry), field, effectiveDays));
+            eventService.intradayAggregates(ids, field, effectiveDays, resolution, zone),
+            resolution.code(), zone.getId());
     }
 
     /**

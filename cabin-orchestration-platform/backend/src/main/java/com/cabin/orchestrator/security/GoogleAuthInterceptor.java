@@ -1,5 +1,6 @@
 package com.cabin.orchestrator.security;
 
+import com.cabin.orchestrator.events.HistoryBucket;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
@@ -182,8 +183,11 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
         // gate is actually for doesn't apply to a humidity reading. The
         // bare GET /api/events collection (camera/motion replay) stays
         // gated below; only these two exact sub-paths are exempted.
+        // W-173: the open telemetry-history read is the day answer only. A 5 minute to 1 hour series
+        // (CO2 above all) shows when rooms were in use, was never open, and falls through to the
+        // credential checks below like any other /api/events read.
         boolean isSensorHistoryRead = "GET".equalsIgnoreCase(request.getMethod())
-            && (equalsBoth(path, npath, contextPath + "/api/events/telemetry-history")
+            && ((equalsBoth(path, npath, contextPath + "/api/events/telemetry-history") && isDayHistory(request))
                 || equalsBoth(path, npath, contextPath + "/api/events/reported-fields"));
         if (isSensorHistoryRead) {
             return true;
@@ -270,6 +274,13 @@ public class GoogleAuthInterceptor implements HandlerInterceptor {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token validation failed");
             return false;
         }
+    }
+
+    /** No bucket, or only blank / "1d" values. Every value is checked, so a repeated parameter cannot open a finer one. */
+    private static boolean isDayHistory(HttpServletRequest request) {
+        String[] values = request.getParameterValues("bucket");
+        return values == null || java.util.Arrays.stream(values)
+            .allMatch(v -> HistoryBucket.parse(v).filter(b -> !b.intraday()).isPresent());
     }
 
     /** Request attribute key holding the token's verified Google account email, set only after a successful check above. */

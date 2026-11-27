@@ -1,5 +1,7 @@
 package com.cabin.orchestrator.events;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.time.Instant;
 
 /**
@@ -19,5 +21,16 @@ import java.time.Instant;
  * fewer hours than a full day's, so averaging it in as if it were
  * equivalent is misleading; the UI labels it "(partial)" rather than
  * silently excluding it, since the samples it does have are still real.
+ *
+ * W-173: the same shape carries an intraday bucket. {@code day} is then the instant the bucket starts,
+ * {@code partial} marks the earliest bucket when the window starts inside it, and {@code maxAt} is the time
+ * of the first reading that reached {@code max}. A day point has no {@code maxAt}, and the field is left out
+ * of its JSON, so the day response is what it was.
  */
-public record TelemetryDailyPoint(Instant day, Double avg, Double min, Double max, long sampleCount, boolean partial) {}
+public record TelemetryDailyPoint(Instant day, Double avg, Double min, Double max, long sampleCount, boolean partial,
+                                  @JsonInclude(JsonInclude.Include.NON_NULL) Instant maxAt) {
+
+    public TelemetryDailyPoint(Instant day, Double avg, Double min, Double max, long sampleCount, boolean partial) {
+        this(day, avg, min, max, sampleCount, partial, null);
+    }
+}

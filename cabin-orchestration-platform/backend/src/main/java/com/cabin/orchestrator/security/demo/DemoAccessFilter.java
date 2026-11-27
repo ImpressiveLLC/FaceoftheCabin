@@ -117,7 +117,7 @@ public class DemoAccessFilter extends OncePerRequestFilter {
                 record(token, request, path, routeClass.name(), 200, isPageOpen(request));
                 return;
             }
-            request = clampDays(request);
+            request = demoHistory(request);
         }
         log.info("demo request token={} route={} class={}", token.id(), path, routeClass);
         try {
@@ -140,11 +140,13 @@ public class DemoAccessFilter extends OncePerRequestFilter {
             policyClass, status, AccessClient.ip(request), AccessClient.userAgent(request), pageOpen);
     }
 
-    private HttpServletRequest clampDays(HttpServletRequest request) {
+    /** Demo history: {@code days} clamped to the demo ceiling, and (W-173) always the day resolution. */
+    private HttpServletRequest demoHistory(HttpServletRequest request) {
         int max = Math.max(1, maxHistoryDays);
         return new HttpServletRequestWrapper(request) {
             @Override
             public String getParameter(String name) {
+                if ("bucket".equals(name)) return null;
                 if (!"days".equals(name)) return super.getParameter(name);
                 String v = super.getParameter(name);
                 int requested;
@@ -158,6 +160,7 @@ public class DemoAccessFilter extends OncePerRequestFilter {
 
             @Override
             public String[] getParameterValues(String name) {
+                if ("bucket".equals(name)) return null;
                 return "days".equals(name) ? new String[] { getParameter(name) } : super.getParameterValues(name);
             }
 
@@ -165,7 +168,13 @@ public class DemoAccessFilter extends OncePerRequestFilter {
             public Map<String, String[]> getParameterMap() {
                 Map<String, String[]> m = new LinkedHashMap<>(super.getParameterMap());
                 m.put("days", new String[] { getParameter("days") });
+                m.remove("bucket");
                 return m;
+            }
+
+            @Override
+            public java.util.Enumeration<String> getParameterNames() {
+                return java.util.Collections.enumeration(getParameterMap().keySet());
             }
         };
     }
