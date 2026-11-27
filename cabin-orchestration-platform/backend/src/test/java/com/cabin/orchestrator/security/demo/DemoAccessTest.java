@@ -62,6 +62,17 @@ class DemoAccessTest {
         return tokens.create("Agent preview", List.of("demo"), Duration.ofDays(30), "nate@example.com").token();
     }
 
+    @Test
+    void monitoringPreferencesAllowReadButDenyEveryWriteBeforeController() throws Exception {
+        String token = demoToken();
+        assertEquals(DemoAccessPolicy.RouteClass.ALLOW, DemoAccessPolicy.classify("/api/devices/monitoring-preferences"));
+        for (String method : List.of("POST", "PUT", "PATCH", "DELETE")) {
+            var chain = new MockFilterChain();
+            assertEquals(403, run(method, "/api/devices/monitoring-preferences", token, chain).getStatus());
+            assertNull(chain.getRequest(), "denied before reaching controller/persistence");
+        }
+    }
+
     private MockHttpServletResponse run(String method, String path, String token, MockFilterChain chain) throws Exception {
         MockHttpServletRequest req = new MockHttpServletRequest(method, path);
         req.setRequestURI(path);
