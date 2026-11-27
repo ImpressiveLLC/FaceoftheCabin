@@ -1261,6 +1261,170 @@ class EvidenceModeTests(unittest.TestCase):
             self.assertIs(runner.call_args.kwargs["evidence_mode"], expected)
 
 
+class CheckpointingTests(unittest.TestCase):
+    """Configuration C-gc, parent side. Off by default; requested but not shown active is FAILURE."""
+
+    C = {"ceiling_metric": "anon_shmem", "container_cap": "budget"}
+    ACTIVE = {"requested": True, "active": True, "calls": 24, "expected_calls": 24, "layers": 2, "use_reentrant": False}
+
+    def ladder_run(self, records, rungs=(128, 256), on=True, **kw):
+        made, seen = iter(records), []
+
+        def command(rung, rung_dir, *args):
+            seen.append(args)
+            return stub(next(made))(rung, rung_dir)
+        if on is not None:
+            kw["gradient_checkpointing"] = on
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("builtins.print"),                 mock.patch.object(ladder, "default_child_command", side_effect=command):
+            summary = ladder.run_ladder(rungs=list(rungs), budget_bytes=BUDGET, out_dir=Path(tmp), model="pinned",
+                                        host_available_start=8 * GIB, **{**self.C, **kw})
+            text = (Path(tmp) / "summary.json").read_text()
+        self.flags = [args[5:] for args in seen]
+        return summary, text
+
+    def test_off_is_the_default_and_adds_nothing(self):
+        _, default = self.ladder_run([good_record()] * 2, on=None)
+        _, off = self.ladder_run([good_record()] * 2, on=False)
+        self.assertEqual(default, off)
+        self.assertNotIn("checkpointing", off)
+        self.assertNotIn("C-gc", off)
+        self.assertEqual(self.flags, [(), ()])
+
+    def test_off_child_command_is_unchanged_and_on_adds_one_argument(self):
+        off = ladder.default_child_command(128, Path("d"), "pinned", 3, 10, "anon_shmem", 9)
+        self.assertEqual(off[-6:], ["--budget-bytes", "10", "--effective-budget-bytes", "9", "--ceiling-metric", "anon_shmem"])
+        on = ladder.default_child_command(128, Path("d"), "pinned", 3, 10, "anon_shmem", 9, True)
+        self.assertEqual(on, off + ["--gradient-checkpointing"])
+
+    def test_on_labels_the_configuration_and_changes_no_limit(self):
+        off, _ = self.ladder_run([good_record()] * 2, on=False)
+        on, _ = self.ladder_run([good_record(gradient_checkpointing=self.ACTIVE)] * 2)
+        self.assertEqual(self.flags, [(True,), (True,)])
+        self.assertEqual([r["status"] for r in on["rungs"]], ["PASS", "PASS"])
+        self.assertEqual(on["configuration"]["label"], ladder.CHECKPOINTING_LABEL)
+        self.assertTrue(on["configuration"]["gradient_checkpointing"])
+        self.assertTrue(ladder.CHECKPOINTING_LABEL.startswith("C-gc:"))
+        self.assertEqual(on["rungs"][0]["gradient_checkpointing"], self.ACTIVE)
+        for key in ("budget_bytes", "effective_budget_bytes", "ceiling_bytes", "ceiling_policy", "host_start_gate"):
+            self.assertEqual(on[key], off[key], key)
+        differs = {k for k in set(on["configuration"]) | set(off["configuration"])
+                   if on["configuration"].get(k) != off["configuration"].get(k)}
+        self.assertEqual(differs, {"label", "gradient_checkpointing"})
+
+    def test_requested_but_not_shown_active_is_failure_and_stops(self):
+        cases = {"no record": None, "not a dict": True, "inactive": {**self.ACTIVE, "active": False},
+                 "active as text": {**self.ACTIVE, "active": "true"}, "short": {**self.ACTIVE, "calls": 23},
+                 "nothing ran": {**self.ACTIVE, "calls": 0, "expected_calls": 0},
+                 "no expectation": {**self.ACTIVE, "calls": None, "expected_calls": None}}
+        for name, seen in cases.items():
+            with self.subTest(name):
+                over = {} if seen is None else {"gradient_checkpointing": seen}
+                summary, _ = self.ladder_run([good_record(**over)])
+                self.assertEqual([r["status"] for r in summary["rungs"]], ["FAILURE", "NOT_RUN"])
+                [reason] = summary["rungs"][0]["reasons"]
+                self.assertIn("gradient checkpointing requested but not shown active", reason)
+
+    def test_evidence_mode_continues_only_when_checkpointing_is_shown_active(self):
+        paging = {"major_fault_delta": 28729}
+        active = good_record(gradient_checkpointing=self.ACTIVE, **paging)
+        summary, _ = self.ladder_run([active, good_record(gradient_checkpointing=self.ACTIVE)], evidence_mode=True)
+        self.assertEqual([r["status"] for r in summary["rungs"]], ["FAILURE", "PASS"])
+        self.assertFalse(summary["complete"])
+        summary, _ = self.ladder_run([good_record(**paging)], evidence_mode=True)
+        self.assertEqual([r["status"] for r in summary["rungs"]], ["FAILURE", "NOT_RUN"])
+
+    def test_refused_on_any_other_configuration(self):
+        for over in ({"ceiling_metric": "original"}, {"container_cap": "fixed"}, {"paging_rule": "v2", "paging_limit": 1.0}):
+            with self.subTest(over=over), self.assertRaisesRegex(ValueError, "configuration C plus one change"):
+                self.ladder_run([good_record()], **over)
+
+    def test_command_line_passes_the_flag_and_refuses_other_configurations(self):
+        result = {"model": "synthetic", "pinned_model": False, "qualification_decision": "none:", "configuration": {},
+                  "stopped_at": None, "complete": True}
+        base = ["run", "--budget-bytes", "1000", "--out", "x", "--model", "synthetic"]
+        c = ["--ceiling-metric", "anon_shmem", "--container-cap", "budget"]
+        for extra, expected in ((c, False), (c + ["--gradient-checkpointing"], True)):
+            with mock.patch.object(ladder, "run_ladder", return_value=result) as runner, mock.patch("builtins.print"):
+                ladder.main(base + extra)
+            self.assertIs(runner.call_args.kwargs["gradient_checkpointing"], expected)
+        with mock.patch.object(ladder, "run_ladder") as runner, mock.patch("sys.stderr"), self.assertRaises(SystemExit) as stop:
+            ladder.main(base + ["--gradient-checkpointing"])
+        self.assertEqual(stop.exception.code, 2)
+        runner.assert_not_called()
+
+
+@unittest.skipUnless(HAVE_TORCH, "torch, peft and transformers are not installed")
+class CheckpointingChildTests(unittest.TestCase):
+    """Configuration C-gc on the tiny synthetic model."""
+
+    TOLERANCE = 1e-6   # absolute, on each loss, gradient norm and gradient element
+    NOT_ENABLED = ("import sys, transformers;"
+                   "transformers.PreTrainedModel.activation_checkpointing_enable = lambda *a, **k: None;"
+                   "import ladder_rung; sys.exit(ladder_rung.main(sys.argv[1:]))")
+
+    def run_child(self, extra=(), budget=8 * GIB, start=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            start = start or [str(HERE / "ladder_rung.py")]
+            proc = subprocess.run([sys.executable, *start, "--rung", "48", "--out", tmp, "--model", "synthetic", "--steps", "3",
+                                   "--budget-bytes", str(budget), *extra], cwd=str(HERE), capture_output=True, text=True,
+                                  timeout=300)
+            record = json.loads((Path(tmp) / "rung.json").read_text())
+        return proc, record
+
+    def test_on_is_observed_active_and_matches_off(self):
+        proc_off, off = self.run_child()
+        proc_on, on = self.run_child(extra=("--gradient-checkpointing",))
+        self.assertEqual((proc_off.returncode, proc_on.returncode), (0, 0), proc_on.stderr[-2000:])
+        self.assertNotIn("gradient_checkpointing", off)
+        self.assertEqual(on["gradient_checkpointing"], {"requested": True, "active": True, "calls": 24, "expected_calls": 24,
+                                                        "layers": 2, "use_reentrant": False})
+        self.assertEqual(on["configuration_label"], ladder.CHECKPOINTING_LABEL)
+        self.assertEqual(ladder.checkpointing_reason(on), "")
+        self.assertTrue(on["completed"] and on["adapter_reload_equal"])
+        self.assertEqual(on["adapter_tensors_compared"], off["adapter_tensors_compared"])
+        for key in ("losses", "grad_norms"):
+            self.assertEqual((len(on[key]), len(off[key])), (3, 3))
+            for a, b in zip(on[key], off[key]):
+                self.assertAlmostEqual(a, b, delta=self.TOLERANCE, msg=key)
+
+    def test_every_adapter_gradient_matches(self):
+        import torch
+        import ladder_rung
+        grads, calls = {}, []
+        for on in (False, True):
+            model = ladder_rung.build_model("synthetic", 48)
+            model.train()
+            if on:
+                model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+                for module in model.modules():
+                    if getattr(module, "gradient_checkpointing", False) is True:
+                        inner = module._gradient_checkpointing_func
+                        module._gradient_checkpointing_func = lambda *a, _f=inner, **k: calls.append(1) or _f(*a, **k)
+            ids = torch.tensor([ladder_rung.synthetic_dataset(48, 1)[0]["input_ids"]])
+            model(input_ids=ids, labels=ids.clone(), use_cache=False).loss.backward()
+            grads[on] = {n: p.grad.clone() for n, p in model.named_parameters() if p.requires_grad and p.grad is not None}
+        self.assertEqual(len(calls), 2)   # both layers of the tiny model went through the checkpoint function
+        self.assertEqual(sorted(grads[True]), sorted(grads[False]))
+        self.assertGreater(len(grads[False]), 0)
+        self.assertTrue(any(g.abs().sum() > 0 for g in grads[False].values()))
+        for name, grad in grads[False].items():
+            self.assertTrue(torch.allclose(grads[True][name], grad, rtol=0, atol=self.TOLERANCE), name)
+
+    def test_requested_but_not_enabled_fails_the_rung(self):
+        proc, record = self.run_child(extra=("--gradient-checkpointing",), start=["-c", self.NOT_ENABLED])
+        self.assertEqual(proc.returncode, 2, proc.stderr[-2000:])
+        self.assertFalse(record["completed"])
+        self.assertIn("not shown active (layer calls 0 of 24)", record["failure"])
+        self.assertIs(record["gradient_checkpointing"]["active"], False)
+        self.assertNotIn("adapter_saved", record)
+
+    def test_a_memory_stop_keeps_the_checkpointing_state(self):
+        proc, record = self.run_child(extra=("--gradient-checkpointing",), budget=1000000)
+        self.assertEqual(proc.returncode, 3)
+        self.assertIs(record["gradient_checkpointing"]["requested"], True)
+        self.assertIs(record["gradient_checkpointing"]["active"], False)
+
+
 @unittest.skipUnless(HAVE_TORCH, "torch, peft and transformers are not installed")
 class ChildTests(unittest.TestCase):
     def run_child(self, rung, extra=()):

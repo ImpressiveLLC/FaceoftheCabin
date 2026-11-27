@@ -61,6 +61,8 @@ CEILING_METRICS = {
     "anon_shmem": "B-anon-shmem: ceiling on cgroup anon plus shmem (non-reclaimable). NEW labelled configuration, not a retry of A",
 }
 CONTAINER_CAPS = ("fixed", "budget")
+CHECKPOINTING_LABEL = ("C-gc: C plus gradient checkpointing in the ladder rung only (train_sft.py unchanged). NEW labelled "
+                       "configuration, not a retry of C; says nothing about a trainer that does not use checkpointing")
 HOST_OVERHEAD_MARGIN_BYTES = 2 * 1024 ** 3   # VM and host overhead kept out of the container cap
 CONFIG_LABELS = {
     ("original", "fixed"): "A: first-run gate (ceiling on memory.current or RSS, container 22g)",
@@ -366,6 +368,24 @@ def only_v1_paging_failed(record: dict, reasons: list) -> bool:
     return is_count(faults) and faults > MAJOR_FAULT_DELTA_LIMIT and reasons == [v1_paging_reason(faults)]
 
 
+def checkpointing_config_problem(ceiling_metric, container_cap, paging_rule) -> str:
+    """Why gradient checkpointing cannot be requested with this configuration ('' when it can): it is C plus one change."""
+    if (ceiling_metric, container_cap, paging_rule) == ("anon_shmem", "budget", "v1"):
+        return ""
+    return ("gradient checkpointing is configuration C plus one change: use it with ceiling metric anon_shmem, "
+            "container cap budget and paging rule v1")
+
+
+def checkpointing_reason(record) -> str:
+    """The failure reason when checkpointing was requested and the rung record does not show it active ('' when it does)."""
+    seen = record.get("gradient_checkpointing")
+    seen = seen if isinstance(seen, dict) else {}
+    calls, expected = seen.get("calls"), seen.get("expected_calls")
+    if seen.get("active") is True and is_count(calls) and is_count(expected) and calls == expected and expected > 0:
+        return ""
+    return f"gradient checkpointing requested but not shown active (layer calls {calls} of {expected})"
+
+
 def judge_rung(record: dict, *, budget_bytes: int, host_before=None, host_after=None, host_min_seen=None,
                paging_rule="v1", paging_limit=None, container_memory_bytes=None) -> dict:
     """Applies the stop rules to one rung's record. Returns {"status": "PASS"|"FAILURE", "reasons": [...]}.
@@ -474,7 +494,7 @@ def host_start_gate(host_available_bytes) -> list:
 # ---------------------------------------------------------------- parent runner
 def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, rung_timeout=RUNG_TIMEOUT_SECONDS,
                host_available_start=None, host_available_end_of_rung=None, host_log=None, ceiling_metric="original", container_cap="fixed", container_memory_bytes=None, paging_rule="v1", paging_limit=None, cgroup_memory_max=None, require_cgroup_evidence=False,
-               child_command=None, evidence_mode=False) -> dict:
+               child_command=None, evidence_mode=False, gradient_checkpointing=False) -> dict:
     """Runs rungs in order in separate processes. `child_command(rung, rung_dir)` -> argv list (tests inject a stub).
     `host_available_end_of_rung(rung)` -> bytes or None, supplied by the operator's host reader.
     `host_log()` -> the Windows-available readings the launcher's sampler has written so far (see read_host_log). A rung is
@@ -483,6 +503,9 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
     `host_log`, no new reading during a rung, an unreadable one or a file that shrank is a failure, never a pass."""
     if evidence_mode and paging_rule != "v1":
         raise ValueError("evidence mode continues past a v1 paging failure only; it cannot be used with another paging rule")
+    problem = checkpointing_config_problem(ceiling_metric, container_cap, paging_rule) if gradient_checkpointing else ""
+    if problem:
+        raise ValueError(problem)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     effective = effective_budget(budget_bytes, container_memory_bytes, cgroup_memory_max)
@@ -497,6 +520,8 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
                "rungs": [], "stopped_at": None, "host_window": HOST_WINDOW if host_log else None, "host_start_gate": host_start_gate(host_available_start),
                "host_available_start": host_available_start}
     continued = []
+    if gradient_checkpointing:
+        summary["configuration"].update(label=CHECKPOINTING_LABEL, gradient_checkpointing=True)
     if evidence_mode:
         summary["evidence_mode"] = {"enabled": True, "notice": EVIDENCE_MODE_ON, "continued_rungs": continued}
     if require_cgroup_evidence:
@@ -514,7 +539,8 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
             continue
         rung_dir = out_dir / f"rung-{rung}"
         rung_dir.mkdir(parents=True, exist_ok=True)
-        argv = (child_command or (lambda r, d: default_child_command(r, d, model, steps, budget_bytes, ceiling_metric, effective)))(rung, rung_dir)
+        argv = (child_command or (lambda r, d: default_child_command(r, d, model, steps, budget_bytes, ceiling_metric, effective,
+                                                                    *((True,) if gradient_checkpointing else ()))))(rung, rung_dir)
         started = time.monotonic()
         host_rows_before = len(host_log()) if host_log else 0
         reasons = []
@@ -544,6 +570,8 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
                              container_memory_bytes=effective_budget(container_memory_bytes, cgroup_memory_max) or None)
         if require_cgroup_evidence and record.get("cgroup_memory_max") is None:
             verdict["reasons"].append("the rung record has no cgroup memory.max reading")
+        if gradient_checkpointing and checkpointing_reason(record):
+            verdict["reasons"].append(checkpointing_reason(record))
         verdict["reasons"] += host_problems
         verdict["reasons"] = reasons + verdict["reasons"]
         if verdict["reasons"]:
@@ -554,6 +582,8 @@ def run_ladder(*, rungs, budget_bytes, out_dir: Path, model="pinned", steps=3, r
                      memory_trace=summarize_trace(rung_dir / "memory-trace.csv"),
                      paging=record.get("paging") or paging_from_trace(rung_dir / "memory-trace.csv"),
                      pressure=record.get("pressure"))   # evidence only; the verdict above is already decided
+        if gradient_checkpointing:
+            entry["gradient_checkpointing"] = record.get("gradient_checkpointing")
         if continued:
             # a later rung runs on a warm page cache after an earlier failure: its result is not comparable to a first rung
             entry["after_continued_failure"] = True
@@ -606,10 +636,11 @@ def host_window(rows_before: int, readings: list):
 
 
 def default_child_command(rung, rung_dir, model="pinned", steps=3, budget_bytes=0, ceiling_metric="original",
-                          effective_budget_bytes=0):
+                          effective_budget_bytes=0, gradient_checkpointing=False):
     return [sys.executable, str(HERE / "ladder_rung.py"), "--rung", str(rung), "--out", str(rung_dir),
             "--model", model, "--steps", str(steps), "--budget-bytes", str(budget_bytes),
-            "--effective-budget-bytes", str(effective_budget_bytes or budget_bytes), "--ceiling-metric", ceiling_metric]
+            "--effective-budget-bytes", str(effective_budget_bytes or budget_bytes), "--ceiling-metric", ceiling_metric] + (
+                ["--gradient-checkpointing"] if gradient_checkpointing else [])
 
 
 def paging_limit_arg(text):
@@ -641,6 +672,8 @@ def main(argv=None):
     run.add_argument("--steps", type=int, default=3)
     run.add_argument("--evidence-mode", action="store_true",
                      help="continue past a rung whose only failure is the v1 paging rule (it stays FAILURE); not a qualification")
+    run.add_argument("--gradient-checkpointing", action="store_true",
+                     help="configuration C-gc: the rung trains with gradient checkpointing; requested but inactive is FAILURE")
     run.add_argument("--rung-timeout", type=int, default=RUNG_TIMEOUT_SECONDS)
     run.add_argument("--host-available-start", type=int, default=None, help="Windows available bytes, measured just before")
     run.add_argument("--host-csv", type=Path, default=None,
@@ -652,6 +685,10 @@ def main(argv=None):
         parser.error("--paging-rule v2 needs --paging-max-train-refaults-per-s (no limit has been ruled, so there is no default)")
     if args.command == "run" and args.evidence_mode and args.paging_rule != "v1":
         parser.error("--evidence-mode continues past a v1 paging failure only; use it with --paging-rule v1")
+    if args.command == "run" and args.gradient_checkpointing:
+        problem = checkpointing_config_problem(args.ceiling_metric, args.container_cap, args.paging_rule)
+        if problem:
+            parser.error(problem)
     rungs = [int(r) for r in args.rungs.split(",")]
     if args.command == "plan":
         effective = effective_budget(args.budget_bytes, args.container_memory_bytes)
@@ -674,7 +711,8 @@ def main(argv=None):
         host_log=(lambda: read_host_log(args.host_csv)) if args.host_csv else None, ceiling_metric=args.ceiling_metric,
         container_cap=args.container_cap, container_memory_bytes=args.container_memory_bytes,
         paging_rule=args.paging_rule, paging_limit=args.paging_max_train_refaults_per_s,
-        cgroup_memory_max=read_cgroup_max(), require_cgroup_evidence=args.model == "pinned", evidence_mode=args.evidence_mode)
+        cgroup_memory_max=read_cgroup_max(), require_cgroup_evidence=args.model == "pinned", evidence_mode=args.evidence_mode,
+        gradient_checkpointing=args.gradient_checkpointing)
     shown = ("model", "pinned_model", "qualification_decision", "configuration", "stopped_at", "complete", "evidence_mode")
     print(json.dumps({k: summary[k] for k in shown if k in summary}, indent=2))
     return 0 if summary["complete"] else 1

@@ -229,6 +229,30 @@ class DryRunTests(unittest.TestCase):
         self.assertNotEqual(refused.returncode, 0)
         self.assertIn("v1pagingfailureonly", said(refused))
 
+    def test_gradient_checkpointing_is_off_unless_asked_and_changes_one_argument(self):
+        c = ("-Run", "-CeilingMetric", "anon_shmem", "-ContainerCap", "budget")
+        _, off = plan(22, *c)
+        _, on = plan(22, *c, "-GradientCheckpointing")
+        self.assertNotIn("gradient_checkpointing", off)
+        self.assertNotIn("--gradient-checkpointing", off["docker_argv"])
+        self.assertIn("not a qualification", on["gradient_checkpointing"])
+        extra = list(on["docker_argv"])
+        extra.remove("--gradient-checkpointing")
+        strip = lambda argv: [a for a in argv if not a.startswith("--host-available-start")]  # noqa: E731
+        self.assertEqual(strip(extra), strip(off["docker_argv"]))
+        self.assertEqual(set(on) - set(off), {"gradient_checkpointing"})
+        for key in ("need_at_start_bytes", "floor_bytes", "budget_bytes", "container_memory_bytes", "ceiling_bytes"):
+            self.assertEqual(on[key], off[key], key)
+
+    def test_gradient_checkpointing_is_refused_outside_configuration_c(self):
+        for other in ((), ("-CeilingMetric", "anon_shmem"), ("-ContainerCap", "budget"),
+                      ("-CeilingMetric", "anon_shmem", "-ContainerCap", "budget", "-PagingRule", "v2",
+                       "-PagingMaxTrainRefaultsPerSecond", "1")):
+            with self.subTest(other=other):
+                refused = run("-Run", "-DryRun", "-FakeAvailableBytes", str(22 * GIB), "-GradientCheckpointing", *other)
+                self.assertEqual(refused.returncode, 2)
+                self.assertIn("configurationCplusonechange", said(refused))
+
     def test_six_gib_start_minimum_is_named_when_below_it(self):
         _, p = plan(5)
         self.assertTrue(any("start minimum" in r for r in p["gate_reasons"]))
@@ -691,6 +715,39 @@ class RunFlowWithStubsTests(unittest.TestCase):
         self.assertNotIn("EVIDENCE MODE", everything)
         self.assertNotIn("--evidence-mode", everything)
         self.assertEqual((self.run_dir() / "DONE").read_text(encoding="utf-8-sig").splitlines()[1:], ["all rungs PASS"])
+
+    C = ("-CeilingMetric", "anon_shmem", "-ContainerCap", "budget")
+    GC_NOTICE = "C-gc: gradient checkpointing requested; a new labelled configuration, not a qualification of the current trainer"
+
+    def read(self, path):
+        return path.read_text(encoding="utf-8-sig")
+
+    def test_gradient_checkpointing_is_named_in_every_result(self):
+        proc = self.launch("-Run", *self.C, "-GradientCheckpointing")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(self.read(self.run_dir() / "DONE").splitlines()[1:], ["all rungs PASS", self.GC_NOTICE])
+        self.assertIn(self.GC_NOTICE, proc.stdout[proc.stdout.index("LADDER FINISHED: DONE"):])
+        self.assertIn(self.GC_NOTICE, self.read(self.run_dir() / "launcher.log"))
+        self.assertIn(self.GC_NOTICE + "\nRecords:", self.read(self.tmp / "LADDER-FINISHED.txt").replace("\r\n", "\n"))
+        [line] = self.launched()
+        self.assertIn("--gradient-checkpointing", line)
+        self.assertNotIn("--evidence-mode", line)
+
+    def test_both_switches_give_both_notices_on_separate_lines(self):
+        evidence = "EVIDENCE MODE: a paging-only (v1) failure does not stop the ladder; not a qualification"
+        proc = self.launch("-Run", *self.C, "-GradientCheckpointing", "-EvidenceMode", STUB_COMPLETE="false", STUB_EXIT="1")
+        self.assertStopped(proc, "ladder not complete")
+        self.assertEqual(self.read(self.run_dir() / "STOPPED").splitlines()[-2:], [self.GC_NOTICE, evidence])
+        note = self.read(self.tmp / "LADDER-FINISHED.txt").replace("\r\n", "\n")
+        self.assertIn(f"{self.GC_NOTICE}\n{evidence}\nRecords:", note)
+
+    def test_without_gradient_checkpointing_nothing_mentions_it(self):
+        proc = self.launch("-Run", *self.C)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        everything = proc.stdout + "".join(p.read_text(encoding="utf-8-sig", errors="replace")
+                                          for p in self.run_dir().rglob("*") if p.is_file())
+        for word in ("C-gc", "checkpointing"):
+            self.assertNotIn(word, everything)
 
     def test_coverage_is_checked_after_the_run_too(self):
         # a bad line written as the container ends; this wording comes only from the after-run coverage check

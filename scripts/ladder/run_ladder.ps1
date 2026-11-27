@@ -18,6 +18,9 @@
   -EvidenceMode  Off unless given; paging rule v1 only. A rung whose only failure is the v1 paging rule stays FAILURE
                but the ladder continues. Every other failure stops it as usual. The result is never DONE for such a run and
                is not a qualification.
+  -GradientCheckpointing  Off unless given. Configuration C-gc: C (-CeilingMetric anon_shmem -ContainerCap budget,
+               paging rule v1) plus gradient checkpointing in the rung. A rung that does not show it active is FAILURE.
+               train_sft.py is unchanged, so nothing here says anything about a trainer without checkpointing.
   -DryRun      With -Run or -Preflight: prints the plan as JSON (gate, budget, the exact docker argv) and executes nothing.
                -FakeAvailableBytes supplies the Windows-available figure for tests; it is refused without -DryRun.
 
@@ -46,6 +49,7 @@ param(
     [switch]$Verify,
     [switch]$DryRun,
     [switch]$EvidenceMode,
+    [switch]$GradientCheckpointing,
     [string]$OutRoot = 'C:\ladder-run',
     [string]$Distro = 'Ubuntu-24.04',
     [ValidateSet('original', 'anon_shmem')][string]$CeilingMetric = 'original',
@@ -85,6 +89,10 @@ if ($modes -ne 1) { Write-Error 'Choose exactly one of -Preflight, -Run, -Stop, 
 if ($PagingRule -eq 'v2' -and ([double]::IsNaN($PagingMaxTrainRefaultsPerSecond) -or [double]::IsInfinity($PagingMaxTrainRefaultsPerSecond) -or $PagingMaxTrainRefaultsPerSecond -lt 0)) { [Console]::Error.WriteLine('-PagingRule v2 needs -PagingMaxTrainRefaultsPerSecond (no limit has been ruled, so there is no default).'); exit 2 }
 if ($EvidenceMode -and $PagingRule -ne 'v1') { [Console]::Error.WriteLine('-EvidenceMode continues past a v1 paging failure only; use it with -PagingRule v1.'); exit 2 }
 $EvidenceNotice = 'EVIDENCE MODE: a paging-only (v1) failure does not stop the ladder; not a qualification'
+if ($GradientCheckpointing -and -not ($CeilingMetric -eq 'anon_shmem' -and $ContainerCap -eq 'budget' -and $PagingRule -eq 'v1')) { [Console]::Error.WriteLine('-GradientCheckpointing is configuration C plus one change: use it with -CeilingMetric anon_shmem -ContainerCap budget and -PagingRule v1.'); exit 2 }
+$CheckpointingNotice = 'C-gc: gradient checkpointing requested; a new labelled configuration, not a qualification of the current trainer'
+# Printed with the result of a run; empty when neither switch is given.
+$Notices = @($(if ($GradientCheckpointing) { $CheckpointingNotice }); $(if ($EvidenceMode) { $EvidenceNotice }))
 if ($FakeAvailableBytes -gt 0 -and -not $DryRun) { Write-Error '-FakeAvailableBytes is only allowed with -DryRun.'; exit 2 }
 if (-not $RepoDir) { $RepoDir = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path }
 $TrainingDir = Join-Path (Join-Path (Join-Path $RepoDir 'docs') 'ai-assistant') 'training'
@@ -149,7 +157,7 @@ function Get-DockerArgv([string]$Name, [string]$OutDir, [int64]$Budget, [int64]$
         '--container-cap', $ContainerCap, '--container-memory-bytes', "$limit",
         '--paging-rule', $PagingRule,
         '--host-available-start', "$AvailableAtStart", '--host-csv', '/out/host.csv'
-    ) + $(if ($EvidenceMode) { @('--evidence-mode') } else { @() }) + $(if ($PagingRule -eq 'v2') { @('--paging-max-train-refaults-per-s', "$PagingMaxTrainRefaultsPerSecond") } else { @() })
+    ) + $(if ($EvidenceMode) { @('--evidence-mode') } else { @() }) + $(if ($GradientCheckpointing) { @('--gradient-checkpointing') } else { @() }) + $(if ($PagingRule -eq 'v2') { @('--paging-max-train-refaults-per-s', "$PagingMaxTrainRefaultsPerSecond") } else { @() })
 }
 
 function New-RunId { if ($RunId) { return $RunId } else { return (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ') } }
@@ -342,6 +350,7 @@ if ($DryRun) {
             'second gate read', 'check the image and the model cache are present offline', 'start sampler and watchdog', 'docker run', 'summary, marker, manifest')
     }
     if ($EvidenceMode) { $plan.evidence_mode = $EvidenceNotice }
+    if ($GradientCheckpointing) { $plan.gradient_checkpointing = $CheckpointingNotice }
     Out-Json $plan $null
     exit $(if ($reasons.Count -eq 0) { 0 } else { 3 })
 }
@@ -416,7 +425,7 @@ function Complete-Bundle {
 }
 
 Log "ladder launcher start, run id $id, out $out"
-if ($EvidenceMode) { Log $EvidenceNotice }
+foreach ($n in $Notices) { Log $n }
 $job = $null
 $runJob = $null
 $name = "ladder-$id"
@@ -584,20 +593,20 @@ if (Test-Path $summaryPath) {
 } else {
     Fail "no ladder summary was written (container exit $exit)"
 }
-if ($failures.Count -eq 0) { Mark 'DONE' $(if ($EvidenceMode) { "all rungs PASS`n$EvidenceNotice" } else { 'all rungs PASS' }) }
-else { Mark 'STOPPED' $(if ($EvidenceMode) { ($failures -join "`n") + "`n$EvidenceNotice" } else { $failures -join "`n" }) }
+if ($failures.Count -eq 0) { Mark 'DONE' ((@('all rungs PASS') + $Notices) -join "`n") }
+else { Mark 'STOPPED' ((@($failures) + $Notices) -join "`n") }
 Log 'done; reopen Claude Code and read the records'
 $problems = @(Complete-Bundle)   # the last writes into $out are above this line
 $sealed = if ($problems.Count -eq 0) { 'manifest verified' } else { 'MANIFEST DOES NOT VERIFY: ' + ($problems -join '; ') }
 $result = (Get-ChildItem $out -File | Where-Object { $_.Name -in 'DONE', 'STOPPED', 'NOT_RUN' } | Select-Object -First 1).Name
-$note = "LADDER FINISHED: $result`r`n$(if ($EvidenceMode) { "$EvidenceNotice`r`n" })Records: $out ($sealed)`r`nNext: run  powershell -File scripts/ladder/run_ladder.ps1 -Cleanup  to return the machine to normal, then reopen Claude Code and tell it the ladder finished."
+$note = "LADDER FINISHED: $result`r`n$(($Notices | ForEach-Object { "$_`r`n" }) -join '')Records: $out ($sealed)`r`nNext: run  powershell -File scripts/ladder/run_ladder.ps1 -Cleanup  to return the machine to normal, then reopen Claude Code and tell it the ladder finished."
 $desktop = if ($DesktopDir) { $DesktopDir } else { Get-DesktopPath }
 if ($desktop -and (Test-Path $desktop)) { Set-Content (Join-Path $desktop 'LADDER-FINISHED.txt') $note }
 Write-Host ''
 Write-Host '==================================================' -ForegroundColor Green
 Write-Host "  LADDER FINISHED: $result" -ForegroundColor Green
 Write-Host "  Records: $out" -ForegroundColor Green
-if ($EvidenceMode) { Write-Host "  $EvidenceNotice" -ForegroundColor Yellow }
+foreach ($n in $Notices) { Write-Host "  $n" -ForegroundColor Yellow }
 Write-Host "  $sealed" -ForegroundColor $(if ($problems.Count -eq 0) { 'Green' } else { 'Red' })
 Write-Host '  Next: run -Cleanup, then reopen Claude Code.' -ForegroundColor Green
 Write-Host '==================================================' -ForegroundColor Green
