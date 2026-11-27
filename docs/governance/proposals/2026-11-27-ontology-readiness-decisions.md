@@ -1,0 +1,40 @@
+# Ontology readiness: current delivery and three decisions
+
+Codex, 2026-11-27. First delivery for [Cowork's scoped handover](https://github.com/ImpressiveLLC/FaceoftheCabin/issues/244#issuecomment-7212314949). Source baseline: main `4607f900`. Status: recommendations awaiting Nate, not ratified policy. No ontology, runtime, live-device or threshold change is made by this note.
+
+## Delivery reconciliation
+
+W-160 is **merged**, not proposed: catalog S2 [#569](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/569), with [#573](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/573) and safety guard [#580](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/580). W-161 is **merged**: shadow read [#584](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/584), rule grammar [#590](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/590) and runtime shadow [#591](https://github.com/ImpressiveLLC/FaceoftheCabin/pull/591). GitHub merge records were checked directly. These are source-delivery claims, not fresh deployment or physical commissioning attestations. The backlog's `released` status is not asserted.
+
+S4 still requires the independently reviewed S3 disagreement report. S7 still requires its enrollment/commissioning gates. Catalog generation and shadow reads do not create calculated services or authorize assigning Box entities. The [21 November process map](2026-11-21-ontology-and-taxonomy-process-map.md) remains a dated snapshot; its claims that S2/S3 were unbuilt and Box 3 was absent must not be treated as a current inventory. Nate now reports Box 3 showing atomic readings; its current source, services and freshness need read-only reconciliation before a live-state claim.
+
+## Three recommendations for Nate (B2)
+
+These resolve the three open questions in process-map section 2. Approval of the model does not approve a formula, threshold value, live source binding or deployment.
+
+| Decision | Recommendation and rationale | Nate's decision |
+|---|---|---|
+| Where threshold profiles live | Keep separate, Git-versioned profile records with stable IDs, versions, applicability, source evidence and approval state. Ontology measurement rows link to those records; the inspected dictionary may flatten them into columns. Validate all references and load one approved bundle atomically. This follows the framework's sections 3-4 and avoids duplicating one profile across device rows or silently changing historical assessments. One canonical semantic model need not mean every policy record occupies one YAML file. | Approve separate versioned profiles referenced by ontology rows? **Pending.** |
+| How inputs join | Default to explicit services from the same physical parent for a derived measurement. Cross-device joins require an explicit approved binding for the same room/location and compatible quantity, unit and method; location membership alone is insufficient. For each evaluation, use eligible observations at or before the evaluation time, require every input's configured maximum age and a maximum pairwise timestamp skew, and retain their IDs/times in lineage. No implicit nearest-device or newest-anywhere fallback. Missing age/skew policy, stale/missing inputs or ambiguous binding produces unavailable, not a plausible value. Sensor, web-service and manual sources are eligible only through the same declared provenance/freshness contract. Numeric limits belong to the reviewed derivation contract; none are chosen here. | Approve same-parent default plus explicit, freshness-bounded cross-source bindings? **Pending.** |
+| CO concentration versus alarm state | Represent both as distinct semantics: a quantitative CO concentration observation only where the source actually supplies a value and declared unit/basis; a categorical CO alarm/hazard service for reported alarm state. They may belong to one physical package but are not interchangeable. Never convert `clear` to numeric zero, infer concentration from an alarm, or relabel CO as CO2. Preserve existing stable IDs and the existing `co` measurement-type contract until a reviewed crosswalk/migration establishes compatibility. | Approve separate concentration and alarm-state semantics without changing existing IDs? **Pending.** |
+
+Evidence: the [measurement-attention framework](2026-10-22-measurement-attention-framework.md), sections 3-4, already separates MeasurementDefinition, ReportingCrosswalk, ThresholdProfile, DerivationRecord and ObservationAssessment, with versioned lineage and explicit freshness/applicability. [D13](../decisions/ontology-decisions.md) distinguishes reporting services and event-driven CO alarm state, and separately records the CO/CO2 naming history. The [process map](2026-11-21-ontology-and-taxonomy-process-map.md#2-the-row-and-column-model-nate-2329-cst-stated-as-the-proposed-reading-of-the-records) identifies these choices as unresolved. The cross-source join default above is a new recommendation, not an existing ruling.
+
+## Fastest honest current-state air-quality view
+
+Start with a read-only inventory of the Kidde package, currently enrolled Zigbee temperature/humidity services and any Box services already reporting. Show only their actual source values or alarm states with units, source/parent identity, observation time and package freshness; absent or stale evidence stays visibly unavailable. A static event-driven CO state does not establish that its parent is currently reachable. Do not assign held Box entities, fabricate calculated readings or infer room safety from the dashboard. Existing atomic readings can be presented within current contracts; S7 unlocks catalog-native Box enrollment subject to W-84/D29 N3, D3/W-171 unlocks the consistent Kidde parent/service package and staleness treatment, and B3 plus C1 unlocks calculated services and optional tiles. This paragraph is an implementation path, not live verification or exposure/re-entry guidance.
+
+## Scoped queue and ownership
+
+| Order | Deliverable | Existing scope / next gate |
+|---|---|---|
+| 1 | This A1 reconciliation and B2 decision packet | W-160/W-161 source status; W-168 decisions. Nate answers the three questions above. |
+| 2 | A2 report-only header/version, relationship-vocabulary and lifecycle audit | Count current main, distinguish historical counts and semantic ambiguity; only unambiguous corrections proceed. Reconcile a new ID if a distinct implementation slice is needed. |
+| 3 | B1 atomic/derived candidate rows and B3 server-side derivation design | W-168, W-102 and W-104 remain canonical; no duplicate backlog allocation. Formula/version, input lineage, missing/stale fixtures and dimensionless index semantics must be explicit. B3 waits for B2 decisions. |
+| 4 | C1 eligibility/tile configuration and C2 per-location ExternalFeed design | W-167; preserve Nate's global inclusion-toggle, enabled-versus-lifecycle, server-order and alert-preservation rulings. Box derived tiles consume B3, not a parallel calculator. |
+| 5 | D1 naming census, D2 dry-run repair, D3 Kidde package, D4 identity compatibility | D28, W-101b, W-171, W-157. Preserve stable IDs; no live repair from a naming report. |
+| 6 | S4, then S5/S6, S8 design, S7 enrollment | W-162 through W-166. S3 disagreement review before S4; backend and commissioning gates remain. |
+
+Codex owns this chain's design and review coordination; Code receives explicit backend slices. Own authored PRs retain independent peer review. Cowork vetoes are checked before merging. Backend, infra, host scripts and workflows remain held for the applicable explicit go. HA export/capture, D29 confirmation, commissioning, secrets, destructive actions and training runs retain their separate gates. IDs are not reserved by guessing a next number or by duplicating an already scoped W row; reconcile main and open PRs before a reservation PR.
+
+Run 7 evidence grading remains a separate priority when Code posts intake. Nothing in this note changes its configuration, stop rules or prospective acceptance criteria.
