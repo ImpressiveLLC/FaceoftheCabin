@@ -3143,3 +3143,15 @@ Check it by hand against the host: `GET http://<m920q>:8090/api/system/storage` 
 ### Camera Health tile: idle Blink cameras read "Idle", not "No signal" (2026-10-21)
 
 `driveway` and `home_aldrich_front` are motion-gated Blink relays: Frigate reports exactly 0.0 fps for them until Blink's cloud sees motion, so the Monitoring "Camera Health" tile showed "No signal" for a healthy idle camera. `GET /api/frigate-metrics` now adds `motionGated` per camera (true for the keys of `cabin.devices.cameras.blinkCameraMap`, the same set the Frigate-stats heartbeat in `MqttBridgeService` uses), and the tile shows "Idle · waits for motion" for those at 0 fps. A continuous camera (`cabin_outside_reolink`) at 0 fps still reads "No signal". The panel also lists only cameras for its own site (`home_` prefix = Home), so `home_aldrich_front` no longer shows under Cabin. Design: `docs/governance/proposals/2026-10-19-blink-camera-health-design.md`.
+
+## Aurora visibility tile (C2, first slice)
+
+Monitoring shows one aurora tile at the Cabin, bound to the Home Assistant Aurora percentage entity
+(`sensor.aurora_visibility_visibility`, device `ha-cabin-sensor-aurora-visibility-visibility`, unit `%`).
+A bare percent sensor, another site or a differently named entity gets no tile. The tile always says
+"NOAA estimate, freshness unknown": the Home Assistant bridge does not expose NOAA's observation or
+forecast-valid times, and the discovery poll time is not a provider time. A missing, non-numeric or
+out-of-range value reads "unavailable", never 0%. The binary alert entity
+(`binary_sensor.aurora_visibility_visibility_alert`) has no tile because the device API exposes no state
+value for it; do not read ONLINE as "alert off". Still open for a later PR: provider timestamps, a
+freshness policy, closed-vocabulary and Java parity, and first-enrollment defaults in the shared preferences.
