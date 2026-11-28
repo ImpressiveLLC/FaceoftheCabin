@@ -5,6 +5,7 @@ import { MonitoringPreferenceEditor } from "./MonitoringPreferenceEditor";
 import { ExpandableList, COLLAPSED_LIMIT } from "./ExpandableList";
 import { DEVICE_KIND_OPTIONS, batteryLevel, makeKindOf } from "./deviceKinds";
 import { BatteryMaintenanceCard } from "./BatteryMaintenanceCard";
+import { isAuroraPercentDevice, auroraPercentText, AURORA_FRESHNESS_NOTE } from "./auroraTile";
 import { buildDeviceIndex, matchesDeviceQuery, parseDeviceQuery } from "./deviceSearch";
 /**
  * Cabin Orchestration Platform — Shell UI
@@ -6003,6 +6004,12 @@ export function kpiTileFor(device, tempUnit, reportingRelationships = {}, { sign
         value: !known ? "—" : (leak ? "Wet" : "Dry"),
         state: leak === true ? "ALARM" : device.state };
     }
+    case "HOME_ASSISTANT_ENTITY": {
+      // C2 aurora (bounded): only the verified Cabin percentage entity; every other HA entity has no tile.
+      if (!isAuroraPercentDevice(device)) return null;
+      return { icon: CloudSun, label: "Aurora visibility", deviceId: device.deviceId,
+        value: auroraPercentText(device.attributes?.value), state: device.state, footnote: AURORA_FRESHNESS_NOTE };
+    }
     default:
       return null;
   }
@@ -7863,7 +7870,7 @@ function KpiValue({ value }) {
 }
 
 function KpiTile({ icon: Icon, label, value, state, deviceId, outdoor = false, reorderMode, isPinned, isOver,
-    onDragStart, onDragOver, onDrop, onDragEnd }) {
+    onDragStart, onDragOver, onDrop, onDragEnd, footnote }) {
   const { displayConfigs, devices = [], setActivePanel, setPendingDeviceFocus } = useApp();
   const canOpen = !reorderMode && deviceId && setActivePanel && setPendingDeviceFocus;
   const openDevice = () => {
@@ -7903,6 +7910,7 @@ function KpiTile({ icon: Icon, label, value, state, deviceId, outdoor = false, r
         {outdoor && <span className="kpi-outdoor-tag" title="Measured outside the building, not a reading of the inside">Outdoor</span>}
       </div>
       <KpiValue value={effectiveValue} />
+      {footnote && <div className="kpi-footnote">{footnote}</div>}
       <span className={`state-badge ${stCls}`}>{badgeLabel}</span>
     </div>
   );
