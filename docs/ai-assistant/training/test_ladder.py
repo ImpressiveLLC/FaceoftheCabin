@@ -1,5 +1,7 @@
 """Tests for the synthetic CPU length ladder (ladder.py, ladder_rung.py). Offline; the torch tests use a tiny random model
 and are skipped when torch is not installed. Nothing here loads the pinned base model or touches real data."""
+import copy
+import hashlib
 import json
 import subprocess
 import sys
@@ -1091,7 +1093,7 @@ class PressureWatcherTests(unittest.TestCase):
 
 
 class PressureNeverJudgesTests(unittest.TestCase):
-    """No verdict may consume this evidence."""
+    """No verdict under v1 or v2 may consume this evidence. Only rule v2-stall reads it, in stall_reasons."""
 
     # the sealed run 5 figures, as a synthetic fixture
     RUN5 = dict(ceiling_metric="anon_shmem", ceiling_metric_peak_bytes=15026892800, memory_peak_bytes=16984993792,
@@ -1643,6 +1645,426 @@ class ChildTests(unittest.TestCase):
         import ladder_rung
         rows = ladder_rung.synthetic_dataset(40, 4)
         self.assertEqual({len(r["input_ids"]) for r in rows}, {40})
+
+
+SECOND = 10 ** 9
+HALF = SECOND // 2
+AT_LIMIT_US = 100_000    # 1 percent of the 10 s training interval below
+
+
+def stall_rows(memory=0, io=0, load=(0, 0), save_extra=0):
+    """Synthetic pressure-trace rows, one every 0.5 s with no reading time unless a test adds it. S is read at 1.0 s and E
+    at 11.0 s, so the training interval is exactly 10 s. `memory` and `io` are the training `some` rises in microseconds."""
+    rows = [[0, "load", 0, 0, 0, 0, 0], [HALF, "load", load[0], 0, load[1], 0, HALF]]
+    times = [SECOND + HALF * i for i in range(21)]
+    for t in times:
+        last = t == times[-1]
+        rows.append([t, "train", load[0] + (memory if last else 0), 0, load[1] + (io if last else 0), 0, t])
+    for t in (11 * SECOND, 11 * SECOND + HALF):
+        rows.append([t, "save", load[0] + memory + save_extra, 0, load[1] + io + save_extra, 0, t])
+    return rows
+
+
+def stall_text(rows):
+    return ",".join(ladder.STALL_TRACE_COLUMNS) + "\n" + "".join(",".join(str(c) for c in row) + "\n" for row in rows)
+
+
+def summary_for(rows):
+    """The rung.json pressure summary that agrees with these rows' training endpoints."""
+    train = [r for r in rows if r[1] == "train"]
+    first, last = train[0], train[-1]
+
+    def kind(index):
+        return {"start_us": first[index], "end_us": last[index], "delta_us": last[index] - first[index]}
+    return {"phases": {"train": {"memory": {"status": "ok", "some": kind(2), "full": kind(3)},
+                                 "io": {"status": "ok", "some": kind(4), "full": kind(5)}}}}
+
+
+CLEAN_TRAIN_PAGING = {"phases": {"train": {"invalid_samples": 0, "reset": [], "coverage_ok": True, "refault_anon_delta": 0,
+                                           "max_refault_file_per_s": 600.0}}}
+
+
+def stall_record(rows=None, **over):
+    record = good_record(pressure=summary_for(rows or stall_rows()), paging=copy.deepcopy(CLEAN_TRAIN_PAGING),
+                         major_fault_delta=28771)
+    record.update(over)
+    return record
+
+
+class StallTraceCase(unittest.TestCase):
+    def analyse(self, text):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pressure-trace.csv"
+            path.write_bytes(text if isinstance(text, bytes) else text.encode("utf-8"))
+            return ladder.stall_from_trace(path)
+
+    def verdict(self, rows, record=None, stall=None):
+        stall = stall if stall is not None else self.analyse(stall_text(rows))
+        return ladder.judge_rung(record if record is not None else stall_record(rows), budget_bytes=BUDGET,
+                                 paging_rule="v2-stall", stall=stall)
+
+    def assertInvalid(self, text, needle):
+        stall = self.analyse(text)
+        self.assertTrue(any(needle in p for p in stall["problems"]), (needle, stall["problems"]))
+        verdict = ladder.judge_rung(stall_record(), budget_bytes=BUDGET, paging_rule="v2-stall", stall=stall)
+        self.assertEqual(verdict["status"], "FAILURE")
+        self.assertTrue(any(r.startswith("stall evidence invalid") for r in verdict["reasons"]), verdict)
+
+
+class StallLimitTests(StallTraceCase):
+    def test_exactly_at_the_limit_passes_and_major_faults_are_not_judged(self):
+        rows = stall_rows(memory=AT_LIMIT_US, io=AT_LIMIT_US)   # each at 1 percent: they are never added together
+        stall = self.analyse(stall_text(rows))
+        self.assertEqual((stall["problems"], stall["denominator_ns"]), ([], 10 * SECOND))
+        self.assertEqual(self.verdict(rows), {"status": "PASS", "reasons": []})
+
+    def test_one_microsecond_over_fails_for_that_resource_only(self):
+        for resource, over in (("memory", {"memory": AT_LIMIT_US + 1}), ("io", {"io": AT_LIMIT_US + 1})):
+            with self.subTest(resource):
+                [reason] = self.verdict(stall_rows(**over))["reasons"]
+                self.assertIn(f"sustained paging (v2-stall): {resource} stall {AT_LIMIT_US + 1} us", reason)
+
+    def test_one_nanosecond_less_interval_fails_at_the_same_stall(self):
+        rows = stall_rows(memory=AT_LIMIT_US)
+        first = next(r for r in rows if r[1] == "train")
+        first[6] += 1   # one nanosecond of reading time at S shortens the interval: the share is only overstated
+        self.assertEqual(self.analyse(stall_text(rows))["denominator_ns"], 10 * SECOND - 1)
+        self.assertEqual(self.verdict(rows)["status"], "FAILURE")
+
+    def test_load_save_and_rung_json_durations_do_not_change_the_result(self):
+        for memory, status in ((AT_LIMIT_US, "PASS"), (AT_LIMIT_US + 1, "FAILURE")):
+            plain = self.verdict(stall_rows(memory=memory))
+            rows = stall_rows(memory=memory, load=(10 ** 9, 10 ** 9), save_extra=10 ** 9)
+            record = stall_record(rows, wall_seconds=1.0)
+            record["pressure"]["phases"]["train"]["elapsed_s"] = 10 ** 6
+            record["pressure"]["phases"]["load"] = {"memory": "anything"}
+            loud = self.verdict(rows, record)
+            self.assertEqual((plain, loud["status"]), (loud, status))
+
+    def test_full_stalls_are_reported_not_judged(self):
+        rows = stall_rows()
+        for row in rows:
+            if row[1] == "save" or row is [r for r in rows if r[1] == "train"][-1]:
+                row[3] = row[5] = 10 ** 12
+        self.assertEqual(self.verdict(rows)["status"], "PASS")
+
+
+class StallEvidenceTests(StallTraceCase):
+    def test_a_missing_or_unreadable_file_is_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(ladder.stall_from_trace(Path(tmp) / "none.csv")["problems"], ["no pressure-trace.csv"])
+            self.assertTrue(ladder.stall_from_trace(tmp)["problems"][0].startswith("pressure-trace.csv not readable"))
+        self.assertInvalid("١".encode("utf-8"), "not readable")
+        self.assertInvalid("", "header")
+        self.assertEqual(self.verdict(stall_rows(), stall={})["status"], "FAILURE")
+        judged = ladder.judge_rung(stall_record(), budget_bytes=BUDGET, paging_rule="v2-stall")
+        self.assertEqual(judged["reasons"], ["stall evidence invalid (v2-stall): no trace was judged"])
+
+    def test_lines_must_be_whole_and_have_exactly_these_columns(self):
+        text = stall_text(stall_rows())
+        self.assertInvalid(text.replace("read_end_ns", "end"), "header")
+        self.assertInvalid(text[:-1], "cut")
+        self.assertInvalid(text + "1,save,1", "cut")
+        lines = text.split("\n")
+        for broken, needle in ((lines[3] + ",1", "8 columns"), (lines[3].rsplit(",", 1)[0], "6 columns"), ("", "1 columns")):
+            self.assertInvalid("\n".join(lines[:3] + [broken] + lines[4:]), needle)
+        self.assertInvalid(text.replace("\n", "\r\n"), "header")
+
+    def test_every_number_must_be_plain_digits_in_every_phase(self):
+        for column in (0, 2, 3, 4, 5, 6):
+            for index in (0, 5, -1):   # a load, a training and a save row
+                for bad in ("", "nan", "NaN", "inf", "-1", "1.5", "1e3", " 1", "+1", "x", "1_0", "1" * 21, "1" * 5000):
+                    with self.subTest(column=column, row=index, bad=bad[:8]):
+                        rows = stall_rows()
+                        rows[index][column] = bad
+                        self.assertInvalid(stall_text(rows), "not a nonnegative whole number")
+
+    def test_time_must_run_forward(self):
+        rows = stall_rows()
+        rows[5][6] = rows[5][0] - 1
+        self.assertInvalid(stall_text(rows), "backwards inside a row")
+        rows = stall_rows()
+        rows[5][0] = rows[4][6] - 1
+        self.assertInvalid(stall_text(rows), "starts before the previous row ends")
+
+    def test_a_total_that_goes_backwards_is_invalid(self):
+        for column in (2, 3, 4, 5):
+            for index in (1, 3, -1):   # into a load, a training and a save row
+                with self.subTest(column=column, row=index):
+                    rows = stall_rows()
+                    for row in rows:
+                        row[column] = 1000
+                    rows[index][column] = 999
+                    self.assertInvalid(stall_text(rows), "went backwards")
+
+    def test_phases_must_appear_once_each_in_order(self):
+        good = stall_rows()
+        load, train, save = ([r for r in good if r[1] == name] for name in ("load", "train", "save"))
+
+        def timed(rows):
+            return [[i * HALF, r[1], 0, 0, 0, 0, i * HALF] for i, r in enumerate(rows)]
+        cases = {"no load": train + save, "no save": load + train, "no train": load + save, "nothing": [],
+                 "wrong order": load + save + train, "train twice": load + train + save + train,
+                 "unknown": load + train + save + [[0, "other", 0, 0, 0, 0, 0]]}
+        for name, rows in cases.items():
+            with self.subTest(name):
+                self.assertInvalid(stall_text(timed(rows)), "phases are not load, train, save once each")
+
+    def test_the_training_interval_needs_two_rows_and_five_seconds(self):
+        def trace(start_end, end_start, rows=2):
+            body = [[0, "load", 0, 0, 0, 0, 0], [start_end, "train", 0, 0, 0, 0, start_end]]
+            if rows == 2:
+                body.append([end_start, "train", 0, 0, 0, 0, end_start])
+            tail = max(end_start, start_end)
+            return stall_text(body + [[tail, "save", 0, 0, 0, 0, tail]])
+        self.assertEqual(self.analyse(trace(0, 5 * SECOND))["problems"], [])
+        self.assertInvalid(trace(0, 5 * SECOND - 1), "is under")
+        self.assertInvalid(trace(SECOND, SECOND), "training interval 0 ns")
+        negative = stall_text([[0, "load", 0, 0, 0, 0, 0], [0, "train", 0, 0, 0, 0, 3 * SECOND],
+                               [SECOND, "train", 0, 0, 0, 0, 4 * SECOND], [4 * SECOND, "save", 0, 0, 0, 0, 4 * SECOND]])
+        self.assertInvalid(negative, f"training interval {-2 * SECOND} ns")
+        self.assertInvalid(trace(0, 5 * SECOND, rows=1), "fewer than two training rows")
+
+    def test_gaps_over_five_seconds_are_invalid_including_across_boundaries(self):
+        def trace(times):
+            phases = ("load", "load", "train", "train", "train", "save", "save")
+            return stall_text([[t, p, 0, 0, 0, 0, t] for t, p in zip(times, phases)])
+        base = [0, 1, 2, 5, 8, 9, 10]
+        self.assertEqual(self.analyse(trace([t * SECOND for t in base]))["problems"], [])
+        exact = [0, 5, 10, 15, 20, 25, 30]   # every gap is exactly 5 s
+        self.assertEqual(self.analyse(trace([t * SECOND for t in exact]))["problems"], [])
+        for where in (1, 2, 3, 5, 6):   # inside load, load to train, inside train, train to save, inside save
+            with self.subTest(where=where):
+                times = [t * SECOND for t in exact]
+                times[where:] = [t + 1 for t in times[where:]]
+                self.assertInvalid(trace(times), "gap over")
+
+    def test_rung_json_must_agree_on_the_training_endpoints(self):
+        rows = stall_rows(memory=10, io=20)
+        self.assertEqual(self.verdict(rows)["status"], "PASS")
+        broken = [None, "garbage", {}, {"phases": {"train": None}}]
+        for resource in ("memory", "io"):
+            for kind in ("some", "full"):
+                for end in ("start_us", "end_us"):
+                    for change in (lambda v: v + 1, float, str, lambda v: None):
+                        summary = summary_for(rows)
+                        entry = summary["phases"]["train"][resource][kind]
+                        entry[end] = change(entry[end])
+                        broken.append(summary)
+            summary = summary_for(rows)
+            summary["phases"]["train"][resource]["status"] = "unavailable"
+            broken.append(summary)
+        for summary in broken:
+            with self.subTest(summary=str(summary)[:200]):
+                [reason] = self.verdict(rows, stall_record(rows, pressure=summary))["reasons"]
+                self.assertIn("do not agree with pressure-trace.csv", reason)
+
+    def test_the_training_refault_evidence_is_required(self):
+        def judged(paging):
+            return self.verdict(stall_rows(), stall_record(paging=paging))
+        train = CLEAN_TRAIN_PAGING["phases"]["train"]
+        for paging in (None, {}, {"phases": {}}):
+            self.assertIn("no training-phase counters", judged(paging)["reasons"][0])
+        for over, needle in (({"invalid_samples": 1}, "unreadable or reset"), ({"coverage_ok": False}, "do not cover"),
+                             ({"coverage_ok": None}, "do not cover"), ({"refault_anon_delta": None}, "no valid anonymous"),
+                             ({"refault_anon_delta": float("nan")}, "no valid anonymous"),
+                             ({"refault_anon_delta": 1}, "1 anonymous-page refaults")):
+            with self.subTest(over=over):
+                verdict = judged({"phases": {"train": dict(train, **over)}})
+                self.assertEqual(verdict["status"], "FAILURE")
+                self.assertTrue(any(needle in r for r in verdict["reasons"]), verdict)
+
+    def test_swap_and_memory_rules_are_unchanged(self):
+        self.assertIn("swap used", self.verdict(stall_rows(), stall_record(swap_peak_bytes=1))["reasons"][0])
+        over = stall_record(memory_peak_bytes=BUDGET, kernel_memory_peak_bytes=BUDGET)
+        self.assertIn("memory high-water", self.verdict(stall_rows(), over)["reasons"][0])
+
+    def test_an_unknown_rule_never_passes(self):
+        verdict = ladder.judge_rung(good_record(), budget_bytes=BUDGET, paging_rule="v2_stall")
+        self.assertEqual(verdict, {"status": "FAILURE", "reasons": ["unknown paging rule v2_stall"]})
+
+
+def stall_stub(record, trace):
+    def command(rung, rung_dir):
+        if trace is not None:
+            (Path(rung_dir) / "pressure-trace.csv").write_bytes(trace.encode("ascii"))
+        return stub(record)(rung, rung_dir)
+    return command
+
+
+class StallLadderTests(unittest.TestCase):
+    ACTIVE = {"requested": True, "active": True, "calls": 24, "expected_calls": 24, "layers": 2, "use_reentrant": False}
+    C = {"ceiling_metric": "anon_shmem", "container_cap": "budget"}
+
+    def ladder_run(self, command, rungs=(128, 256), **kw):
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = ladder.run_ladder(rungs=list(rungs), budget_bytes=BUDGET, out_dir=Path(tmp), model="pinned",
+                                        host_available_start=8 * GIB, child_command=command, paging_rule="v2-stall", **kw)
+            on_disk = json.loads((Path(tmp) / "summary.json").read_text())
+        self.assertEqual(summary["rungs"], on_disk["rungs"])
+        return summary
+
+    def test_pass_is_recorded_with_the_figures_and_the_fixed_limit(self):
+        rows = stall_rows(memory=AT_LIMIT_US)
+        record = stall_record(rows, gradient_checkpointing=self.ACTIVE)
+        summary = self.ladder_run(stall_stub(record, stall_text(rows)), gradient_checkpointing=True, **self.C)
+        self.assertEqual([r["status"] for r in summary["rungs"]], ["PASS", "PASS"])
+        entry = summary["rungs"][0]["paging_stall"]
+        self.assertEqual((entry["problems"], entry["denominator_ns"], entry["train"]["memory_some_us"]["delta_us"]),
+                         ([], 10 * SECOND, AT_LIMIT_US))
+        config = summary["configuration"]
+        self.assertEqual(config["paging_max_train_stall_percent"], {"memory": 1, "io": 1})
+        self.assertIsNone(config["paging_max_train_refaults_per_s"])
+        self.assertTrue(config["label"].startswith("C-gc:"))
+        self.assertIn("a repeat is required", config["label"])
+        self.assertTrue(summary["qualification_decision"].startswith("none:"))
+
+    def test_the_first_failure_stops_the_ladder(self):
+        rows = stall_rows(io=AT_LIMIT_US + 1)
+        for trace in (stall_text(rows), None):
+            summary = self.ladder_run(stall_stub(stall_record(rows), trace))
+            self.assertEqual([r["status"] for r in summary["rungs"]], ["FAILURE", "NOT_RUN"])
+            self.assertEqual(summary["stopped_at"], 128)
+
+    def test_only_this_rule_asks_the_child_for_the_trace(self):
+        plain = ladder.default_child_command(128, Path("d"), "pinned", 3, 10, "anon_shmem", 9, True)
+        self.assertNotIn("--pressure-trace", plain)
+        asked = ladder.default_child_command(128, Path("d"), "pinned", 3, 10, "anon_shmem", 9, True, pressure_trace=True)
+        self.assertEqual(asked, plain + ["--pressure-trace"])
+        for rule, limit, expected in (("v1", None, {}), ("v2", 1.0, {}), ("v2-stall", None, {"pressure_trace": True})):
+            seen = []
+
+            def command(rung, rung_dir, *args, **kwargs):
+                seen.append(kwargs)
+                return stub(good_record())(rung, rung_dir)
+            with tempfile.TemporaryDirectory() as tmp, mock.patch.object(ladder, "default_child_command", side_effect=command):
+                ladder.run_ladder(rungs=[128], budget_bytes=BUDGET, out_dir=Path(tmp), model="pinned",
+                                  host_available_start=8 * GIB, paging_rule=rule, paging_limit=limit)
+            self.assertEqual(seen, [expected], rule)
+
+    def test_evidence_mode_and_a_limit_argument_are_refused(self):
+        with self.assertRaisesRegex(ValueError, "v1 paging failure only"):
+            self.ladder_run(stub(good_record()), evidence_mode=True)
+        with self.assertRaisesRegex(ValueError, "fixed limit"):
+            self.ladder_run(stub(good_record()), paging_limit=1.0)
+        for extra, needle in ((["--evidence-mode"], "v1 paging failure only"),
+                              (["--paging-max-train-refaults-per-s", "1"], "has a fixed limit")):
+            proc = subprocess.run([sys.executable, "ladder.py", "run", "--budget-bytes", "1", "--out", "unused",
+                                   "--paging-rule", "v2-stall", *extra], cwd=str(HERE), capture_output=True, text=True,
+                                  timeout=60)
+            self.assertEqual(proc.returncode, 2)
+            self.assertIn(needle, proc.stderr)
+
+    def test_checkpointing_is_allowed_with_this_rule_only_in_configuration_c(self):
+        self.assertEqual(ladder.checkpointing_config_problem("anon_shmem", "budget", "v2-stall"), "")
+        self.assertEqual(ladder.checkpointing_config_problem("anon_shmem", "budget", "v1"), "")
+        for config in (("anon_shmem", "budget", "v2"), ("original", "budget", "v2-stall"), ("anon_shmem", "fixed", "v2-stall")):
+            self.assertIn("v1 or v2-stall", ladder.checkpointing_config_problem(*config))
+
+
+class StallOtherRulesUnchangedTests(unittest.TestCase):
+    """v1 and v2 outputs, byte for byte: the digests were produced by these same inputs on main c2040bb1."""
+
+    DIGESTS = {"v1": "37b9c9367a2367da41ff13618a0e13d31a1a0bbcd2b1d4b76a8aecab339e22cb", "v2": "de2d40ea1e75dd05f2bfbd8d5741cb310687af37ba2289c8860bd88c14152f8d"}
+
+    def summary_digest(self, rule, limit):
+        paging = copy.deepcopy(CLEAN_TRAIN_PAGING)
+        records = iter([good_record(paging=paging), good_record(paging=paging, major_fault_delta=28771, swap_peak_bytes=1)])
+
+        def command(rung, rung_dir):
+            return stub(next(records))(rung, rung_dir)
+        with tempfile.TemporaryDirectory() as tmp:
+            ladder.run_ladder(rungs=[128, 256, 512], budget_bytes=BUDGET, out_dir=Path(tmp), model="pinned",
+                              host_available_start=8 * GIB, child_command=command, paging_rule=rule, paging_limit=limit)
+            text = (Path(tmp) / "summary.json").read_text(encoding="utf-8")
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    def test_v1_and_v2_summaries_are_byte_for_byte_as_before(self):
+        self.assertEqual({"v1": self.summary_digest("v1", None), "v2": self.summary_digest("v2", 700.0)}, self.DIGESTS)
+
+    def test_a_judged_trace_changes_nothing_under_the_other_rules(self):
+        bad = {"problems": ["no pressure-trace.csv"]}
+        for rule, limit in (("v1", None), ("v2", 50.0)):
+            record = good_record(paging=copy.deepcopy(CLEAN_TRAIN_PAGING))
+            kw = dict(budget_bytes=BUDGET, paging_rule=rule, paging_limit=limit)
+            self.assertEqual(ladder.judge_rung(record, stall=bad, **kw), ladder.judge_rung(record, **kw))
+
+
+class StallWatcherTests(StallTraceCase):
+    def run_watcher(self, judged, files=("memory", "io")):
+        import ladder_rung
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.addCleanup(setattr, ladder_rung, "PHASE", "load")
+        self.addCleanup(setattr, ladder_rung, "CGROUP", ladder_rung.CGROUP)
+        ladder_rung.CGROUP = root = Path(tmp.name)
+
+        def put(some):
+            for name in files:
+                (root / f"{name}.pressure").write_text(PSI.format(some=some, full=some // 2))
+        trace = root / "pressure-trace.csv"
+        clock = iter(range(0, 10 ** 15, SECOND))
+        with mock.patch.object(ladder_rung.time, "monotonic_ns", lambda: next(clock)):
+            watcher = ladder_rung.Watcher(10 ** 12, 0.9, lambda peak: None,
+                                          pressure_trace_path=trace if judged else None)
+            put(100)
+            watcher.sample()
+            watcher.set_phase("train")
+            put(150)
+            for _ in range(3):
+                watcher.sample()
+            put(400)
+            watcher.set_phase("save")
+            record = watcher.finish()
+        return trace, record
+
+    def test_the_trace_and_the_summary_the_watcher_writes_are_judged_together(self):
+        path, record = self.run_watcher(True)
+        lines = path.read_bytes().decode("ascii").split("\n")
+        self.assertEqual(lines[0], "read_start_ns,phase,memory_some_us,memory_full_us,io_some_us,io_full_us,read_end_ns")
+        self.assertEqual([line.split(",")[1] for line in lines[1:-1]],
+                         ["load", "load", *["train"] * 5, "save", "save"])
+        stall = ladder.stall_from_trace(path)
+        # S is the third row (read 4 s to 5 s) and E the seventh (read 12 s to 13 s): the interval is 12 s - 5 s
+        self.assertEqual(stall["train"]["memory_some_us"], {"start_us": 100, "end_us": 400, "delta_us": 300})
+        self.assertEqual((stall["denominator_ns"], stall["problems"]), (7 * SECOND, []))
+        self.assertEqual(ladder.stall_reasons(stall_record(pressure=record["pressure"]), stall), [])
+        self.assertFalse(record["pressure"]["evidence_only"])
+        self.assertIn("v2-stall", record["pressure"]["note"])
+        for resource in ("memory", "io"):
+            for kind in ("some", "full"):
+                reported = record["pressure"]["phases"]["train"][resource][kind]
+                self.assertEqual(reported, stall["train"][f"{resource}_{kind}_us"])
+
+    def test_without_the_rule_no_trace_is_written_and_the_summary_is_as_before(self):
+        path, record = self.run_watcher(False)
+        self.assertFalse(path.exists())
+        self.assertEqual((record["pressure"]["evidence_only"], record["pressure"]["note"]), (True, ladder.PRESSURE_NOTE))
+        self.assertTrue(ladder.PRESSURE_NOTE.startswith("EVIDENCE ONLY: no verdict, gate or stop rule reads this. total="))
+
+    def test_an_unreadable_pressure_file_leaves_blanks_never_zeros(self):
+        path, _ = self.run_watcher(True, files=("memory",))
+        row = path.read_text().splitlines()[1].split(",")
+        self.assertEqual(row[4:6], ["", ""])
+        self.assertTrue(any("not a nonnegative whole number: io_some_us, io_full_us" in p
+                            for p in ladder.stall_from_trace(path)["problems"]))
+
+    def test_the_rung_process_writes_the_trace_only_when_asked(self):
+        try:
+            import torch, transformers, peft  # noqa: F401,E401
+        except ImportError:
+            self.skipTest("torch, transformers and peft are not installed")
+        for extra, exists in (((), False), (("--pressure-trace",), True)):
+            with tempfile.TemporaryDirectory() as tmp:
+                subprocess.run([sys.executable, str(HERE / "ladder_rung.py"), "--rung", "16", "--out", tmp,
+                                "--model", "synthetic", "--steps", "1", *extra], capture_output=True, text=True, timeout=300)
+                path = Path(tmp) / "pressure-trace.csv"
+                self.assertEqual(path.exists(), exists)
+                if exists:
+                    lines = path.read_text().splitlines()
+                    self.assertEqual(lines[0], ",".join(ladder.STALL_TRACE_COLUMNS))
+                    phases = [line.split(",")[1] for line in lines[1:]]
+                    self.assertEqual(list(dict.fromkeys(phases)), ["load", "train", "save"])
 
 
 if __name__ == "__main__":

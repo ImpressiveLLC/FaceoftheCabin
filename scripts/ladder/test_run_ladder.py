@@ -302,6 +302,28 @@ class DryRunTests(unittest.TestCase):
         for key in ("need_at_start_bytes", "floor_bytes", "budget_bytes", "container_memory_bytes", "ceiling_bytes"):
             self.assertEqual(on[key], off[key], key)
 
+    def test_v2_stall_changes_only_the_rule_and_takes_no_limit(self):
+        c = ("-CeilingMetric", "anon_shmem", "-ContainerCap", "budget", "-GradientCheckpointing")
+        _, v1 = plan(22, "-Run", *c)
+        for spelled in ("v2-stall", "V2-Stall"):
+            _, stall = plan(22, "-Run", *c, "-PagingRule", spelled)
+            self.assertEqual(stall["paging_rule"], "v2-stall")
+            expected = list(v1["docker_argv"])
+            expected[expected.index("--paging-rule") + 1] = "v2-stall"
+            self.assertEqual(stall["docker_argv"], expected)
+            self.assertEqual({k for k in set(v1) | set(stall) if v1.get(k) != stall.get(k)}, {"paging_rule", "docker_argv"})
+        _, alone = plan(22, "-Run", "-PagingRule", "v2-stall")
+        self.assertNotIn("--paging-max-train-refaults-per-s", alone["docker_argv"])
+
+    def test_v2_stall_refuses_a_limit_and_evidence_mode(self):
+        for extra, needle in ((("-PagingMaxTrainRefaultsPerSecond", "1"), "hasafixedlimit"),
+                              (("-PagingMaxTrainRefaultsPerSecond", "-1"), "hasafixedlimit"),
+                              (("-EvidenceMode",), "v1pagingfailureonly")):
+            with self.subTest(extra=extra):
+                refused = run("-Run", "-DryRun", "-FakeAvailableBytes", str(22 * GIB), "-PagingRule", "v2-stall", *extra)
+                self.assertEqual(refused.returncode, 2, said(refused))
+                self.assertIn(needle, said(refused))
+
     def test_gradient_checkpointing_is_refused_outside_configuration_c(self):
         for other in ((), ("-CeilingMetric", "anon_shmem"), ("-ContainerCap", "budget"),
                       ("-CeilingMetric", "anon_shmem", "-ContainerCap", "budget", "-PagingRule", "v2",
@@ -816,6 +838,16 @@ function Read-Samples([string]$Csv, [switch]$Complete) {
         self.assertEqual(self.read(self.run_dir() / "STOPPED").splitlines()[-2:], [self.GC_NOTICE, evidence])
         note = self.read(self.tmp / "LADDER-FINISHED.txt").replace("\r\n", "\n")
         self.assertIn(f"{self.GC_NOTICE}\n{evidence}\nRecords:", note)
+
+    def test_v2_stall_reaches_the_container_and_changes_no_marker(self):
+        proc = self.launch("-Run", *self.C, "-GradientCheckpointing", "-PagingRule", "v2-stall")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(self.read(self.run_dir() / "DONE").splitlines()[1:], ["all rungs PASS", self.GC_NOTICE])
+        [line] = self.launched()
+        self.assertIn("--paging-rule v2-stall", line)
+        self.assertNotIn("--paging-max-train-refaults-per-s", line)
+        self.assertNotIn("--evidence-mode", line)
+        self.assertSealed(self.run_dir())
 
     def test_without_gradient_checkpointing_nothing_mentions_it(self):
         proc = self.launch("-Run", *self.C)
