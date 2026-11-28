@@ -165,6 +165,15 @@ Manual after deploy: Monitoring humidity tiles show a whole percent on one line.
 device in Devices: the attribute is rounded and hovering it shows the stored value. In Sensor
 History, pick humidity: table, today's peak and Download CSV hold whole percentages.
 
+## Sensor History day dates (W-175)
+
+Automated: `ui/src/dayBucketDate.test.jsx` runs the table, both daily CSV row kinds and the guest
+page for an America/Chicago and a Pacific/Auckland viewer, across a year rollover.
+
+Manual after deploy: at 1 day, the newest row in Sensor History carries today's UTC date, and the
+downloaded CSV's last `date_utc` matches the last `day` of
+`/api/events/telemetry-history` for the same sensor. Live verification is pending deployment.
+
 ## Alert History (W-64)
 
 Spec: [`docs/PRODUCT_NOTES.md`](PRODUCT_NOTES.md) § "2026-10-12 — Alert History".

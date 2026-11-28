@@ -6138,6 +6138,14 @@ export function zonedTime(instant, timeZone) {
     label: f.label.format(date),
   };
 }
+// W-175: a day point's `day` is the instant its bucket starts. Production cuts day buckets in UTC
+// (date_trunc in the database session zone; the day answer names no zone, backlog W-30), so a day is dated
+// in UTC, never on the viewer's clock, which west of UTC is still on the day before at that instant.
+export const DAY_BUCKET_ZONE = "UTC";
+// "2026-11-27", for export.
+export const dayBucketDate = (day) => zonedTime(day, DAY_BUCKET_ZONE).date;
+// The same date written the viewer's usual way, for the screen.
+export const dayBucketLabel = (day) => new Date(day).toLocaleDateString(undefined, { timeZone: DAY_BUCKET_ZONE });
 // Today's highest reading in the property's zone, the earliest one if the same value came twice.
 export function todaysPeak(points, timeZone, now = new Date()) {
   const today = zonedTime(now, timeZone).date;
@@ -6971,7 +6979,7 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
   const downloadCsv = () => {
     const header = intraday
       ? "time,utc_offset,timezone,resolution,device,avg,min,max,max_time,count,partial,unit\n"
-      : "date,device,avg,count,partial,unit\n";
+      : "date_utc,device,avg,count,partial,unit\n";
     const rows = [];
     for (const day of allDates) {
       const at = intraday ? zonedTime(day, intraday.timezone) : null;
@@ -6984,13 +6992,13 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
             shown(p.avg), shown(p.min), shown(p.max),
             `${peakAt.date} ${peakAt.time}`, p.sampleCount, p.partial ? "yes" : "no", csvUnitFor(id)].join(","));
         } else {
-          rows.push([new Date(day).toLocaleDateString(), `"${nameFor(id)}"`, shown(p.avg), p.sampleCount, p.partial ? "yes" : "no", csvUnitFor(id)].join(","));
+          rows.push([dayBucketDate(day), `"${nameFor(id)}"`, shown(p.avg), p.sampleCount, p.partial ? "yes" : "no", csvUnitFor(id)].join(","));
         }
       }
       for (const sr of outdoorSeries) {
         const o = sr.byDay[String(day).slice(0, 10)];
         if (!o) continue;
-        rows.push([new Date(day).toLocaleDateString(), `"${sr.label}"`, shown(o.value), o.n, o.partial ? "yes" : "no", csvUnitFor(null)].join(","));
+        rows.push([dayBucketDate(day), `"${sr.label}"`, shown(o.value), o.n, o.partial ? "yes" : "no", csvUnitFor(null)].join(","));
       }
     }
     const blob = new Blob([header + rows.join("\n")], { type: "text/csv" });
@@ -7194,7 +7202,7 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
                     {partialDates.size > 0 && " A time marked (partial) is the first bucket of the range, cut off by the range start."}
                     {allDates.length > SENSOR_HISTORY_TABLE_LIMIT && ` The table lists the newest ${SENSOR_HISTORY_TABLE_LIMIT} of ${allDates.length} times; the chart and the CSV export have all of them.`}
                   </>) : (<>
-                    Each value is that day's average; (n=…) is how many individual readings were averaged into it — the CSV export has the count as its own column.
+                    Each value is that day's average; (n=…) is how many individual readings were averaged into it — the CSV export has the count as its own column. Days are {DAY_BUCKET_ZONE} days, here and in the CSV export: in a US time zone, an evening reading counts toward the next date.
                     {partialDates.size > 0 && " A day marked (partial) covers less than a full 24 hours -- its average is over fewer hours than the other rows, not a stronger or weaker reading."}
                   </>)}
                 </p>
@@ -7206,11 +7214,11 @@ const SensorHistoryPanelBody = React.memo(function SensorHistoryPanelBody({ devi
                       {selectedIds.map(id => <col key={id} className="sh-col-device" />)}
                       {outdoorSeries.map(sr => <col key={sr.key} className="sh-col-outdoor" />)}
                     </colgroup>
-                    <thead><tr><th>{intraday ? "Time" : "Date"}</th>{selectedIds.map(id => <th key={id}>{nameFor(id)}</th>)}{outdoorSeries.map(sr => <th key={sr.key}>{sr.label}</th>)}</tr></thead>
+                    <thead><tr><th>{intraday ? "Time" : `Date (${DAY_BUCKET_ZONE})`}</th>{selectedIds.map(id => <th key={id}>{nameFor(id)}</th>)}{outdoorSeries.map(sr => <th key={sr.key}>{sr.label}</th>)}</tr></thead>
                     <tbody>
                       {(intraday ? allDates.slice(-SENSOR_HISTORY_TABLE_LIMIT) : [...allDates]).reverse().map(day => (
                         <tr key={day}>
-                          <td>{intraday ? zonedTime(day, intraday.timezone).label : new Date(day).toLocaleDateString()}{partialDates.has(day) ? " (partial)" : ""}</td>
+                          <td>{intraday ? zonedTime(day, intraday.timezone).label : dayBucketLabel(day)}{partialDates.has(day) ? " (partial)" : ""}</td>
                           {selectedIds.map(id => {
                             const p = pointsByTime[id].get(day);
                             // Sample count matters for credibility, not just decoration --
@@ -11101,7 +11109,7 @@ export function GuestDashboard({ token }) { // exported for src/App.test.jsx
             return (
               <div key={`${deviceId}-${field}`} className="guest-device-row">
                 <span>{deviceId} — {field}</span>
-                <span className="config-hint">{latest ? `avg ${formatReading(field, latest.avg)} on ${new Date(latest.day).toLocaleDateString()}` : "no data yet"}</span>
+                <span className="config-hint">{latest ? `avg ${formatReading(field, latest.avg)} on ${dayBucketLabel(latest.day)} (${DAY_BUCKET_ZONE} day)` : "no data yet"}</span>
               </div>
             );
           })}

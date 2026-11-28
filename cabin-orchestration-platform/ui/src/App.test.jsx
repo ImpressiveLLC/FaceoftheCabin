@@ -430,10 +430,9 @@ describe("SensorHistoryPanel", () => {
     vi.stubGlobal("fetch", reportedFieldsFetch([sensors[0]], () => withPartial));
     render(<SensorHistoryPanel devices={[sensors[0]]} apiBase="http://cabin" tempUnit="F" />);
 
-    // Built from the same Date().toLocaleDateString() the app itself uses,
-    // not a hardcoded string -- see the CSV-export test above for why.
-    const day1 = new Date("2026-08-24T00:00:00Z").toLocaleDateString();
-    const day2 = new Date("2026-08-25T00:00:00Z").toLocaleDateString();
+    // The screen writes a UTC day in the runner's locale, so the expected text is built the same way.
+    const day1 = new Date("2026-08-24T00:00:00Z").toLocaleDateString(undefined, { timeZone: "UTC" });
+    const day2 = new Date("2026-08-25T00:00:00Z").toLocaleDateString(undefined, { timeZone: "UTC" });
     const rows = await screen.findAllByRole("row");
     expect(within(rows[1]).getByText(day2)).toBeTruthy();
     expect(within(rows[1]).queryByText(/\(partial\)/)).toBeNull();
@@ -657,16 +656,9 @@ describe("SensorHistoryPanel", () => {
       reader.readAsText(blob);
     });
     const lines = text.split("\n");
-    // Built from the same Date().toLocaleDateString() the app itself
-    // uses, not a hardcoded string -- that format is locale/timezone
-    // dependent, and hardcoding it here previously broke on any runner
-    // whose local timezone shifts a UTC-midnight timestamp to the
-    // previous calendar day.
-    const day1 = new Date("2026-08-24T00:00:00Z").toLocaleDateString();
-    const day2 = new Date("2026-08-25T00:00:00Z").toLocaleDateString();
-    expect(lines[0]).toBe("date,device,avg,count,partial,unit");
-    expect(lines).toContain(`${day1},"Mech Room",70,12,no,%`);
-    expect(lines).toContain(`${day2},"Kitchen",75,8,no,%`);
+    expect(lines[0]).toBe("date_utc,device,avg,count,partial,unit");
+    expect(lines).toContain(`2026-08-24,"Mech Room",70,12,no,%`);
+    expect(lines).toContain(`2026-08-25,"Kitchen",75,8,no,%`);
   });
 
   it("reads an instant on the named zone's clock and picks the earliest of today's highest readings", () => {
