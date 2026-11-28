@@ -326,3 +326,22 @@ come from each sensor" (ppb on Total VOC, none on the unitless index).
 Manual after deploy: signed in, pick a CO2 sensor, Resolution 5 minutes: today's peak and time
 show and match the live tile history; Download CSV holds the same times with unit `ppm`.
 Signed out, choose 5 minutes: the panel asks you to sign in. Choose 1 day: unchanged.
+
+## Kidde source-report cue (W-171 bounded follow-up)
+
+Automated: `ui/src/kiddeSourceReport.test.jsx` covers the actual source offset,
+recent poll versus old source time, the proposed 24-hour boundary, missing/invalid/
+future/ambiguous timestamps, wrong parent/entity/class/location, raw values, and
+rendered ALARM badge/style preservation in both shared and legacy Monitoring.
+The timestamp sibling need not have a visible tile. Updates remove the cue when
+source time becomes recent; no fresh-measurement claim is made.
+
+Evidence: #244 comment 7231138991, independently confirmed by Codex's read-only
+API request on 2026-11-27 around 18:49 CST: timestamp entity value
+`2026-11-06T09:40:08-06:00` (same instant as `2026-11-06T15:40:08Z`), while registry
+lastSeen was `2026-11-28T00:48:55.602508124Z`. No reporting interval exposed.
+
+Merge gate: Nate must confirm or replace the proposed 24-hour presentation cutoff.
+After approved deployment, compare all eligible upstairs Kidde sibling tiles with
+the source timestamp and verify alarms remain visible/pinned. Live rendered
+verification is NOT_RUN; the API read is provenance evidence, not UI acceptance.

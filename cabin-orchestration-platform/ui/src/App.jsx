@@ -5,6 +5,7 @@ import { MonitoringPreferenceEditor } from "./MonitoringPreferenceEditor";
 import { ExpandableList, COLLAPSED_LIMIT } from "./ExpandableList";
 import { DEVICE_KIND_OPTIONS, batteryLevel, makeKindOf } from "./deviceKinds";
 import { BatteryMaintenanceCard } from "./BatteryMaintenanceCard";
+import { kiddeSourceCues } from "./kiddeSourceReport";
 import { buildDeviceIndex, matchesDeviceQuery, parseDeviceQuery } from "./deviceSearch";
 /**
  * Cabin Orchestration Platform — Shell UI
@@ -7305,7 +7306,7 @@ export function LiveEventLog({ locCfg, active, cabinSession, accessToken }) {
 // separate list nothing else reads. reorderMode/dragIdx/overIdx/onDrag*
 // are undefined outside reorder mode, same as KpiTile's own defaults.
 function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragIdx, overIdx, pinnedCount,
-    onDragStart, onDragOver, onDrop, onDragEnd, auth, sharedPreferencesEnabled = false, projectedDevices }) {
+    onDragStart, onDragOver, onDrop, onDragEnd, auth, sharedPreferencesEnabled = false, projectedDevices, sourceCues }) {
   const preferences = useMonitoringPreferences(sharedPreferencesEnabled, locCfg.id, locCfg.apiBase,
     auth?.authedFetch || trustedApiFetch);
   const shared = preferences?.data;
@@ -7377,6 +7378,7 @@ function LocationMonitoringSection({ locCfg, devices, active, reorderMode, dragI
           const isPinned = entryPinned(entry);
           return (
             <KpiTile key={tile.deviceId} {...tile}
+              sourceCue={sourceCues?.[tile.deviceId]}
               reorderMode={reorderMode}
               isPinned={isPinned}
               isOver={reorderMode && overIdx === globalIdx && dragIdx !== globalIdx}
@@ -7615,6 +7617,8 @@ export function MonitoringPanel({ active, auth }) { // exported for src/App.test
 // how KpiTile/LocationMonitoringSection already gate on it.
 export function MnSeeView({ devices, activeLocation, active, reorderMode, auth,
     sharedPreferencesEnabled = import.meta.env.VITE_MONITORING_PREFERENCES === "true" }) { // default-off C1 read-through
+  // Use source records before card projection/visibility can remove the timestamp sibling.
+  const sourceCues = kiddeSourceCues(devices);
   const [dragIdx, setDragIdx] = useState(null);
   const [overIdx, setOverIdx] = useState(null);
 
@@ -7653,6 +7657,7 @@ export function MnSeeView({ devices, activeLocation, active, reorderMode, auth,
           reorderMode={reorderMode && !sharedPreferencesEnabled} dragIdx={dragIdx} overIdx={overIdx} pinnedCount={pinnedCount}
           onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={onDragEnd}
           auth={auth} sharedPreferencesEnabled={sharedPreferencesEnabled} projectedDevices={locDevices}
+          sourceCues={sourceCues}
         />
       ))}
       {reorderMode && ordered.length === 0 && (
@@ -7863,7 +7868,7 @@ function KpiValue({ value }) {
 }
 
 function KpiTile({ icon: Icon, label, value, state, deviceId, outdoor = false, reorderMode, isPinned, isOver,
-    onDragStart, onDragOver, onDrop, onDragEnd }) {
+    onDragStart, onDragOver, onDrop, onDragEnd, sourceCue }) {
   const { displayConfigs, devices = [], setActivePanel, setPendingDeviceFocus } = useApp();
   const canOpen = !reorderMode && deviceId && setActivePanel && setPendingDeviceFocus;
   const openDevice = () => {
@@ -7903,6 +7908,7 @@ function KpiTile({ icon: Icon, label, value, state, deviceId, outdoor = false, r
         {outdoor && <span className="kpi-outdoor-tag" title="Measured outside the building, not a reading of the inside">Outdoor</span>}
       </div>
       <KpiValue value={effectiveValue} />
+      {sourceCue && <div className="kpi-source-cue">{sourceCue}</div>}
       <span className={`state-badge ${stCls}`}>{badgeLabel}</span>
     </div>
   );
