@@ -48,9 +48,8 @@ describe("Sensor History rounds readings for display and export (W-174)", () => 
     expect(await screen.findByText("30% (n=3)")).toBeTruthy();
     expect(await screen.findByText("77% (low 60%, high 91%) (n=24)")).toBeTruthy();
     const lines = await csvLines(createObjectURL);
-    const date = new Date(day).toLocaleDateString();
-    expect(lines).toContain(`${date},"Synthetic",30,3,no,%`);
-    expect(lines).toContain(`${date},"Outdoor humidity (TEST)",77,24,no,%`);
+    expect(lines).toContain(`2026-08-25,"Synthetic",30,3,no,%`);
+    expect(lines).toContain(`2026-08-25,"Outdoor humidity (TEST)",77,24,no,%`);
   });
 
   it("rounds a temperature below zero after converting it, in the table and the CSV", async () => {
@@ -58,7 +57,7 @@ describe("Sensor History rounds readings for display and export (W-174)", () => 
     render(<SensorHistoryPanel devices={[sensor("temperature")]} apiBase="http://cabin" tempUnit="F" />);
 
     expect(await screen.findByText("-10.2°F (n=3)")).toBeTruthy();
-    expect(await csvLines(createObjectURL)).toContain(`${new Date(day).toLocaleDateString()},"Synthetic",-10.2,3,no,degF`);
+    expect(await csvLines(createObjectURL)).toContain(`2026-08-25,"Synthetic",-10.2,3,no,degF`);
   });
 
   it("never shows or exports a nonzero CO average as zero", async () => {
@@ -66,7 +65,7 @@ describe("Sensor History rounds readings for display and export (W-174)", () => 
     render(<SensorHistoryPanel devices={[sensor("co")]} apiBase="http://cabin" tempUnit="F" />);
 
     expect(await screen.findByText("0.0041 ppm (n=3)")).toBeTruthy();
-    expect(await csvLines(createObjectURL)).toContain(`${new Date(day).toLocaleDateString()},"Synthetic",0.0041,3,no,ppm`);
+    expect(await csvLines(createObjectURL)).toContain(`2026-08-25,"Synthetic",0.0041,3,no,ppm`);
   });
 
   it("rounds the intraday average, high, low and peak, and leaves a missing one empty", async () => {

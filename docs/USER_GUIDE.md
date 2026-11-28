@@ -272,6 +272,14 @@ lists the newest 500 times; the chart and the CSV have all of them. The panel lo
 you change a selection, so reload the page to pick up newer readings. The outdoor weather
 baseline is daily and appears only at 1 day.
 
+## Sensor History: which date a day row is
+
+At the 1 day resolution each row is a UTC day, so it starts at 6 PM Central (7 PM during daylight
+saving time) on the evening before the date shown, and an evening reading counts toward the next
+date. The table says **Date (UTC)**, the CSV column is `date_utc` (written year-month-day), and the
+guest page marks its latest daily reading "(UTC day)". The finer resolutions are in the property's
+timezone, as above.
+
 ## Who to ask
 
 For anything below the day-to-day feature level — adding a new camera,
