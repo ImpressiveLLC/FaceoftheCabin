@@ -309,3 +309,19 @@ device reports them. A small CO or air quality reading that is not zero is never
 The system still stores, checks and alerts on the full value; hover a reading in a device's
 detail view to see it. Sensor History and its Download CSV round the same way, except that
 electrical averages there show up to two or three decimals.
+
+## Kidde source-report cue (W-171 bounded follow-up)
+
+The upstairs Kidde unit's Monitoring tiles show `Source last reported <UTC time>`
+when its source timestamp is over 24 hours old. This proposed presentation cutoff
+requires Nate's confirmation before merge; it is not a device reporting SLA or an
+alarm threshold. A missing, ambiguous, invalid or future source timestamp shows
+`Source freshness unknown`. A recent source timestamp adds no cue and makes no
+claim that an individual measurement is fresh.
+
+The cue comes from the unit's separate Last Seen sensor, linked by the recorded
+parent ID. It never uses the registry's poll timestamp. Readings, ONLINE/OFFLINE
+badges, alarm severity, pinning, enrollment and alerts are unchanged. An old source
+report does not prove the device is offline or identify why it stopped reporting.
+This bounded binding covers only the verified upstairs Kidde parent and siblings;
+W-171's broader package definition, mapping repairs and backend status remain open.

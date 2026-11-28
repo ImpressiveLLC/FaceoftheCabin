@@ -235,6 +235,7 @@ body {
 /* Wording inside a value (unavailable, unknown) is no larger than the card's smallest text: the label and badge are 11px. */
 .kpi-value-mixed { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 2px; }
 .kpi-value-note { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.kpi-source-cue { font-size: 12px; color: var(--text); overflow-wrap: anywhere; }
 
 /* ─── Device Grid ──────────────────────────────────────────────────────── */
 .device-grid {
